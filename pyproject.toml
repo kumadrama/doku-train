@@ -1,0 +1,61 @@
+[project]
+name = "doku-train"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "boto3>=1.40,<2",
+  "numpy>=2.5,<3",
+  "pyarrow>=25,<26",
+  "psutil>=7,<8",
+  "pydantic>=2.11,<3",
+  "pyyaml>=6,<7",
+  "scikit-learn>=1.8,<2",
+  "torch>=2.13,<3",
+  "typer>=0.16,<1",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["recommend"]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["recommend/train/tests"]
+pythonpath = ["."]
+markers = [
+  "performance: records local scale evidence without a production SLA",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["recommend"]
+exclude = ["recommend/train/tests"]
+ignore_missing_imports = true
