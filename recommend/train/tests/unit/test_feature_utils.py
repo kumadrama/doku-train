@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import inspect
 import json
 
 import pyarrow as pa
+import pytest
 
 from recommend.train.models.rerank.feature_utils import (
     FittedFeatureState,
@@ -85,3 +87,17 @@ def test_production_fit_is_independent_from_evaluation_state() -> None:
     )
     assert evaluation.numeric[0].mean == 1.0
     assert production.numeric[0].mean == 10.0
+
+
+def test_feature_fit_keeps_numeric_statistics_streaming_and_rejects_non_finite() -> None:
+    source = inspect.getsource(fit_feature_state)
+    assert ".extend(" not in source
+    assert "list[float]" not in source
+    invalid = training_batch().set_column(0, "watch_7d", pa.array([0.0, float("nan"), 2.0]))
+    with pytest.raises(ValueError, match="NUMERICAL_FAILURE"):
+        fit_feature_state(
+            [invalid],
+            numeric_features=("watch_7d",),
+            categorical_features=("country",),
+            feature_schema_version="features-v1",
+        )

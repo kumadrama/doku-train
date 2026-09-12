@@ -68,6 +68,25 @@ def test_daily_split_is_27_train_1_validation_and_28_refit() -> None:
     assert split.refit == (*split.train, *split.validation)
 
 
+def test_daily_split_allows_multiple_deterministic_shards_per_day() -> None:
+    manifest = daily_manifest()
+    payload = manifest.model_dump(mode="json")
+    first = dict(payload["shards"][0])
+    first["uri"] = "s3://doku/training/2026-01-01-part-2.parquet"
+    first["sha256"] = hashlib.sha256(b"part-2").hexdigest()
+    payload["shards"] = [*payload["shards"], first]
+    payload["row_count"] = manifest.row_count + 1
+    payload["content_sha256"] = calculate_manifest_sha256(payload)
+
+    split = build_daily_split(DatasetManifest.model_validate(payload))
+    assert len(split.train) == 28
+    assert len(split.validation) == 1
+    assert len(split.refit) == 29
+    assert [shard.uri for shard in split.train[:2]] == sorted(
+        [manifest.shards[0].uri, str(first["uri"])]
+    )
+
+
 def test_daily_split_rejects_missing_or_immature_day() -> None:
     with pytest.raises(ValueError, match="SPLIT_INVALID"):
         build_daily_split(daily_manifest(missing_offset=10))

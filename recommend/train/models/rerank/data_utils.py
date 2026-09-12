@@ -28,17 +28,27 @@ class RerankBatch:
 
 def build_daily_split(manifest: DatasetManifest) -> TemporalSplit:
     shards = tuple(sorted(manifest.shards, key=lambda item: (item.event_date, item.uri)))
-    if len(shards) != 28 or len({shard.event_date for shard in shards}) != 28:
-        raise ValueError("SPLIT_INVALID: daily training requires 28 distinct shards")
-    for previous, current in pairwise(shards):
-        if current.event_date != previous.event_date + timedelta(days=1):
+    event_dates = tuple(sorted({shard.event_date for shard in shards}))
+    if len(event_dates) != 28:
+        raise ValueError("SPLIT_INVALID: daily training requires 28 distinct days")
+    shards_by_date = {
+        event_date: tuple(shard for shard in shards if shard.event_date == event_date)
+        for event_date in event_dates
+    }
+    for previous, current in pairwise(event_dates):
+        if current != previous + timedelta(days=1):
             raise ValueError("SPLIT_INVALID: event dates must be consecutive")
-        if previous.max_event_time_ms >= current.min_event_time_ms:
+        previous_max = max(shard.max_event_time_ms for shard in shards_by_date[previous])
+        current_min = min(shard.min_event_time_ms for shard in shards_by_date[current])
+        if previous_max >= current_min:
             raise ValueError("SPLIT_INVALID: shard event ranges overlap")
     maturity_cutoff_ms = manifest.as_of_ms - manifest.label_maturity_hours * 3_600_000
     if any(shard.max_event_time_ms > maturity_cutoff_ms for shard in shards):
         raise ValueError("LABEL_NOT_MATURE: shard is newer than the maturity cutoff")
-    return TemporalSplit(train=shards[:27], validation=shards[27:], refit=shards)
+    training_dates = frozenset(event_dates[:27])
+    train = tuple(shard for shard in shards if shard.event_date in training_dates)
+    validation = tuple(shard for shard in shards if shard.event_date == event_dates[-1])
+    return TemporalSplit(train=train, validation=validation, refit=shards)
 
 
 def completion_labels(

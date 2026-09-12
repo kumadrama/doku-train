@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import pyarrow as pa
 import torch
@@ -49,6 +50,21 @@ class FittedFeatureState(StrictModel):
         return cls.model_validate_json(body)
 
 
+@dataclass(slots=True)
+class _NumericAccumulator:
+    count: int = 0
+    mean: float = 0.0
+    squared_deviation_sum: float = 0.0
+
+    def add(self, value: float, *, feature_name: str) -> None:
+        if not math.isfinite(value):
+            raise ValueError(f"NUMERICAL_FAILURE: non-finite feature {feature_name}")
+        self.count += 1
+        delta = value - self.mean
+        self.mean += delta / self.count
+        self.squared_deviation_sum += delta * (value - self.mean)
+
+
 def _require_columns(batch: pa.RecordBatch, columns: Iterable[str]) -> None:
     missing = set(columns) - set(batch.schema.names)
     if missing:
@@ -63,16 +79,16 @@ def fit_feature_state(
     feature_schema_version: str,
     max_vocabulary_size: int = 10_000,
 ) -> FittedFeatureState:
-    numeric_values: dict[str, list[float]] = {name: [] for name in numeric_features}
+    numeric_statistics = {name: _NumericAccumulator() for name in numeric_features}
     categorical_values: dict[str, set[str]] = {name: set() for name in categorical_features}
     batch_count = 0
     for batch in batches:
         batch_count += 1
         _require_columns(batch, (*numeric_features, *categorical_features))
         for name in numeric_features:
-            numeric_values[name].extend(
-                float(value) for value in batch.column(name).to_pylist() if value is not None
-            )
+            for value in batch.column(name).to_pylist():
+                if value is not None:
+                    numeric_statistics[name].add(float(value), feature_name=name)
         for name in categorical_features:
             categorical_values[name].update(
                 str(value) for value in batch.column(name).to_pylist() if value is not None
@@ -84,17 +100,16 @@ def fit_feature_state(
 
     numeric_state: list[NumericFeatureState] = []
     for name in numeric_features:
-        values = numeric_values[name]
-        if not values:
+        statistics = numeric_statistics[name]
+        if statistics.count == 0:
             raise ValueError(f"numeric feature has no valid values: {name}")
-        mean = sum(values) / len(values)
-        variance = sum((value - mean) ** 2 for value in values) / len(values)
+        variance = statistics.squared_deviation_sum / statistics.count
         numeric_state.append(
             NumericFeatureState(
                 name=name,
-                mean=mean,
+                mean=statistics.mean,
                 stddev=math.sqrt(variance) if variance > 0.0 else 1.0,
-                valid_count=len(values),
+                valid_count=statistics.count,
             )
         )
     categorical_state = tuple(

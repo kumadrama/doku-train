@@ -23,8 +23,9 @@ class LocalStorage:
 
     @staticmethod
     def _head(path: Path) -> ObjectHead:
-        body = path.read_bytes()
-        return ObjectHead(len(body), hashlib.sha256(body).hexdigest())
+        with path.open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        return ObjectHead(path.stat().st_size, digest)
 
     def get_bytes(self, uri: str, *, max_bytes: int) -> bytes:
         if max_bytes < 0:

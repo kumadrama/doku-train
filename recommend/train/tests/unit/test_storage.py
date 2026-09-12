@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -41,3 +42,19 @@ def test_local_storage_enforces_root_and_read_bound(tmp_path) -> None:
     store.put_bytes_if_absent(inside, b"1234")
     with pytest.raises(ValueError, match="max_bytes"):
         store.get_bytes(inside, max_bytes=3)
+
+
+def test_local_storage_head_hashes_without_reading_the_whole_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "large.bin"
+    path.write_bytes(b"stream-me")
+    store = LocalStorage(tmp_path)
+
+    def reject_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("head must not use Path.read_bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", reject_read_bytes)
+    head = store.head(path.as_uri())
+    assert head.size_bytes == len(b"stream-me")
+    assert head.sha256 == hashlib.sha256(b"stream-me").hexdigest()
