@@ -12,7 +12,7 @@ Source: [系统概览](system-overview.md)、[组件划分](components.md)、[�
 
 1. 精确 Dataset Manifest URI；
 2. Train Config URI 或本地路径；
-3. 显式输出 staging 位置；
+3. `train` 的显式输出前缀；
 4. 非本地环境下的显式环境名与已配置身份。
 
 系统读取 Manifest 后依次验证合同版本、Feature/Label 版本、分片时间范围、行数和校验和。
@@ -27,13 +27,14 @@ producer/consumer contract test 共同验证。
 Finder-compatible 目标入口：
 
 ```text
-python -m recommend.train.run validate --manifest <s3-uri> --config <path>
-python -m recommend.train.train_rerank train --manifest <s3-uri> --config <path> --output <s3-uri>
-python -m recommend.train.train_rerank backtest --manifest <s3-uri> --config <path> --output <uri>
+python -m recommend.train.run rerank validate --manifest <s3-uri> --config <path>
+python -m recommend.train.run rerank train --manifest <s3-uri> --config <path> --output <s3-prefix>
+python -m recommend.train.run rerank backtest --manifest <s3-uri> --config <path>
 ```
 
 - `validate` 不启动训练，只检查数据/配置/兼容性；
-- `train` 是完整每日用例：27 天 train、1 天 validation、hard/soft gate、28 天 refit、ONNX export；
+- `train` 是完整每日用例：27 天 train、1 天 validation、hard/soft gate、evaluation model
+  ONNX export/parity preflight、28 天 refit、production ONNX export；
 - `backtest` 显式执行 24/2/2 或 rolling folds，不与每日训练隐式混用；
 - `run.py` 是统一 composition root，`train_rerank.py` 保留 Finder 熟悉的精排入口；可选 console
   alias 只能转发到相同入口，不能实现第二套逻辑。
@@ -117,6 +118,7 @@ Checkpoint 至少保存：
 ├── feature-schema.json
 ├── fitted-feature-state/
 ├── metrics.json
+├── resource-report.json
 └── lineage.json
 ```
 

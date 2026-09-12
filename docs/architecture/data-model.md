@@ -21,7 +21,7 @@ Source: [系统概览](system-overview.md)、[组件划分](components.md)；用
 | `as_of_ms` | 数据可见性的冻结截止时间 |
 | `partitions` | 有序分片 URI、事件时间范围、行数和校验和 |
 | `row_count` | 全部有效样本行数 |
-| `content_digest` | Manifest 规范化内容摘要 |
+| `content_sha256` | 排除自身字段后的 Manifest canonical JSON SHA-256 |
 
 训练命令必须接收调用方指定的精确 Manifest，不发现 `latest`，不把目录列表结果当合同。
 
@@ -174,6 +174,7 @@ artifacts/<model_name>/<model_version>/
 ├── feature-schema.json
 ├── fitted-feature-state/
 ├── metrics.json
+├── resource-report.json
 └── lineage.json
 ```
 

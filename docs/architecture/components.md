@@ -23,14 +23,19 @@ doku-train/
 │       │   ├── config.schema.yml
 │       │   ├── model_params.py
 │       │   ├── model_params_validator.py
+│       │   ├── model_protocol.py
 │       │   ├── training_pipeline.py
 │       │   ├── checkpoint_agent.py
 │       │   ├── feature_check.py
+│       │   ├── errors.py
+│       │   ├── resource_report.py
 │       │   ├── metrics_utils.py
 │       │   ├── artifact_utils.py
 │       │   ├── offline_evaluate.py
 │       │   ├── datasvr/
 │       │   │   ├── dataset_manifest.py
+│       │   │   ├── storage.py
+│       │   │   ├── local_storage.py
 │       │   │   ├── parquet_dataset.py
 │       │   │   └── s3_storage.py
 │       │   └── eval/
@@ -53,7 +58,8 @@ doku-train/
 │       ├── tests/
 │       │   ├── unit/
 │       │   ├── contract/
-│       │   └── smoke/
+│       │   ├── smoke/
+│       │   └── performance/
 │       ├── run.py
 │       └── train_rerank.py
 ├── pyproject.toml

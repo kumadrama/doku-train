@@ -72,6 +72,10 @@ doku-train/
 - [Spec 001：CPU 训练脚手架需求](specs/001-cpu-training-scaffold/requirements.md) — 首阶段范围与验收条件。
 - [Spec 001：CPU 训练脚手架设计](specs/001-cpu-training-scaffold/design.md) — Finder 对应目录、
   PyTorch CPU 多任务训练、S3 输入与 ONNX 制品设计。
+- [Spec 001：CPU 训练脚手架任务](specs/001-cpu-training-scaffold/tasks.md) — TDD 实施顺序、依赖、
+  文件范围、完成条件与提交边界。
+- [Spec 001：CPU 训练脚手架验证](specs/001-cpu-training-scaffold/verification.md) — 需求、测试、
+  验收条件与运行证据追踪。
 
 ## 代码结构硬约束
 
