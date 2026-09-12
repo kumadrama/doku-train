@@ -92,14 +92,14 @@ scikit-learn, Typer, pytest, ruff, mypy, psutil.
 
 **Steps:**
 
-- [ ] Write a failing layout test that imports every Finder-compatible namespace and inspects the CPU-only Torch
+- [x] Write a failing layout test that imports every Finder-compatible namespace and inspects the CPU-only Torch
   index.
-- [ ] Add Python 3.12 dependencies without `onnx`, `onnxruntime`, `onnxscript`, CUDA, NCCL, MPI, TensorFlow, or
+- [x] Add Python 3.12 dependencies without `onnx`, `onnxruntime`, `onnxscript`, CUDA, NCCL, MPI, TensorFlow, or
   TensorFlow Serving packages.
-- [ ] Add `make format`, `lint`, `typecheck`, `unit`, `test`, and `check`; keep performance tests outside the
+- [x] Add `make format`, `lint`, `typecheck`, `unit`, `test`, and `check`; keep performance tests outside the
   default test target.
-- [ ] Ignore local data, runs, outputs, `*.pt`, caches, and credentials.
-- [ ] Run `uv lock`, `uv sync --group dev`, and the focused layout test.
+- [x] Ignore local data, runs, outputs, `*.pt`, caches, and credentials.
+- [x] Run `uv lock`, `uv sync --group dev`, and the focused layout test.
 
 **Completion conditions:** the package imports in Python 3.12; the lock resolves a CPU Torch build; a dependency
 policy assertion proves the forbidden packages are absent; `make unit` passes.
@@ -119,15 +119,15 @@ policy assertion proves the forbidden packages are absent; `make unit` passes.
 
 **Steps:**
 
-- [ ] Write failing tests for unknown fields, non-CPU execution strategies, invalid thread/memory budgets, invalid
+- [x] Write failing tests for unknown fields, non-CPU execution strategies, invalid thread/memory budgets, invalid
   task weights, and missing caller-provided input/output.
-- [ ] Define frozen Pydantic models with `extra="forbid"`; the only execution strategy is
+- [x] Define frozen Pydantic models with `extra="forbid"`; the only execution strategy is
   `single_process_cpu`, and split values are 27/1/28.
-- [ ] Keep model architecture, optimizer, early stopping, metrics, and resource settings explicit. Do not add an
+- [x] Keep model architecture, optimizer, early stopping, metrics, and resource settings explicit. Do not add an
   export or ONNX config block.
-- [ ] Generate common and rerank JSON Schema snapshots and add a test that fails when source models and checked-in
+- [x] Generate common and rerank JSON Schema snapshots and add a test that fails when source models and checked-in
   snapshots diverge.
-- [ ] Run `uv run pytest recommend/train/tests/unit/test_model_params.py -v`.
+- [x] Run `uv run pytest recommend/train/tests/unit/test_model_params.py -v`.
 
 **Completion conditions:** invalid/unknown configuration fails before I/O; no production URI has a default;
 schemas match the models; configuration contains no serving or exporter policy.
@@ -146,13 +146,13 @@ schemas match the models; configuration contains no serving or exporter policy.
 
 **Steps:**
 
-- [ ] Write failing tests for unsupported Manifest versions, missing schema/label references, duplicate shards,
+- [x] Write failing tests for unsupported Manifest versions, missing schema/label references, duplicate shards,
   total-row mismatch, digest mismatch, prefix escape, and existing output objects.
-- [ ] Define a versioned `DatasetManifest` with exact shard URI, event range, row count, byte count, and SHA-256.
-- [ ] Define the narrow `ObjectStore` protocol: bounded `get_bytes`, `head`, streaming `download_to`, and
+- [x] Define a versioned `DatasetManifest` with exact shard URI, event range, row count, byte count, and SHA-256.
+- [x] Define the narrow `ObjectStore` protocol: bounded `get_bytes`, `head`, streaming `download_to`, and
   `put_bytes_if_absent`.
-- [ ] Implement local fixture storage and S3 storage with an injected Boto3 client and allowed bucket/prefix.
-- [ ] Prove no reader code calls `list_objects*`, resolves `latest`, or logs signed query parameters.
+- [x] Implement local fixture storage and S3 storage with an injected Boto3 client and allowed bucket/prefix.
+- [x] Prove no reader code calls `list_objects*`, resolves `latest`, or logs signed query parameters.
 
 **Completion conditions:** input identity is fixed by canonical digest; storage adapters share one port; S3 access
 is bounded and explicitly scoped; output overwrites are rejected.
@@ -172,15 +172,15 @@ is bounded and explicitly scoped; output overwrites are rejected.
 
 **Steps:**
 
-- [ ] Write failing tests for deterministic shard ordering, bounded batch size, bad checksum, bad row count,
+- [x] Write failing tests for deterministic shard ordering, bounded batch size, bad checksum, bad row count,
   duplicate/overlapping days, incomplete 28-day windows, and labels not mature at `as_of_ms`.
-- [ ] Stream one shard and one record batch at a time; verify file digest and row count without concatenating all
+- [x] Stream one shard and one record batch at a time; verify file digest and row count without concatenating all
   28 days in memory.
-- [ ] Implement event-date split planning: days 1–27 evaluation train, day 28 validation, days 1–28 production
+- [x] Implement event-date split planning: days 1–27 evaluation train, day 28 validation, days 1–28 production
   refit.
-- [ ] Preserve all valid exposure rows and emit independent `*_valid` masks; `bad_row_policy` initially supports
+- [x] Preserve all valid exposure rows and emit independent `*_valid` masks; `bad_row_policy` initially supports
   only `fail` with a counted error.
-- [ ] Implement canonical completion as positive only when duration is valid and the ratio is at least 0.95.
+- [x] Implement canonical completion as positive only when duration is valid and the ratio is at least 0.95.
 
 **Completion conditions:** all three batch factories are replayable and deterministic; no random cross-day split
 exists; no negative sampling exists; invalid data fails with a stable classification.
@@ -200,12 +200,12 @@ exists; no negative sampling exists; invalid data fails with a stable classifica
 
 **Steps:**
 
-- [ ] Write failing tests distinguishing missing numeric values from real zero and missing categories from OOV.
-- [ ] Fit evaluation feature state only on days 1–27; freeze and reuse it for day 28 validation.
-- [ ] Refit production feature state from scratch on all 28 days.
-- [ ] Serialize numeric statistics, vocab/hash policy, hash seed, bucket counts, OOV index, and schema version into
+- [x] Write failing tests distinguishing missing numeric values from real zero and missing categories from OOV.
+- [x] Fit evaluation feature state only on days 1–27; freeze and reuse it for day 28 validation.
+- [x] Refit production feature state from scratch on all 28 days.
+- [x] Serialize numeric statistics, vocab/hash policy, hash seed, bucket counts, OOV index, and schema version into
   canonical JSON.
-- [ ] Reject raw `user_id` in the tensor signature and reject 7-day statistics whose feature cutoff exceeds the
+- [x] Reject raw `user_id` in the tensor signature and reject 7-day statistics whose feature cutoff exceeds the
   sample event time.
 
 **Completion conditions:** validation never mutates feature state; production has a separate 28-day state;
@@ -226,11 +226,11 @@ missing/OOV semantics are stable; feature serialization round-trips deterministi
 
 **Steps:**
 
-- [ ] Write failing shape tests for the four stable logits and masked-loss tests for independently missing labels.
-- [ ] Implement numeric inputs plus categorical embeddings, a shared-bottom MLP, and four task towers.
-- [ ] Compute per-task mean BCE-with-logits only over valid rows; normalize configured weights across active tasks.
-- [ ] Reject batches with no active target instead of producing a fake zero loss.
-- [ ] Add an import-boundary test proving the model does not access storage, CLI, environment variables, or
+- [x] Write failing shape tests for the four stable logits and masked-loss tests for independently missing labels.
+- [x] Implement numeric inputs plus categorical embeddings, a shared-bottom MLP, and four task towers.
+- [x] Compute per-task mean BCE-with-logits only over valid rows; normalize configured weights across active tasks.
+- [x] Reject batches with no active target instead of producing a fake zero loss.
+- [x] Add an import-boundary test proving the model does not access storage, CLI, environment variables, or
   process launch APIs.
 
 **Completion conditions:** the model is pure tensor code; outputs exactly the four canonical target names; default
@@ -250,14 +250,14 @@ loss weights are equal; the common package does not import the concrete reranker
 
 **Steps:**
 
-- [ ] Write failing tests for deterministic Python/NumPy/Torch seeds, atomic replacement, format mismatch,
+- [x] Write failing tests for deterministic Python/NumPy/Torch seeds, atomic replacement, format mismatch,
   config/dataset/model-lineage mismatch, and role mismatch.
-- [ ] Save evaluation and production checkpoints at distinct internal paths using explicit role values; never let
+- [x] Save evaluation and production checkpoints at distinct internal paths using explicit role values; never let
   an evaluation checkpoint become the delivered `checkpoint.pt`.
-- [ ] Save model, optimizer, epoch, step, early-stopping/training state, Python/NumPy/Torch RNG state, format
+- [x] Save model, optimizer, epoch, step, early-stopping/training state, Python/NumPy/Torch RNG state, format
   version, config digest, dataset digest, and model-structure digest.
-- [ ] Validate all metadata before mutating a target model or optimizer during restore.
-- [ ] Add a byte-stream loader so the CLI can strictly reload the production checkpoint read back from object
+- [x] Validate all metadata before mutating a target model or optimizer during restore.
+- [x] Add a byte-stream loader so the CLI can strictly reload the production checkpoint read back from object
   storage on CPU.
 
 **Completion conditions:** mismatches leave the target untouched; paths are role-separated; a production
@@ -278,14 +278,14 @@ checkpoint round-trips from bytes in a clean CPU model instance.
 
 **Steps:**
 
-- [ ] Write failing tests for valid/positive/negative counts, loss, AUC, single-class targets, minimum sample
+- [x] Write failing tests for valid/positive/negative counts, loss, AUC, single-class targets, minimum sample
   count, and current-slice comparison.
-- [ ] Return `NOT_EVALUABLE` instead of numeric zero when AUC is undefined.
-- [ ] Model schema/integrity/maturity/numerical/Checkpoint/metric-evaluability failures as blocking gates before
+- [x] Return `NOT_EVALUABLE` instead of numeric zero when AUC is undefined.
+- [x] Model schema/integrity/maturity/numerical/Checkpoint/metric-evaluability failures as blocking gates before
   production refit.
-- [ ] Model AUC floors, candidate-vs-previous deltas, cohorts, and drift as warnings only; require the same current
+- [x] Model AUC floors, candidate-vs-previous deltas, cohorts, and drift as warnings only; require the same current
   validation slice digest for comparisons.
-- [ ] Do not define an exportability, ONNX, parity, Artifact, or post-refit gate.
+- [x] Do not define an exportability, ONNX, parity, Artifact, or post-refit gate.
 
 **Completion conditions:** all four tasks carry metric version and sample counts; blocking gates stop before refit;
 AUC changes cannot block refit; there is no exporter-related gate.
@@ -305,16 +305,16 @@ AUC changes cannot block refit; there is no exporter-related gate.
 
 **Steps:**
 
-- [ ] Write failing state-machine tests for fresh evaluation/production model instances, early-stopping epoch
+- [x] Write failing state-machine tests for fresh evaluation/production model instances, early-stopping epoch
   selection, a blocking gate, soft AUC warning, NaN/Inf, empty data, and memory budget exhaustion.
-- [ ] Train the evaluation model on days 1–27, restore its best role=`evaluation` checkpoint, and evaluate only on
+- [x] Train the evaluation model on days 1–27, restore its best role=`evaluation` checkpoint, and evaluate only on
   day 28.
-- [ ] Run only the Task 8 pre-refit gates. The constructor and `run()` signature must have no exporter,
+- [x] Run only the Task 8 pre-refit gates. The constructor and `run()` signature must have no exporter,
   `pre_refit_validator`, export callback, or serving dependency.
-- [ ] After hard-gate success, reseed deterministically, construct a fresh production model, refit on all 28 days
+- [x] After hard-gate success, reseed deterministically, construct a fresh production model, refit on all 28 days
   for exactly `selected_epoch`, and save role=`production` checkpoint.
-- [ ] Return typed metrics, gates, traces, production adapter, production checkpoint path, and selected epoch.
-- [ ] Add an import-boundary test proving `comm/training_pipeline.py` does not import concrete models,
+- [x] Return typed metrics, gates, traces, production adapter, production checkpoint path, and selected epoch.
+- [x] Add an import-boundary test proving `comm/training_pipeline.py` does not import concrete models,
   `model_exporter`, ONNX, or storage adapters.
 
 **Completion conditions:** a blocking pre-refit gate creates only one model; a successful run creates two fresh
@@ -372,17 +372,17 @@ No class in Spec 001 implements `ModelExporter`, and no production composition r
 
 **Steps:**
 
-- [ ] Write a failing contract test that expects exactly these object names under `<output>/<run_id>/`:
+- [x] Write a failing contract test that expects exactly these object names under `<output>/<run_id>/`:
   `checkpoint.pt`, `metrics.json`, `fitted-feature-state/state.json`, `lineage.json`.
-- [ ] Implement a `TrainingOutputWriter` that accepts all four bodies together, rejects an incomplete/extra file
+- [x] Implement a `TrainingOutputWriter` that accepts all four bodies together, rejects an incomplete/extra file
   set, uses `put_bytes_if_absent`, and returns `TrainingOutputUris` only after every write succeeds.
-- [ ] Canonicalize and validate `metrics.json`, feature state, and lineage before writes; the Checkpoint body must
+- [x] Canonicalize and validate `metrics.json`, feature state, and lineage before writes; the Checkpoint body must
   have already passed strict production-role reload.
-- [ ] Add tests proving any existing target rejects the run, no target is overwritten, and partial writes are never
+- [x] Add tests proving any existing target rejects the run, no target is overwritten, and partial writes are never
   returned as a successful bundle.
-- [ ] Define the exporter dataclasses and Protocol in `model_exporter.py`; add static/import tests proving it has
+- [x] Define the exporter dataclasses and Protocol in `model_exporter.py`; add static/import tests proving it has
   no implementation, no ONNX import, and no dependency from `TrainingPipeline`.
-- [ ] Document in module docstrings that a future exporter runs only after successful refit and has independent
+- [x] Document in module docstrings that a future exporter runs only after successful refit and has independent
   status; exporter failure cannot modify a Training Run.
 
 **Completion conditions:** success returns exactly four URI fields; no manifest/signature/model-format file is
@@ -403,19 +403,19 @@ created; no exporter implementation or runtime dependency exists; overwrite and 
 
 **Steps:**
 
-- [ ] Write failing CLI tests for `rerank validate`, `rerank train`, and `rerank backtest`, including nonzero
+- [x] Write failing CLI tests for `rerank validate`, `rerank train`, and `rerank backtest`, including nonzero
   structured errors with `run_id`, category, stage, and redacted message.
-- [ ] In the composition root, parse typed config, validate the exact Manifest, construct storage/readers/model
+- [x] In the composition root, parse typed config, validate the exact Manifest, construct storage/readers/model
   factory/CheckpointAgent/evaluator/gates/pipeline, and never shell out to another training command.
-- [ ] For `train`, execute validate → 27/1 evaluation → gates → 28-day refit. Strictly load the production
+- [x] For `train`, execute validate → 27/1 evaluation → gates → 28-day refit. Strictly load the production
   Checkpoint bytes, hand them and the three JSON bodies to `TrainingOutputWriter`, then read `checkpoint.pt` back
   through `ObjectStore` and load it again on CPU.
-- [ ] Return `TrainingOutputUris`, `selected_epoch`, gate summary, and `checkpoint_reloaded=true`; do not return
+- [x] Return `TrainingOutputUris`, `selected_epoch`, gate summary, and `checkpoint_reloaded=true`; do not return
   `manifest_uri`, output signature, ONNX metadata, or exporter state.
-- [ ] Add a deterministic pure-CPU smoke fixture small enough for CI that completes the full path and reads back
+- [x] Add a deterministic pure-CPU smoke fixture small enough for CI that completes the full path and reads back
   all four outputs.
-- [ ] Implement `backtest` as an explicit 24/2/2 or rolling-fold use case that does not create production outputs.
-- [ ] Add failure tests for future feature time, immature labels, checksum mismatch, non-evaluable target,
+- [x] Implement `backtest` as an explicit 24/2/2 or rolling-fold use case that does not create production outputs.
+- [x] Add failure tests for future feature time, immature labels, checksum mismatch, non-evaluable target,
   NaN/Inf, incompatible Checkpoint, output conflict, and sensitive log redaction.
 
 **Completion conditions:** the smoke test performs
@@ -437,15 +437,15 @@ objects match the Run; no external cloud account or real user data is required.
 
 **Steps:**
 
-- [ ] Add wall time, CPU model/count, memory, row/batch throughput, peak RSS, and per-stage duration collection;
+- [x] Add wall time, CPU model/count, memory, row/batch throughput, peak RSS, and per-stage duration collection;
   embed the report inside `metrics.json` so the output set remains exactly four files.
-- [ ] Add an opt-in performance test that streams representative generated shards under a configured RSS budget;
+- [x] Add an opt-in performance test that streams representative generated shards under a configured RSS budget;
   label its result as evidence, not a production SLA.
-- [ ] Add static checks that reject CUDA/NCCL/MPI/TensorFlow/ONNX packages, concrete exporter classes,
+- [x] Add static checks that reject CUDA/NCCL/MPI/TensorFlow/ONNX packages, concrete exporter classes,
   `list_objects`, raw secrets, and imports from `doku-offline` or Finder repositories.
-- [ ] Run `uv lock --check`, `make check`, the performance probe on the target machine when available, and
+- [x] Run `uv lock --check`, `make check`, the performance probe on the target machine when available, and
   `git diff --check`.
-- [ ] Populate verification evidence with revision, lock digest, fixture Manifest digest, config digest, seed,
+- [x] Populate verification evidence with revision, lock digest, fixture Manifest digest, config digest, seed,
   four training-output digests, selected epoch, gate results, Checkpoint reload result, and resource metrics.
 
 **Completion conditions:** `make check` covers format/lint/type/unit/contract/smoke; dependency policy passes;

@@ -2,8 +2,9 @@
 
 ## 状态
 
-Verification Baseline。`requirements.md` 已审核，`design.md` 与 `tasks.md` 已建立追踪关系；按用户
-要求当前未实施代码，因此所有运行时证据状态均为 `PLANNED`，不以文档检查冒充实现通过。
+本地实现验证完成。Spec 001 的代码、合同、纯 CPU smoke 和开发规模容量探针已通过；每天约
+100 万有效曝光、连续 28 天的目标机器生产 benchmark 尚未执行，因此 NFR001 保持 `PARTIAL`，
+本文件不把 112 行 fixture 的结果冒充生产 SLA。
 
 ## 状态定义
 
@@ -11,6 +12,7 @@ Verification Baseline。`requirements.md` 已审核，`design.md` 与 `tasks.md`
 | --- | --- |
 | `PLANNED` | 测试名称、命令和通过条件已冻结，尚未存在可运行实现 |
 | `PASS` | 在记录的 source revision 上重新运行命令并满足通过条件 |
+| `PARTIAL` | 实现与本地证据通过，但需求中明确要求的生产环境证据尚待执行 |
 | `FAIL` | 命令已运行但至少一个通过条件不满足 |
 | `BLOCKED` | 实现存在，但外部依赖或授权使验证无法运行；必须记录明确原因 |
 
@@ -18,32 +20,32 @@ Verification Baseline。`requirements.md` 已审核，`design.md` 与 `tasks.md`
 
 | 需求 | 设计决策 | 实现任务 | 自动化/证据 | 通过条件 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| R001 项目与依赖 | D001, D002, D015 | T1, T12 | layout/dependency tests; `make check` | Finder 路径可导入；CPU index 显式；无 GPU、TensorFlow 或 ONNX runtime；总检查退出 0 | PLANNED |
-| R002 类型化配置 | D002, D003 | T2 | `test_model_params.py`; schema check | 未知字段、非 CPU 策略失败；schema 与 Pydantic 一致；无 export 配置 | PLANNED |
-| R003 输入合同 | D004, D005 | T3 | Manifest/storage tests | 版本、UTC、行数、SHA、URI、prefix 任一错误 fail closed；无真实 AWS 请求 | PLANNED |
-| R004 数据与切分 | D006, D008 | T4, T5 | Parquet/split/label tests | batch 有界；不丢行；每日 27/1、refit 28、backtest 24/2/2 | PLANNED |
-| R005 特征处理 | D007, D008 | T5 | feature unit/contract tests | 只从 train fit；缺失≠0；OOV 独立；7 天 point-in-time；拒绝 raw `user_id` | PLANNED |
-| R006 多目标 DNN | D008, D009, D010 | T5, T6, T9 | model/label/import-boundary tests | 四个稳定输出；0.95 含边界；masked BCE；`comm` 不 import 具体模型 | PLANNED |
-| R007 训练生命周期 | D010 | T7, T9 | checkpoint/reproducibility/pipeline tests | seed 可重放；role-separated Checkpoint；NaN/Inf/内存超限失败；lineage 不兼容拒绝 | PLANNED |
-| R008 指标与门禁 | D011 | T8, T9, T11 | metric/gate/pipeline/smoke tests | 四目标 count/loss/AUC；不可评估时 block；AUC 只 warn；无 export preflight；通过后一定进入 refit | PLANNED |
-| R009 训练产物与导出边界 | D012 | T7, T9, T10, T11 | training-output/exporter-boundary/smoke tests | 只写四类输出；production Checkpoint 可回读；`ModelExporter` 无实现；未来 export 状态与 Run 独立 | PLANNED |
-| R010 CLI 与错误 | D013 | T11 | CLI/smoke tests | validate/train/backtest 同一装配；阶段为 validate/evaluate/refit/write-output；结构化脱敏错误 | PLANNED |
-| NFR001 容量 | D006, D014 | T4, T9, T12 | capacity probe | 逐 shard/batch；内存预算中止；记录 CPU/RSS/吞吐/耗时；不伪造 SLA | PLANNED |
-| NFR002 可复现 | D003, D006, D007, D010, D012 | T2, T4, T5, T7, T10 | reproducibility/checkpoint/output tests | 相同输入/config/source/lock/seed 的切分和逻辑结果稳定；lineage 完整 | PLANNED |
-| NFR003 可测试 | D005, D015 | T1–T12 | `make check` | unit、contract、smoke、schema、format、lint、mypy 全部退出 0 | PLANNED |
-| NFR004 安全操作 | D004, D005, D013 | T1, T3, T10, T11, T12 | storage/CLI/security tests | fixture 无真实用户；默认不访问云；prefix 受限；日志无凭据/raw ID | PLANNED |
+| R001 项目与依赖 | D001, D002, D015 | T1, T12 | layout/dependency tests; `make check` | Finder 路径可导入；CPU index 显式；无 GPU、TensorFlow 或 ONNX runtime；总检查退出 0 | PASS |
+| R002 类型化配置 | D002, D003 | T2 | `test_model_params.py`; schema check | 未知字段、非 CPU 策略失败；schema 与 Pydantic 一致；无 export 配置 | PASS |
+| R003 输入合同 | D004, D005 | T3 | Manifest/storage tests | 版本、UTC、行数、SHA、URI、prefix 任一错误 fail closed；无真实 AWS 请求 | PASS |
+| R004 数据与切分 | D006, D008 | T4, T5 | Parquet/split/label tests | batch 有界；不丢行；每日 27/1、refit 28、backtest 24/2/2 | PASS |
+| R005 特征处理 | D007, D008 | T5 | feature unit/contract tests | 只从 train fit；缺失≠0；OOV 独立；7 天 point-in-time；拒绝 raw `user_id` | PASS |
+| R006 多目标 DNN | D008, D009, D010 | T5, T6, T9 | model/label/import-boundary tests | 四个稳定输出；0.95 含边界；masked BCE；`comm` 不 import 具体模型 | PASS |
+| R007 训练生命周期 | D010 | T7, T9 | checkpoint/reproducibility/pipeline tests | seed 可重放；role-separated Checkpoint；NaN/Inf/内存超限失败；lineage 不兼容拒绝 | PASS |
+| R008 指标与门禁 | D011 | T8, T9, T11 | metric/gate/pipeline/smoke tests | 四目标 count/loss/AUC；不可评估时 block；AUC 只 warn；无 export preflight；通过后一定进入 refit | PASS |
+| R009 训练产物与导出边界 | D012 | T7, T9, T10, T11 | training-output/exporter-boundary/smoke tests | 只写四类输出；production Checkpoint 可回读；`ModelExporter` 无实现；未来 export 状态与 Run 独立 | PASS |
+| R010 CLI 与错误 | D013 | T11 | CLI/smoke tests | validate/train/backtest 同一装配；阶段为 validate/evaluate/refit/write-output；结构化脱敏错误 | PASS |
+| NFR001 容量 | D006, D014 | T4, T9, T12 | capacity probe | 逐 shard/batch；内存预算中止；记录 CPU/RSS/吞吐/耗时；不伪造 SLA | PARTIAL |
+| NFR002 可复现 | D003, D006, D007, D010, D012 | T2, T4, T5, T7, T10 | reproducibility/checkpoint/output tests | 相同输入/config/source/lock/seed 的切分和逻辑结果稳定；lineage 完整 | PASS |
+| NFR003 可测试 | D005, D015 | T1–T12 | `make check` | unit、contract、smoke、schema、format、lint、mypy 全部退出 0 | PASS |
+| NFR004 安全操作 | D004, D005, D013 | T1, T3, T10, T11, T12 | storage/CLI/security tests | fixture 无真实用户；默认不访问云；prefix 受限；日志无凭据/raw ID | PASS |
 
 ## 验收条件追踪
 
 | 验收条件 | 证据命令 | 需要保留的结果 | 状态 |
 | --- | --- | --- | --- |
-| AC1 `make check` 纯 CPU 通过 | `make check` | 各阶段退出码与 pytest 汇总 | PLANNED |
-| AC2 锁文件无 GPU-only/ONNX runtime 依赖 | dependency-policy test | 包策略断言和 `uv.lock` digest | PLANNED |
-| AC3 固定 fixture 全链路 | smoke test | evaluation/refit epoch、四个输出 URI、Checkpoint reload | PLANNED |
-| AC4 关键失败路径 | unit + contract tests | 泄漏、SHA、成熟度、OOV、NaN、Checkpoint、输出冲突断言 | PLANNED |
-| AC5 四类训练输出可回读 | training-output contract + smoke | Checkpoint、metrics、Feature State、lineage 内容和摘要 | PLANNED |
-| AC6 导出边界不影响 refit | exporter-boundary + pipeline tests | 无 pre-refit exporter；`ModelExporter` 无实现；refit 成功状态不被未来 exporter 改写 | PLANNED |
-| AC7 四份 Spec 文档一致 | traceability script; `git diff --check` | R/NFR/AC 均映射；无未决占位；diff 无空白错误 | PLANNED |
+| AC1 `make check` 纯 CPU 通过 | `make check` | 各阶段退出码与 pytest 汇总 | PASS |
+| AC2 锁文件无 GPU-only/ONNX runtime 依赖 | dependency-policy test | 包策略断言和 `uv.lock` digest | PASS |
+| AC3 固定 fixture 全链路 | smoke test | evaluation/refit epoch、四个输出 URI、Checkpoint reload | PASS |
+| AC4 关键失败路径 | unit + contract tests | 泄漏、SHA、成熟度、OOV、NaN、Checkpoint、输出冲突断言 | PASS |
+| AC5 四类训练输出可回读 | training-output contract + smoke | Checkpoint、metrics、Feature State、lineage 内容和摘要 | PASS |
+| AC6 导出边界不影响 refit | exporter-boundary + pipeline tests | 无 pre-refit exporter；`ModelExporter` 无实现；refit 成功状态不被未来 exporter 改写 | PASS |
+| AC7 四份 Spec 文档一致 | document traceability review; `git diff --check` | R/NFR/AC 均映射；无未决占位；diff 无空白错误 | PASS |
 
 ## 分层验证清单
 
@@ -153,4 +155,38 @@ checkpoint_reloaded=<true>
 training_output_digests=<checkpoint,metrics,feature-state,lineage sha256>
 ```
 
-当前证据：仅文档基线存在；训练代码、测试输出、容量数据和训练产物均未生成。
+## 不可变本地证据
+
+以下证据对应实现 revision `1fe2a503f5fa49cd734aaff424495dd956c5602e`。后续只修改本验证
+文档与任务勾选，不改变被测代码。
+
+```text
+source_revision=1fe2a503f5fa49cd734aaff424495dd956c5602e
+executed_at=2026-09-12T20:08:39.661737Z
+command=PATH=/Users/yujiatang/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin UV_CACHE_DIR=/private/tmp/doku-train-uv-cache RUFF_CACHE_DIR=/private/tmp/doku-train-ruff-cache MYPY_CACHE_DIR=/private/tmp/doku-train-mypy-cache make check
+exit_code=0
+test_summary=69 passed, 1 deselected; uv lock, Ruff format/lint, mypy all passed
+machine=arm; cpu_count=15; total_memory_bytes=51539607552; available_memory_bytes=23708909568
+dataset_manifest_digest=7e96ee833d90b60fa56e3fc66b04d79c7c7805e574bd70f98db877084b692f35
+config_digest=56b5f24492e1da094e069c6a2c856ca257e7d710e1f4b6edfea1332fe63b4f50
+dependency_lock_digest=b7e59d68d6f1d70ee7ace9a50f452cb95482081a83f17b26034fb863bcf91376
+seed=7
+selected_epoch=1
+checkpoint_reloaded=true
+training_output_digests=checkpoint.pt:63e89e0ca3b13371760674549bc085a4835540bba9fb41091d7e797bc7f55a16,metrics.json:b978fcc999b251e346ee3c50e80dd58924e70600412287b1a75372200c895ac2,fitted-feature-state/state.json:c7ed277038a8ce8b1128bd66c634240f0291111d10a0a8539f0c4c538a65817b,lineage.json:9d0da348f20acda63c8f3c306a991a277c205ed644da0293f09b90fc88660d0d
+gates=effective_watch:PASS,completion:PASS,non_fast_swipe:PASS,immersive_click:WARN
+resource=row_count:112,batch_count:28,byte_count:114940,peak_rss_bytes:402571264,wall_seconds:0.510295125,rows_per_second:219.480835,bytes_per_second:225242.206654
+resource_stages=validate_input:0.002764334,feature_fit_evaluation:0.010849375,feature_fit_production:0.009447916,train_evaluate_refit:0.484595333,checkpoint_verify:0.001572000
+```
+
+容量探针在同一 revision 上执行：
+
+```text
+command=PATH=/Users/yujiatang/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin UV_CACHE_DIR=/private/tmp/doku-train-uv-cache make capacity
+exit_code=0
+test_summary=1 passed in 1.00s
+```
+
+生产容量待办：在建议的 32 vCPU / 128 GiB 起始机器上，用已成熟的连续 28 日、约 2800 万行数据
+运行相同探针，补齐真实下载/解码/训练/评估/refit/输出耗时与调度窗口结论。在该记录产生前，
+NFR001 不得由 `PARTIAL` 改为 `PASS`。
