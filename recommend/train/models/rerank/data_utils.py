@@ -6,6 +6,7 @@ from itertools import pairwise
 
 import numpy as np
 import numpy.typing as npt
+import torch
 
 from recommend.train.comm.datasvr.dataset_manifest import DatasetManifest, ShardManifest
 
@@ -15,6 +16,14 @@ class TemporalSplit:
     train: tuple[ShardManifest, ...]
     validation: tuple[ShardManifest, ...]
     refit: tuple[ShardManifest, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RerankBatch:
+    numeric: torch.Tensor
+    categorical: torch.Tensor
+    labels: dict[str, torch.Tensor]
+    masks: dict[str, torch.Tensor]
 
 
 def build_daily_split(manifest: DatasetManifest) -> TemporalSplit:
