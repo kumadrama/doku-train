@@ -26,6 +26,7 @@ from recommend.train.comm.datasvr.local_storage import LocalStorage
 from recommend.train.comm.datasvr.parquet_dataset import ParquetDataset
 from recommend.train.comm.datasvr.s3_storage import S3Storage
 from recommend.train.comm.datasvr.storage import ObjectStore, parse_uri
+from recommend.train.comm.errors import error_stage
 from recommend.train.comm.eval.eval_model_rerank import evaluate_rerank
 from recommend.train.comm.eval.gates import GateResult, build_metric_gates
 from recommend.train.comm.feature_check import validate_feature_names, validate_point_in_time
@@ -169,7 +170,7 @@ def execute_train(
     run_id: str,
 ) -> TrainExecutionResult:
     resources = ResourceTracker()
-    with resources.stage("validate_input"):
+    with error_stage("validate"), resources.stage("validate_input"):
         validated = validate_input(manifest_uri=manifest_uri, config_path=config_path)
     config = validated.config
     common = config.common
@@ -191,14 +192,14 @@ def execute_train(
             validate_point_in_time(batch, statistical_features)
             yield batch
 
-    with resources.stage("feature_fit_evaluation"):
+    with error_stage("evaluate"), resources.stage("feature_fit_evaluation"):
         evaluation_state = fit_feature_state(
             raw_batches(validated.split.train),
             numeric_features=config.model.numeric_features,
             categorical_features=config.model.categorical_features,
             feature_schema_version=validated.manifest.feature_schema_version,
         )
-    with resources.stage("feature_fit_production"):
+    with error_stage("refit"), resources.stage("feature_fit_production"):
         production_state = fit_feature_state(
             raw_batches(validated.split.refit),
             numeric_features=config.model.numeric_features,
@@ -268,7 +269,7 @@ def execute_train(
     with resources.stage("train_evaluate_refit"):
         result: PipelineResult[RerankBatch, MetricSet] = pipeline.run(factories)
     checkpoint_body = result.production_checkpoint.read_bytes()
-    with resources.stage("checkpoint_verify"):
+    with error_stage("refit"), resources.stage("checkpoint_verify"):
         verification_adapter = RerankAdapter(production_params)
         verification_optimizer = torch.optim.AdamW(verification_adapter.module.parameters())
         checkpoint_agent.load_bytes(
@@ -318,26 +319,27 @@ def execute_train(
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    output_store = _output_store(output_prefix)
-    outputs = TrainingOutputWriter(output_store, output_prefix).write(
-        run_id,
-        {
-            "checkpoint.pt": checkpoint_body,
-            "metrics.json": metrics_body,
-            "fitted-feature-state/state.json": production_state.to_json_bytes(),
-            "lineage.json": lineage_body,
-        },
-    )
-    readback = output_store.get_bytes(outputs.checkpoint, max_bytes=len(checkpoint_body))
-    reloaded_adapter = RerankAdapter(production_params)
-    reloaded_optimizer = torch.optim.AdamW(reloaded_adapter.module.parameters())
-    checkpoint_agent.load_bytes(
-        readback,
-        CheckpointRole.PRODUCTION,
-        reloaded_adapter.module,
-        reloaded_optimizer,
-        lineage,
-    )
+    with error_stage("write-output"):
+        output_store = _output_store(output_prefix)
+        outputs = TrainingOutputWriter(output_store, output_prefix).write(
+            run_id,
+            {
+                "checkpoint.pt": checkpoint_body,
+                "metrics.json": metrics_body,
+                "fitted-feature-state/state.json": production_state.to_json_bytes(),
+                "lineage.json": lineage_body,
+            },
+        )
+        readback = output_store.get_bytes(outputs.checkpoint, max_bytes=len(checkpoint_body))
+        reloaded_adapter = RerankAdapter(production_params)
+        reloaded_optimizer = torch.optim.AdamW(reloaded_adapter.module.parameters())
+        checkpoint_agent.load_bytes(
+            readback,
+            CheckpointRole.PRODUCTION,
+            reloaded_adapter.module,
+            reloaded_optimizer,
+            lineage,
+        )
     return TrainExecutionResult(
         outputs=outputs,
         selected_epoch=result.selected_epoch,

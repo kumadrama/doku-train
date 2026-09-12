@@ -77,8 +77,9 @@ def test_blocking_gate_prevents_refit(tmp_path: Path) -> None:
         factory=lambda _role: created.append(Adapter()) or created[-1],
         gate=GateResult("labels", False, GateSeverity.BLOCK, "not evaluable"),
     )
-    with pytest.raises(PipelineBlocked, match="EVALUATION_GATE_FAILED"):
+    with pytest.raises(PipelineBlocked, match="EVALUATION_GATE_FAILED") as captured:
         runner.run(BatchFactories(batches(), batches(), batches()))
+    assert captured.value.stage == "evaluate"
     assert len(created) == 1
 
 
@@ -96,6 +97,21 @@ def test_non_finite_loss_stops_before_refit(tmp_path: Path) -> None:
         runner.run(BatchFactories(batches(), batches(), batches()))
 
 
+def test_non_finite_refit_reports_refit_stage(tmp_path: Path) -> None:
+    class NonFiniteAdapter(Adapter):
+        def loss(self, batch: torch.Tensor) -> torch.Tensor:
+            return super().loss(batch) * torch.tensor(float("nan"))
+
+    runner = pipeline(
+        tmp_path,
+        factory=lambda role: Adapter() if role == "evaluation" else NonFiniteAdapter(),
+        gate=GateResult("ok", True, GateSeverity.PASS, "ok"),
+    )
+    with pytest.raises(PipelineBlocked, match="NUMERICAL_FAILURE") as captured:
+        runner.run(BatchFactories(batches(), batches(), batches()))
+    assert captured.value.stage == "refit"
+
+
 def test_memory_budget_stops_the_active_stage(tmp_path: Path) -> None:
     runner = pipeline(
         tmp_path,
@@ -103,8 +119,9 @@ def test_memory_budget_stops_the_active_stage(tmp_path: Path) -> None:
         gate=GateResult("ok", True, GateSeverity.PASS, "ok"),
         memory_limit_bytes=1,
     )
-    with pytest.raises(PipelineBlocked, match="RESOURCE_BUDGET_EXCEEDED"):
+    with pytest.raises(PipelineBlocked, match="RESOURCE_BUDGET_EXCEEDED") as captured:
         runner.run(BatchFactories(batches(), batches(), batches()))
+    assert captured.value.stage == "evaluate"
 
 
 def test_pipeline_has_no_exporter_or_pre_refit_callback() -> None:

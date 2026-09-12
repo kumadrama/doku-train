@@ -19,7 +19,9 @@ from recommend.train.comm.model_protocol import AdapterFactory, ModelAdapter
 
 
 class PipelineBlocked(RuntimeError):
-    pass
+    def __init__(self, message: str, *, stage: str) -> None:
+        self.stage = stage
+        super().__init__(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,15 +76,17 @@ class TrainingPipeline[BatchT, MetricT]:
         self._patience = patience
         self._memory_limit_bytes = memory_limit_bytes
 
-    def _check_memory(self) -> None:
+    def _check_memory(self, stage: str) -> None:
         if psutil.Process().memory_info().rss > self._memory_limit_bytes:
-            raise PipelineBlocked("RESOURCE_BUDGET_EXCEEDED")
+            raise PipelineBlocked("RESOURCE_BUDGET_EXCEEDED", stage=stage)
 
     def _train_epoch(
         self,
         adapter: ModelAdapter[BatchT],
         optimizer: torch.optim.Optimizer,
         batches: Iterable[BatchT],
+        *,
+        stage: str,
     ) -> tuple[float, tuple[float, ...]]:
         adapter.module.train()
         losses: list[float] = []
@@ -90,36 +94,38 @@ class TrainingPipeline[BatchT, MetricT]:
             optimizer.zero_grad(set_to_none=True)
             loss = adapter.loss(batch)
             if not torch.isfinite(loss):
-                raise PipelineBlocked("NUMERICAL_FAILURE")
+                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
             torch.autograd.backward(loss)
             if any(
                 parameter.grad is not None and not torch.isfinite(parameter.grad).all()
                 for parameter in adapter.module.parameters()
             ):
-                raise PipelineBlocked("NUMERICAL_FAILURE")
+                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
             optimizer.step()
             if any(
                 not torch.isfinite(parameter).all() for parameter in adapter.module.parameters()
             ):
-                raise PipelineBlocked("NUMERICAL_FAILURE")
+                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
             losses.append(float(loss.detach()))
-            self._check_memory()
+            self._check_memory(stage)
         if not losses:
-            raise PipelineBlocked("DATA_EXHAUSTED")
+            raise PipelineBlocked("DATA_EXHAUSTED", stage=stage)
         return sum(losses) / len(losses), tuple(losses)
 
     @staticmethod
-    def _mean_loss(adapter: ModelAdapter[BatchT], batches: Iterable[BatchT]) -> float:
+    def _mean_loss(
+        adapter: ModelAdapter[BatchT], batches: Iterable[BatchT], *, stage: str
+    ) -> float:
         adapter.module.eval()
         values: list[float] = []
         with torch.inference_mode():
             for batch in batches:
                 loss = adapter.loss(batch)
                 if not torch.isfinite(loss):
-                    raise PipelineBlocked("NUMERICAL_FAILURE")
+                    raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
                 values.append(float(loss))
         if not values:
-            raise PipelineBlocked("DATA_EXHAUSTED")
+            raise PipelineBlocked("DATA_EXHAUSTED", stage=stage)
         return sum(values) / len(values)
 
     def run(self, batches: BatchFactories[BatchT]) -> PipelineResult[BatchT, MetricT]:
@@ -133,11 +139,18 @@ class TrainingPipeline[BatchT, MetricT]:
         traces: list[EpochTrace] = []
         for epoch in range(1, self._max_epochs + 1):
             _, step_losses = self._train_epoch(
-                evaluation_adapter, evaluation_optimizer, batches.train()
+                evaluation_adapter,
+                evaluation_optimizer,
+                batches.train(),
+                stage="evaluate",
             )
             evaluation_step += len(step_losses)
             traces.append(EpochTrace("evaluation", epoch, step_losses))
-            validation_loss = self._mean_loss(evaluation_adapter, batches.validation())
+            validation_loss = self._mean_loss(
+                evaluation_adapter,
+                batches.validation(),
+                stage="evaluate",
+            )
             if validation_loss < best_loss:
                 best_loss = validation_loss
                 selected_epoch = epoch
@@ -157,7 +170,7 @@ class TrainingPipeline[BatchT, MetricT]:
             if stale_epochs >= self._patience:
                 break
         if selected_epoch == 0:
-            raise PipelineBlocked("DATA_EXHAUSTED")
+            raise PipelineBlocked("DATA_EXHAUSTED", stage="evaluate")
         self._checkpoint_agent.restore(
             self._run_id,
             CheckpointRole.EVALUATION,
@@ -169,7 +182,10 @@ class TrainingPipeline[BatchT, MetricT]:
         gates = self._gate_builder(metrics)
         blocked = [gate.name for gate in gates if gate.severity is GateSeverity.BLOCK]
         if blocked:
-            raise PipelineBlocked("EVALUATION_GATE_FAILED:" + ",".join(blocked))
+            raise PipelineBlocked(
+                "EVALUATION_GATE_FAILED:" + ",".join(blocked),
+                stage="evaluate",
+            )
 
         seed_everything(self._seed + 1)
         production_adapter = self._adapter_factory("production")
@@ -177,7 +193,10 @@ class TrainingPipeline[BatchT, MetricT]:
         production_step = 0
         for epoch in range(1, selected_epoch + 1):
             _, step_losses = self._train_epoch(
-                production_adapter, production_optimizer, batches.refit()
+                production_adapter,
+                production_optimizer,
+                batches.refit(),
+                stage="refit",
             )
             production_step += len(step_losses)
             traces.append(EpochTrace("production", epoch, step_losses))
