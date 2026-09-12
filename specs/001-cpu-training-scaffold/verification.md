@@ -157,26 +157,26 @@ training_output_digests=<checkpoint,metrics,feature-state,lineage sha256>
 
 ## 不可变本地证据
 
-以下证据对应实现 revision `1fe2a503f5fa49cd734aaff424495dd956c5602e`。后续只修改本验证
+以下证据对应实现 revision `5ce27d00c7a9259e7f7ca74e83825f3265cb0b4d`。后续只修改本验证
 文档与任务勾选，不改变被测代码。
 
 ```text
-source_revision=1fe2a503f5fa49cd734aaff424495dd956c5602e
-executed_at=2026-09-12T20:08:39.661737Z
+source_revision=5ce27d00c7a9259e7f7ca74e83825f3265cb0b4d
+executed_at=2026-09-12T20:29:37.657386Z
 command=PATH=/Users/yujiatang/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin UV_CACHE_DIR=/private/tmp/doku-train-uv-cache RUFF_CACHE_DIR=/private/tmp/doku-train-ruff-cache MYPY_CACHE_DIR=/private/tmp/doku-train-mypy-cache make check
 exit_code=0
-test_summary=69 passed, 1 deselected; uv lock, Ruff format/lint, mypy all passed
-machine=arm; cpu_count=15; total_memory_bytes=51539607552; available_memory_bytes=23708909568
-dataset_manifest_digest=7e96ee833d90b60fa56e3fc66b04d79c7c7805e574bd70f98db877084b692f35
-config_digest=56b5f24492e1da094e069c6a2c856ca257e7d710e1f4b6edfea1332fe63b4f50
+test_summary=72 passed, 1 deselected; uv lock, Ruff format/lint, mypy all passed
+machine=arm; cpu_count=15; total_memory_bytes=51539607552; available_memory_bytes=23257432064
+dataset_manifest_digest=eda8a176375d06f14fbe79a55b12d2d6ae7934970e35fbff4191730f4f7a22e1
+config_digest=10c6fd572c1982e5ab25a7b31539e678916440431ac3a9ffeba3b79d2a989280
 dependency_lock_digest=b7e59d68d6f1d70ee7ace9a50f452cb95482081a83f17b26034fb863bcf91376
 seed=7
 selected_epoch=1
 checkpoint_reloaded=true
-training_output_digests=checkpoint.pt:63e89e0ca3b13371760674549bc085a4835540bba9fb41091d7e797bc7f55a16,metrics.json:b978fcc999b251e346ee3c50e80dd58924e70600412287b1a75372200c895ac2,fitted-feature-state/state.json:c7ed277038a8ce8b1128bd66c634240f0291111d10a0a8539f0c4c538a65817b,lineage.json:9d0da348f20acda63c8f3c306a991a277c205ed644da0293f09b90fc88660d0d
+training_output_digests=checkpoint.pt:a9e88e23aebc38f8cc934beacf80f491e24bf5fafac7ef76b6534b60791403a0,metrics.json:46aaba2dd9a18a7c96bb40bcddd94a27f6da068e4e55f1809b897bdffa3d3dd6,fitted-feature-state/state.json:0e234ff1e67ab30a276e2d4f72df32d1945b6613d23374737add403f374cc130,lineage.json:e82dcc476cf6279eb4d93b69825af1c159d16d8a9d702e93bf9673bec61625d9
 gates=effective_watch:PASS,completion:PASS,non_fast_swipe:PASS,immersive_click:WARN
-resource=row_count:112,batch_count:28,byte_count:114940,peak_rss_bytes:402571264,wall_seconds:0.510295125,rows_per_second:219.480835,bytes_per_second:225242.206654
-resource_stages=validate_input:0.002764334,feature_fit_evaluation:0.010849375,feature_fit_production:0.009447916,train_evaluate_refit:0.484595333,checkpoint_verify:0.001572000
+resource=row_count:112,batch_count:28,byte_count:114940,peak_rss_bytes:403587072,wall_seconds:0.685003000,rows_per_second:163.502934,bytes_per_second:167794.885570
+resource_stages=validate_input:0.003481375,feature_fit_evaluation:0.013870875,feature_fit_production:0.011716333,train_evaluate_refit:0.653207250,checkpoint_verify:0.001843375
 ```
 
 容量探针在同一 revision 上执行：
@@ -184,7 +184,7 @@ resource_stages=validate_input:0.002764334,feature_fit_evaluation:0.010849375,fe
 ```text
 command=PATH=/Users/yujiatang/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin UV_CACHE_DIR=/private/tmp/doku-train-uv-cache make capacity
 exit_code=0
-test_summary=1 passed in 1.00s
+test_summary=1 passed in 9.05s
 ```
 
 生产容量待办：在建议的 32 vCPU / 128 GiB 起始机器上，用已成熟的连续 28 日、约 2800 万行数据

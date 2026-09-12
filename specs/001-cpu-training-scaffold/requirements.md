@@ -2,7 +2,8 @@
 
 ## 状态
 
-Requirements Confirmed；用户已确认进入 `design.md`，尚未开始代码实现。
+Implemented Locally；需求、设计与任务已实现并通过本地验证，目标生产规模容量 benchmark 仍按
+`verification.md` 标记为 `PARTIAL`。
 
 ## 背景
 
