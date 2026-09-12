@@ -30,7 +30,8 @@ doku-train/
 │       │   ├── errors.py
 │       │   ├── resource_report.py
 │       │   ├── metrics_utils.py
-│       │   ├── artifact_utils.py
+│       │   ├── training_output.py
+│       │   ├── model_exporter.py
 │       │   ├── offline_evaluate.py
 │       │   ├── datasvr/
 │       │   │   ├── dataset_manifest.py
@@ -52,9 +53,7 @@ doku-train/
 │       │       └── modules/
 │       ├── offline/
 │       ├── tools/
-│       │   ├── checkpoint/
-│       │   └── onnx/
-│       │       └── gen_onnx.py
+│       │   └── checkpoint/
 │       ├── tests/
 │       │   ├── unit/
 │       │   ├── contract/
@@ -73,7 +72,7 @@ doku-train/
 
 ### `comm`
 
-承载 Finder `comm` 对应的公共训练能力：类型化合同、配置、训练生命周期、指标和制品组装。
+承载 Finder `comm` 对应的公共训练能力：类型化合同、配置、训练生命周期、指标和训练产物写出。
 `TrainingPipeline` 管理随机种子、优化器、early stopping、Checkpoint、27/1 评估和 28 天 refit；
 首阶段执行策略只有 `single_process_cpu`。`comm` 不 import `models/rerank`。
 
@@ -81,12 +80,12 @@ doku-train/
 
 保留 Finder 熟悉的目录名，但职责是读取 S3 Dataset Manifest 和 Parquet 分片，不是网络服务。
 `DatasetManifest` 固定输入 lineage，`ParquetDataset` 提供有界 batch，`S3Storage` 只负责对象读取、
-校验与 staging 写入。该目录不决定模型结构和业务门禁。
+校验与 create-only 写入。该目录不决定模型结构和业务门禁。
 
 ### `comm/eval`
 
 `eval_model_rerank.py` 在冻结的 validation 切片上按四个目标分别计算 loss、AUC 和样本统计；`gates.py`
-将数据/数值/导出校验建模为 hard gate，将模型质量变化建模为 soft gate。
+将数据、数值、Checkpoint 兼容性和可评估性建模为 hard gate，将模型质量变化建模为 soft gate。
 
 ### `models/rerank`
 
@@ -100,17 +99,17 @@ doku-train/
 保存本仓的离线评估、回放和 backtest 入口。该名称对应 Finder 目录，与尚未启用的
 `doku-offline` 仓库没有运行时依赖关系。
 
-### `comm/checkpoint_agent.py`、`tools/checkpoint` 与 `tools/onnx`
+### `comm/checkpoint_agent.py`、`comm/training_output.py` 与 `comm/model_exporter.py`
 
 `CheckpointAgent` 按 Finder 原位置保存和恢复 PyTorch 训练状态；`tools/checkpoint` 保留批量检查、
-迁移等离线工具；`gen_onnx.py` 生成 `model.onnx`，校验输入输出
-签名，并对 PyTorch 与 ONNX Runtime 的同一 fixture 输出做容差内一致性测试。Checkpoint 不能作为
-线上制品。
+迁移等离线工具；`TrainingOutputWriter` 以 run-scoped、create-only 语义写出 production
+Checkpoint、指标、Feature State 和 lineage。`ModelExporter` 只保留未来导出的 Protocol，不提供
+ONNX 实现，也不把 Checkpoint 声明为线上制品。
 
 ### `run.py` 与 `train_rerank.py`
 
 `run.py` 是统一 composition root；`train_rerank.py` 编排精排的 validate、train、evaluate、refit
-与 export 用例。二者只解析参数和装配对象，不承载特征计算或网络层定义。
+与 write-training-output 用例。二者只解析参数和装配对象，不承载特征计算或网络层定义。
 
 ## 依赖方向
 
@@ -122,14 +121,14 @@ comm/training_pipeline.py ───────→ model protocol
      │          │                       ▲
      │          ├→ comm/eval            │
      │          ├→ comm/checkpoint_agent.py
-     │          └→ tools/onnx/gen_onnx.py
+     │          └→ comm/training_output.py
      ▼                                  │
 comm/datasvr                         models/rerank
 ```
 
 - 具体模型只在 composition root 中按注册名装配；
 - 不允许 `training_pipeline.py` 出现 `if model_name == ...`；
-- 不允许 `models` 反向调用 CLI、Artifact Writer 或存储适配器；
+- 不允许 `models` 反向调用 CLI、Training Output Writer 或存储适配器；
 - 外部存储 SDK 必须位于 adapter 边界，领域合同不暴露 SDK 类型。
 
 ## 与 Finder 的对应关系
@@ -145,5 +144,6 @@ comm/datasvr                         models/rerank
 | `run.py` / `train_rerank.py` | 同名入口 | 不拼 shell 命令 |
 | `comm/datasvr` | 同名目录 | 无 server；仅 S3/Manifest/Parquet adapter |
 | `comm/checkpoint_agent.py` | 同名同位置 | PyTorch 训练恢复，不作为发布格式 |
-| `tools/checkpoint` / `tools/onnx/gen_onnx.py` | 同名工具位置 | 离线检查工具 + ONNX 发布 |
+| `tools/checkpoint` | 同名工具位置 | 保留训练 Checkpoint 离线检查边界 |
+| Finder 模型导出工具 | `comm/model_exporter.py` | 仅保留接口；具体格式与实现进入后续 Spec |
 | distributed session/embedding | 后续独立 Spec | 首阶段不实现 |

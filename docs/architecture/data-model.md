@@ -87,13 +87,13 @@ hash embedding 或外部 embedding；是否建设参数服务器由容量和更�
 - 每日 27/1 评估、28 天 refit 规则，以及可选的周度 backtest 规则；
 - 随机种子；
 - 指标及门禁；
-- Checkpoint 与 Artifact 的调用方指定位置。
+- Checkpoint 与训练输出的调用方指定位置。
 
 配置经 schema 校验后生成规范化摘要；未知字段默认拒绝，避免拼写错误被静默忽略。
 
 ## Training Run
 
-每次尝试都有独立 `run_id`，状态不等同于 Artifact 状态。
+每次尝试都有独立 `run_id`；未来导出尝试必须使用独立状态，不得覆盖训练 Run 状态。
 
 | 字段 | 语义 |
 | --- | --- |
@@ -107,7 +107,7 @@ hash embedding 或外部 embedding；是否建设参数服务器由容量和更�
 | `status` | `CREATED/RUNNING/SUCCEEDED/FAILED` |
 | `resource_report` | CPU、内存、吞吐、峰值 RSS 和耗时 |
 
-失败 Run 可以保留诊断元数据，但不能生成“可发布”的 Artifact Manifest。
+失败 Run 可以保留内部 Checkpoint 和诊断元数据，但不能声明四类训练输出完整。
 
 ## Metric Set
 
@@ -122,23 +122,19 @@ hash embedding 或外部 embedding；是否建设参数服务器由容量和更�
 
 样本不足的 cohort 必须标记不可评估，不能以 0 冒充真实指标。
 
-## Model Artifact Manifest
+## Training Output Bundle
 
-可交付制品的唯一入口：
+成功 Run 返回四个类型化 URI，不额外声明可部署 Artifact：
 
-| 字段 | 语义 |
+| 路径 | 语义 |
 | --- | --- |
-| `artifact_format_version` | 制品合同版本 |
-| `model_name` / `model_version` | 模型身份与不可变逻辑版本 |
-| `run_id` | 产出该制品的训练尝试 |
-| `dataset_manifest_digest` | 数据 lineage |
-| `feature_schema_version` | 在线/离线特征合同 |
-| `label_definition_version` | 训练目标口径 |
-| `files` | 权重、配置、特征状态、指标文件及各自摘要 |
-| `content_digest` | 整个制品的规范化内容摘要 |
-| `compatibility` | ONNX opset、CPU runtime、输入签名与四目标输出签名 |
+| `checkpoint.pt` | 28 天 production refit 的 PyTorch 模型、优化器、epoch/step、RNG、配置和输入 lineage |
+| `metrics.json` | 四目标评估、门禁、训练 trace 和资源报告 |
+| `fitted-feature-state/state.json` | 在 28 天 production split 上重新拟合的特征状态 |
+| `lineage.json` | source revision、依赖锁、配置、Dataset Manifest 和 seed 摘要 |
 
-Checkpoint 与 Model Artifact 使用不同格式版本和目录，不允许线上消费者读取训练 Checkpoint。
+四个对象位于调用方指定的 `<output>/<run_id>/`，使用 create-only 语义；已有任一同名对象时拒绝
+覆盖。它们是训练结果，不是稳定的线上加载合同。Checkpoint 不允许被 Go/C++ serving 直接消费。
 
 ## 时间切分与模型角色
 
@@ -152,7 +148,8 @@ older ── 27 days evaluation-train ── 1 day validation ── maturity ga
 1. `evaluation_model` 只在前 27 天拟合 Feature State 和模型参数，在第 28 天验证；
 2. hard gates 通过后，`production_model` 使用相同冻结配置在全部 28 天重新拟合 Feature State 和
    模型参数；
-3. 只有 `production_model` 导出可交付 ONNX；两种模型的角色和输入窗口必须写入 Run Metadata；
+3. 只有 `production_model` 的 Checkpoint 和 Feature State 进入成功训练输出；两种模型的角色和输入
+   窗口必须写入 Run Metadata；
 4. 初始标签成熟延迟按 24 小时设计，调度默认使用截至 D-2 的成熟数据；在量化延迟分布并通过独立
    合同变更后才可推进到 D-1；
 5. 24/2/2 或 rolling folds 只用于周度基准和模型结构变更 backtest，不是每日生产模型的数据切分。
@@ -161,22 +158,19 @@ older ── 27 days evaluation-train ── 1 day validation ── maturity ga
 
 ## 物理产物
 
-训练恢复目录与发布目录严格分开：
+评估阶段内部 Checkpoint 与成功 Run 的训练输出严格分开：
 
 ```text
 runs/<run_id>/checkpoints/checkpoint.pt
 
-artifacts/<model_name>/<model_version>/
-├── manifest.json
-├── model.onnx
-├── signature.json
-├── model-config.json
-├── feature-schema.json
-├── fitted-feature-state/
+<output>/<run_id>/
+├── checkpoint.pt
 ├── metrics.json
-├── resource-report.json
+├── fitted-feature-state/
+│   └── state.json
 └── lineage.json
 ```
 
-`checkpoint.pt` 可以包含 PyTorch/optimizer/RNG 状态，但不进入线上加载合同。`model.onnx` 与
-`signature.json` 是 Go 或 C++ 推理侧的框架中立边界。
+首版只定义 `ModelExporter` 接口，不定义具体推理产物。ONNX Artifact、signature、parity 以及
+Go/C++ 推理侧的框架中立边界由后续独立 Spec 固定；任何导出只能在 refit 完成后执行，失败不得
+改变 Training Run 的成功状态。

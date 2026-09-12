@@ -33,8 +33,8 @@ python -m recommend.train.run rerank backtest --manifest <s3-uri> --config <path
 ```
 
 - `validate` 不启动训练，只检查数据/配置/兼容性；
-- `train` 是完整每日用例：27 天 train、1 天 validation、hard/soft gate、evaluation model
-  ONNX export/parity preflight、28 天 refit、production ONNX export；
+- `train` 是完整每日用例：27 天 train、1 天 validation、hard/soft gate、28 天 refit、写出四类
+  training output 并回读 production Checkpoint；
 - `backtest` 显式执行 24/2/2 或 rolling folds，不与每日训练隐式混用；
 - `run.py` 是统一 composition root，`train_rerank.py` 保留 Finder 熟悉的精排入口；可选 console
   alias 只能转发到相同入口，不能实现第二套逻辑。
@@ -63,7 +63,7 @@ Feature Transformer 分为两个阶段：
 - `transform`：以对应阶段的冻结状态转换 training/validation、production refit 和未来在线输入。
 
 Validation 数据不得参与 `evaluation_model` 的 `fit`。Transformer 输出稳定命名的 tensor batch
-与输入签名，并可把 `FittedFeatureState` 序列化到 Artifact。统计特征必须是样本曝光前 7 天的
+与输入签名，并可把 `FittedFeatureState` 序列化到训练输出。统计特征必须是样本曝光前 7 天的
 point-in-time 值；原始 `user_id` 不得出现在首版输入签名。
 
 ## Model 插件接口
@@ -74,14 +74,14 @@ point-in-time 值；原始 `user_id` 不得出现在首版输入签名。
 - 从验证后配置构建 CPU 模型的方法；
 - 输入签名与 `effective_watch`、`completion`、`non_fast_swipe`、`immersive_click` 四个 logits；
 - 按目标有效性 mask 和可配置 loss weight 计算 multi-task loss 的逻辑；
-- 可导出状态及兼容性声明。
+- 可保存为 PyTorch Checkpoint 的状态。
 
 Runtime 负责训练生命周期，模型插件不得：
 
 - 读取数据文件或 Manifest；
 - 访问存储、网络或环境凭据；
 - 自行启动 worker/process；
-- 决定 Artifact 路径或线上发布；
+- 决定训练输出路径、推理 Artifact 路径或线上发布；
 - 根据 DTE/PROD 改变网络结构。
 
 ## Execution Strategy 接口
@@ -90,7 +90,7 @@ Runtime 负责训练生命周期，模型插件不得：
 线程和可配置数据读取 worker。
 
 [INFERRED] Future strategy 可以沿用相同 batch/model/checkpoint 接口加入多进程或多机同步训练，
-但必须通过独立 Spec 证明单机训练窗口不足。未来能力不得影响首阶段配置语义或制品格式。
+但必须通过独立 Spec 证明单机训练窗口不足。未来能力不得影响首阶段配置语义或训练输出格式。
 
 ## Checkpoint 接口
 
@@ -105,30 +105,31 @@ Checkpoint 至少保存：
 
 恢复时 lineage 或结构配置不兼容必须拒绝；不能“尽量加载”后继续产生看似成功的模型。
 
-## Model Artifact 接口
+## Training Output 接口
 
-逻辑制品布局：
+成功 Run 的逻辑布局固定为：
 
 ```text
-<model-name>/<model-version>/
-├── manifest.json
-├── model.onnx
-├── signature.json
-├── model-config.json
-├── feature-schema.json
-├── fitted-feature-state/
+<output>/<run-id>/
+├── checkpoint.pt
 ├── metrics.json
-├── resource-report.json
+├── fitted-feature-state/
+│   └── state.json
 └── lineage.json
 ```
 
-物理 bucket/prefix 由调用方与部署系统提供，不写死在训练代码。消费者先读取 `manifest.json`，
-校验全部文件摘要、ONNX opset 和 signature 后才能加载模型。发布前必须在固定 fixture 上验证
-PyTorch 与 ONNX Runtime 的四个输出在配置容差内一致。
+物理 bucket/prefix 由调用方提供，不写死在训练代码。`TrainingOutputWriter` 只接受 production refit
+成功后的 Checkpoint、指标、Feature State 和 lineage，以 create-only 语义写入四个对象并返回
+类型化 URI。CLI 必须从对象存储回读 `checkpoint.pt` 并在 CPU 上严格加载，才能把 TrainExecution
+标为成功；不得从对象列表或部分文件推断成功。
 
-线上 Go 或 C++ serving 只依赖 `model.onnx`、`signature.json` 与 Feature Schema，不依赖 PyTorch；
-serving 的实现语言和进程边界不属于本仓。Go 首版可通过 ONNX Runtime C API 的窄适配层加载，
-后续若出现 cgo 稳定性、性能或故障隔离证据，再把 Predictor 边界拆为独立 C++ 服务。
+## ModelExporter 接口
+
+`comm/model_exporter.py` 定义类型化 `ModelExporter` Protocol，输入只引用一个成功的
+`TrainingOutputUris`，输出包含独立的 export attempt 状态与未来制品引用。Spec 001 不注册具体
+实现、不调用此接口，也不依赖 ONNX。待 Go/C++ serving 方案确定后，由独立 Spec 冻结推理格式、
+signature、parity 和交付合同。未来 exporter 只能在 refit 成功后运行，其失败只阻止推理制品交付，
+不得修改 Training Run 或 refit 的成功状态。
 
 ## 错误合同
 
@@ -142,6 +143,6 @@ serving 的实现语言和进程边界不属于本仓。Go 首版可通过 ONNX 
 - training numerical failure；
 - checkpoint incompatible；
 - evaluation hard gate failed / quality soft gate warning；
-- artifact write/verification failed。
+- training output conflict / write / checkpoint reload failed。
 
 失败必须保留足够的结构化诊断和 `run_id`，但不得记录原始样本、凭据或完整敏感 URI 查询参数。

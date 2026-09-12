@@ -15,10 +15,12 @@ Source:
   `recommend/train/models/`。
 - 用户于 2026-09-13 确认：当前直接接 S3，首版采用四目标模型、保留全部曝光、不使用原始
   `user_id`，目录和文件命名尽量与 Finder 对齐；`doku-offline` 尚未启用。
+- 用户于 2026-09-13 确认：首版只产出 PyTorch Checkpoint、指标、Feature State 和 lineage，保留
+  `ModelExporter` 接口但不实现 ONNX；未来导出仅在 refit 后执行，失败不改变 refit 结果。
 
 ## 目标
 
-`doku-train` 将版本化训练数据转换成可验证、可复现、可交付的精排模型制品：
+`doku-train` 将版本化训练数据转换成可验证、可复现、可回读的精排训练结果：
 
 ```text
 existing dataflow
@@ -29,9 +31,9 @@ doku-train
   ├─ point-in-time 7-day feature validation/encoding
   ├─ PyTorch CPU multi-task training
   ├─ temporal evaluation + full-window refit
-  └─ immutable ONNX model artifact
+  └─ checkpoint + metrics + fitted feature state + lineage
        ↓
-external release / online ranking system
+future exporter (outside Spec 001)
 ```
 
 系统首阶段服务每天约 100 万条有效曝光。默认使用最近最多 28 个已成熟自然日，即约 2800 万
@@ -44,9 +46,9 @@ external release / online ranking system
 2. **框架与模型解耦**：`recommend/train/comm` 不知道具体网络结构；模型通过窄接口提供前向
    计算和损失。
 3. **CPU-first**：首阶段只有 CPU 单机路径，没有隐藏的 GPU 依赖和伪分布式抽象。
-4. **契约优先**：输入、特征、标签、指标和模型制品全部带版本与校验和。
+4. **契约优先**：输入、特征、标签、指标和训练产物全部带版本与 lineage。
 5. **时间一致性**：训练切分与特征值均遵循事件时间和标签成熟时间，防止未来信息泄漏。
-6. **安全发布**：训练成功不等于发布成功；本仓只产出候选制品，不切换线上 active 版本。
+6. **训练与发布解耦**：首版只完成训练；未来导出失败不改变已完成的 refit，不切换线上版本。
 7. **Finder 可映射**：保留 `recommend/train/comm`、`models`、`offline`、`tools`、`run.py` 与
    `train_rerank.py` 等熟悉入口，同时替换其 GPU 和私有平台实现。
 8. **AI-native**：系统事实写入 architecture，功能决策进入 Spec，验证证据与实现任务一一对应。
@@ -81,12 +83,12 @@ external release / online ranking system
    天，避免生产模型少看最新成熟数据。
 5. `TrainingPipeline` 以 PyTorch 在单进程 CPU 上训练 shared-bottom 四目标 DNN，并按目标有效性
    mask 计算损失。
-6. 结构、数值、ONNX 导出和推理一致性使用硬门禁；AUC 及相对上一版本的质量变化先作为软门禁，
-   必须在同一当前验证切片上比较。
-7. 硬门禁通过后，以相同配置在全部 28 个成熟日 refit 生产模型，再导出 `model.onnx`；
-   `checkpoint.pt` 只用于训练恢复。
-8. Artifact Builder 汇总 ONNX、输入输出签名、Feature Schema、指标和 lineage，回读校验后写入
-   调用方指定 S3 位置；失败时不留下可发布的半成品。
+6. 数据、数值、Checkpoint 兼容性和指标可评估性使用硬门禁；AUC 及相对上一版本的质量变化先
+   作为软门禁，必须在同一当前验证切片上比较。
+7. 硬门禁通过后，以相同配置在全部 28 个成熟日 refit 生产模型。
+8. 成功 Run 向调用方指定位置写出 `checkpoint.pt`、`metrics.json`、
+   `fitted-feature-state/state.json` 和 `lineage.json`，并回读 Checkpoint。首版 `ModelExporter`
+   只有接口、没有实现，也不在训练状态机中调用。
 
 ## 阶段演进
 
@@ -95,5 +97,7 @@ external release / online ranking system
 - 后续模型 Spec：在不改变 Runtime 接口的前提下增加 DeepFM/DCN 等模型与业务标签。
 - 容量证据表明单机无法满足训练窗口后，才设计多进程或多机执行策略。
 - 发布编排、线上灰度和回滚属于独立系统及独立 Spec，不与训练循环耦合。
+- ONNX Artifact、输入输出 signature、PyTorch/ONNX parity 和 Go/C++ 加载合同在 serving 方案确定后
+  单独设计；即使提前实验，也只能在 refit 成功后导出。
 - 周度基准或模型结构变更可使用 24/2/2 或滚动窗口做独立 backtest；该 backtest 不替代每日
   27/1 评估与 28 天 refit。

@@ -8,8 +8,8 @@ Design Baseline for Review；`requirements.md` 已审核通过，本文与 `task
 ## 设计目标
 
 在不复制 Finder 私有实现的前提下，让熟悉 Finder 的开发者能够按目录和文件名快速找到 Doku
-对应能力；同时把底层实现替换为适合当前规模的 PyTorch 单机 CPU、S3 Dataset Manifest 和 ONNX
-发布合同。
+对应能力；同时把底层实现替换为适合当前规模的 PyTorch 单机 CPU、S3 Dataset Manifest 和可恢复
+训练产物合同。线上推理格式尚未确定，不在首版训练闭环中预设。
 
 首版每天消费最多 28 个已成熟自然日、约 2800 万条有效曝光，训练一个 shared-bottom 四目标
 精排 DNN。该容量是 benchmark 目标，不是未经测量的 SLA。
@@ -30,8 +30,8 @@ Design Baseline for Review；`requirements.md` 已审核通过，本文与 `task
 | D008 | 原始 `user_id` 不进签名；全曝光、四目标 mask；完播按 95% 行级规则生成 | R004, R005, R006 |
 | D009 | 首模为 PyTorch shared-bottom + 四个 tower，masked BCE 默认等权 | R006 |
 | D010 | `TrainingPipeline` 注入模型插件；Checkpoint 严格校验 lineage；refit 使用选中 epoch | R006, R007, NFR002 |
-| D011 | 数据/数值/导出为 hard gate，当前切片 AUC 及相对变化为 soft gate | R008 |
-| D012 | Checkpoint 仅恢复训练；发布物是 manifest-last 的 ONNX Artifact，并做 parity | R009 |
+| D011 | refit 前的数据/数值/Checkpoint/可评估性为 hard gate，AUC 及相对变化为 soft gate；未来导出不参与 refit 门禁 | R008 |
+| D012 | 只产出四类 run-scoped 训练结果并保留无实现的 `ModelExporter`；ONNX Artifact 与 parity 后置 | R009 |
 | D013 | `run.py`/`train_rerank.py` 使用统一 composition root 和结构化错误合同 | R010, NFR004 |
 | D014 | 首版只有 `single_process_cpu`；32 vCPU/128 GiB 仅为首次 benchmark 起点 | NFR001 |
 | D015 | unit/contract/smoke/failure/capacity 五层验证并由 `make check` 汇总 | NFR003, R001 |
@@ -44,9 +44,8 @@ Design Baseline for Review；`requirements.md` 已审核通过，本文与 `task
   Boto3、PyArrow、PyTorch CPU、pytest、ruff、mypy；两仓不形成 Python import 依赖；
 - S3 边界复用 Doku 已验证的 `Protocol + injected boto3 client + allowed bucket/prefix` 形态，
   但只在本仓实现训练所需的最小 `ObjectStore`；
-- AUC、Parquet、S3、ONNX 校验分别使用 scikit-learn、PyArrow、Boto3、ONNX Runtime，不自建
-  同类基础实现；ONNX 导出按 [PyTorch 2.14 官方接口](https://docs.pytorch.org/docs/2.14/onnx.html)
-  显式使用 `dynamo=True` 与 `dynamic_shapes`，并显式锁定 `onnxscript` 依赖。
+- AUC、Parquet 和 S3 分别使用 scikit-learn、PyArrow 与 Boto3，不自建同类基础实现；首版依赖中
+  不包含 ONNX、ONNX Runtime 或 `onnxscript`。
 
 ## 方案选择（D001）
 
@@ -86,7 +85,8 @@ doku-train/
 │       │   ├── errors.py
 │       │   ├── resource_report.py
 │       │   ├── metrics_utils.py
-│       │   ├── artifact_utils.py
+│       │   ├── training_output.py
+│       │   ├── model_exporter.py
 │       │   ├── offline_evaluate.py
 │       │   ├── datasvr/
 │       │   │   ├── dataset_manifest.py
@@ -108,9 +108,7 @@ doku-train/
 │       │       └── modules/
 │       ├── offline/
 │       ├── tools/
-│       │   ├── checkpoint/
-│       │   └── onnx/
-│       │       └── gen_onnx.py
+│       │   └── checkpoint/
 │       ├── tests/
 │       │   ├── unit/
 │       │   ├── contract/
@@ -128,7 +126,8 @@ doku-train/
 - 模块/函数/配置键使用 `snake_case`，类型使用 `CamelCase`；
 - 对应核心类型为 `TrainingPipeline`、`DatasetManifest`、`ParquetDataset`、`S3Storage`、
   `RerankModel`、`RerankModelParams`、`RerankAdapter`、`GateResult`、`CheckpointAgent` 和
-  `OnnxExportResult`；评估函数固定为 `evaluate_rerank`；
+  `TrainingOutputWriter`、`TrainingOutputUris`、`ModelExporter`；评估函数固定为
+  `evaluate_rerank`；
 - 四个目标名固定为 `effective_watch`、`completion`、`non_fast_swipe`、`immersive_click`；
 - 不引入 Finder 私有基础设施缩写，例如 `tfsvr`、`weps`、`psstor`、`uin`。
 
@@ -141,8 +140,7 @@ run.py / train_rerank.py
 TrainingPipeline ───────────────→ Model protocol
    │       │                          ▲
    │       ├→ Evaluator / Gates       │
-   │       ├→ CheckpointAgent         │
-   │       └→ OnnxExporter            │
+   │       └→ CheckpointAgent         │
    ▼                                  │
 DatasetManifest / ParquetDataset   RerankModel
    │
@@ -171,10 +169,9 @@ S3Storage
 `S3Storage` 不扫描 `latest`，不使用 bucket 列表推断输入。测试通过同一 Storage protocol 使用本地
 fixture，不能访问真实云环境。
 
-输出先在内容寻址的 `<model-name>/<model-version>/` 前缀内以 `STAGING` 状态写入全部对象并回读
-校验，最后写 `manifest.json` 完成原子提交。`STAGING` 是“最终 Manifest 不存在”的合同状态，不依赖
-S3 不存在的目录 rename 语义。消费者只能把最终 Manifest 的存在与摘要正确视为制品完成，
-不能看到普通对象就认为发布成功。
+输出由调用方显式传入 run-scoped 前缀。`TrainingOutputWriter` 使用 create-only 语义写入四类训练
+产物；同一 `run_id` 已有对象时拒绝覆盖。写入中断只形成失败 Run 的诊断，不能声明为完整训练结果。
+本 Spec 不定义线上消费者可加载的推理 Manifest。
 
 `doku-offline` 当前未启用且不是运行依赖；未来 producer 只要生成同版本 Manifest 即可接入。
 
@@ -216,8 +213,9 @@ effective_watch completion non_fast_swipe immersive_click
 `models/rerank/config.schema.yml` 校验。每个目标先对有效行计算 mean BCE-with-logits，再按配置
 weight 加权并按本 batch 中 active weight 归一化；默认四目标等权，避免标签缺失率直接改变任务权重。
 
-选择 PyTorch 是因为首版只需要 CPU 训练且团队没有 TensorFlow Serving 基建。发布边界是 ONNX，
-因此线上 Go/C++ 不需要加载 PyTorch，也不需要为了训练框架建设 TF Serving。
+选择 PyTorch 是因为首版只需要 CPU 训练且团队没有 TensorFlow Serving 基建。PyTorch Checkpoint
+只是训练产物，不被声明为 Go/C++ serving 合同；待线上进程边界与 runtime 确定后，再独立选择
+ONNX 或其他推理格式。
 
 ## 每日训练状态机（D006, D010）
 
@@ -231,12 +229,9 @@ EVALUATE (day 28)
 DATA/METRIC HARD_GATES ──fail──→ FAILED
       │ pass
       ▼
-ONNX EXPORT/PARITY PREFLIGHT ──fail──→ FAILED
-      │ pass
-      ▼
 REFIT_PRODUCTION_MODEL (days 1..28)
       ↓
-EXPORT_ONNX → VERIFY_PARITY → COMMIT_ARTIFACT
+WRITE_TRAINING_OUTPUT → RELOAD_CHECKPOINT
 ```
 
 每日调度的输入截止点初始为 D-2，对应 24 小时标签成熟假设。只有量化上游到达延迟并修改 Label
@@ -247,7 +242,7 @@ Definition 后，才可推进至 D-1。
 early stopping。这样既让模型吃到最新成熟数据，也避免在 refit 阶段偷看验证指标。
 
 周度或模型结构变更可以显式运行 `backtest`，使用 24/2/2 或 rolling folds。Backtest 产物不能由
-每日命令隐式生成，也不能直接冒充生产 Artifact。
+每日命令隐式生成，也不能直接冒充 production refit 训练产物。
 
 ## 评估与门禁（D011）
 
@@ -259,45 +254,49 @@ Hard gates：
 - Manifest/schema/checksum/时间窗口/标签成熟度正确；
 - 四个目标满足最小可评估样本要求；
 - loss、梯度和参数无 NaN/Inf；
-- ONNX schema、输入输出名称和 shape 正确；
-- 固定 fixture 上 PyTorch 与 ONNX Runtime 四个输出在容差内一致；
-- Artifact 所有对象回读 checksum 正确。
+- evaluation Checkpoint 与配置、模型结构和输入 lineage 兼容并可回读。
 
 Soft gates：
 
 - 每个目标 AUC 的绝对值和 warning threshold；
-- candidate 相对 previous artifact 的 AUC 变化，但两者必须带相同的当前 validation slice digest；
+- candidate 相对 previous run 的 AUC 变化，但两者必须带相同的当前 validation slice digest；
   不接受不同日期的历史 AUC，首版未注入当前切片上重评的 previous 时记录为未比较；
 - cohort 指标或分布漂移 warning。
 
-Soft gate 初期只记录 `WARN`，不阻止 refit/export。原因是后验分布会变化，单次离线 AUC 波动不能
-证明新模型必然更差；线上 A/B 决策属于后续发布 Spec。
+Soft gate 初期只记录 `WARN`，不阻止 refit。原因是后验分布会变化，单次离线 AUC 波动不能证明
+新模型必然更差；线上 A/B 决策属于后续发布 Spec。
 
-## Checkpoint 与 Artifact（D012）
+任何未来 exporter 都位于 refit 之后，不是 R008 hard gate。它失败时只把独立导出尝试标为失败，
+不得把已经成功的 production refit 或训练 Run 回滚为失败。
+
+production Checkpoint 回读和 training output create-only 校验也发生在 refit 之后，属于 R009 的训练
+结果交付条件，不冒充 refit 前门禁；失败时必须保留“refit 已完成、训练输出未完成”的诊断事实。
+
+## Checkpoint、训练产物与导出边界（D012）
 
 PyTorch Checkpoint 位于 Run 私有路径，包含模型/优化器/RNG/epoch/配置和输入 lineage。恢复时任一
 逻辑摘要不一致都拒绝加载，不做部分权重兼容。
 
-发布制品固定为：
+28 天 production refit 成功后，首版只写出：
 
 ```text
-<model-name>/<model-version>/
-├── manifest.json
-├── model.onnx
-├── signature.json
-├── model-config.json
-├── feature-schema.json
-├── fitted-feature-state/
+<output>/<run-id>/
+├── checkpoint.pt
 ├── metrics.json
-├── resource-report.json
+├── fitted-feature-state/
+│   └── state.json
 └── lineage.json
 ```
 
-ONNX 第一维 batch 动态，其他维度和四个输出名固定在 `signature.json`。`manifest.json` 记录 ONNX
-opset、producer revision、依赖锁摘要和所有文件 checksum。Checkpoint 不进入这个目录。
+`checkpoint.pt` 是 production refit 的训练恢复格式；`metrics.json` 同时承载评估、门禁和资源报告；
+Feature State 来自全部 28 天的重新拟合；`lineage.json` 记录 source revision、锁文件摘要、配置摘要、
+Dataset Manifest 摘要和 seed。调用方以 TrainExecution 成功以及四个 URI 的返回值识别完整结果，
+不能从对象列表猜测成功状态。
 
-本 Spec 不实现 online serving。未来 Go serving 可通过 ONNX Runtime C API 的窄适配层加载此合同；
-只有出现可测量的 cgo/ABI、性能、故障隔离或多模型资源管理问题，才单独设计 C++ serving。
+`comm/model_exporter.py` 只定义 `ModelExporter` Protocol 及其类型化请求/结果，不注册实现、不由
+`TrainingPipeline` 调用，也不引入 ONNX 依赖。该接口的输入只能引用成功的四类训练产物。待
+Go/C++ serving 方案确定后，后续 Spec 再定义 ONNX Artifact、signature、parity、交付状态与加载
+合同；即使提前实验，也只能在 refit 成功后调用，失败只阻止推理制品交付。
 
 ## CPU 与容量（D002, D014）
 
@@ -311,20 +310,22 @@ worker、batch size、prefetch 和内存上限；不引入 CUDA wheel、DDP、MP
 
 错误使用稳定分类：`INPUT_CONTRACT_INVALID`、`DATA_INTEGRITY_MISMATCH`、`LABEL_NOT_MATURE`、
 `SPLIT_INVALID`、`RESOURCE_BUDGET_EXCEEDED`、`NUMERICAL_FAILURE`、`CHECKPOINT_INCOMPATIBLE`、
-`EVALUATION_GATE_FAILED`、`ONNX_EXPORT_FAILED`、`ONNX_PARITY_FAILED`、`ARTIFACT_VERIFY_FAILED`。
+`EVALUATION_GATE_FAILED`、`TRAINING_OUTPUT_CONFLICT`、`TRAINING_OUTPUT_WRITE_FAILED`。
 
 失败输出包含 `run_id`、阶段和脱敏摘要，不记录完整样本、原始特征、凭据或带签名的 URI。失败
-Run 可保留 Checkpoint 和诊断，但没有最终 Manifest，且不能覆盖既有版本。
+Run 可保留内部 Checkpoint 和诊断，但不得声明四类训练产物完整，且不能覆盖既有 Run 输出。未来
+exporter 使用独立错误和状态，不属于本 Spec 的训练状态机。
 
 ## 验证设计（D015）
 
 - unit：配置拒绝未知字段、27/1 切分、28 天 refit epoch、mask loss、95% 完播边界、OOV/缺失、
   hard/soft gate、Checkpoint lineage；
 - contract：小型 28 日 Parquet fixture、Manifest checksum、point-in-time 7 天特征边界、S3 adapter
-  fake、四目标 signature；
-- smoke：纯 CPU 执行 validate → evaluation train → evaluate → refit → ONNX export → reload；
-- failure：未成熟标签、未来特征、单类目标、NaN/Inf、错误 checksum、不兼容 Checkpoint 和 ONNX
-  parity mismatch 都必须 fail closed；
+  fake、四目标模型输出；
+- smoke：纯 CPU 执行 validate → evaluation train → evaluate → refit → write-training-output →
+  checkpoint reload；
+- failure：未成熟标签、未来特征、单类目标、NaN/Inf、错误 checksum、不兼容 Checkpoint 和训练
+  输出覆盖尝试都必须 fail closed；
 - capacity：在目标机器记录 28 日数据的吞吐、峰值 RSS 和阶段耗时，不把开发机结果当生产 SLA。
 
 实现阶段的统一入口为 `make check`，最终证据写入本 Spec 的 `verification.md`。
@@ -334,5 +335,6 @@ Run 可保留 Checkpoint 和诊断，但没有最终 Manifest，且不能覆盖�
 - 上游标签 SQL 和未确认的有效观看/快滑/沉浸点击业务阈值；
 - raw `user_id`、超大 embedding、参数服务器或在线更新；
 - TensorFlow、TF Serving、独立 C++/Go serving；
+- ONNX 导出、推理 Artifact、输入输出 signature、PyTorch/ONNX parity；
 - 自动上线、active 指针、A/B、灰度和回滚；
 - 多机训练、GPU、超参搜索和流式增量训练。
