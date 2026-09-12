@@ -1,0 +1,152 @@
+$defs:
+  ExecutionConfig:
+    additionalProperties: false
+    properties:
+      inter_op_threads:
+        minimum: 1
+        title: Inter Op Threads
+        type: integer
+      intra_op_threads:
+        minimum: 1
+        title: Intra Op Threads
+        type: integer
+      memory_limit_bytes:
+        minimum: 1
+        title: Memory Limit Bytes
+        type: integer
+      prefetch_batches:
+        const: 1
+        title: Prefetch Batches
+        type: integer
+      reader_workers:
+        const: 0
+        title: Reader Workers
+        type: integer
+      strategy:
+        const: single_process_cpu
+        title: Strategy
+        type: string
+    required:
+    - strategy
+    - intra_op_threads
+    - inter_op_threads
+    - reader_workers
+    - prefetch_batches
+    - memory_limit_bytes
+    title: ExecutionConfig
+    type: object
+  MetricsConfig:
+    additionalProperties: false
+    properties:
+      auc_warning_floor:
+        maximum: 1.0
+        minimum: 0.0
+        title: Auc Warning Floor
+        type: number
+      minimum_valid_rows:
+        minimum: 2
+        title: Minimum Valid Rows
+        type: integer
+    required:
+    - minimum_valid_rows
+    - auc_warning_floor
+    title: MetricsConfig
+    type: object
+  OptimizerConfig:
+    additionalProperties: false
+    properties:
+      learning_rate:
+        exclusiveMinimum: 0.0
+        title: Learning Rate
+        type: number
+      name:
+        const: adamw
+        default: adamw
+        title: Name
+        type: string
+      weight_decay:
+        minimum: 0.0
+        title: Weight Decay
+        type: number
+    required:
+    - learning_rate
+    - weight_decay
+    title: OptimizerConfig
+    type: object
+  SplitConfig:
+    additionalProperties: false
+    properties:
+      refit_days:
+        const: 28
+        default: 28
+        title: Refit Days
+        type: integer
+      train_days:
+        const: 27
+        default: 27
+        title: Train Days
+        type: integer
+      validation_days:
+        const: 1
+        default: 1
+        title: Validation Days
+        type: integer
+    title: SplitConfig
+    type: object
+additionalProperties: false
+properties:
+  bad_row_policy:
+    const: fail
+    title: Bad Row Policy
+    type: string
+  batch_size:
+    minimum: 1
+    title: Batch Size
+    type: integer
+  checkpoint_dir:
+    format: path
+    title: Checkpoint Dir
+    type: string
+  early_stopping_patience:
+    minimum: 1
+    title: Early Stopping Patience
+    type: integer
+  execution:
+    $ref: '#/$defs/ExecutionConfig'
+  max_epochs:
+    minimum: 1
+    title: Max Epochs
+    type: integer
+  metrics:
+    $ref: '#/$defs/MetricsConfig'
+  model_name:
+    minLength: 1
+    title: Model Name
+    type: string
+  model_params:
+    additionalProperties: true
+    title: Model Params
+    type: object
+  optimizer:
+    $ref: '#/$defs/OptimizerConfig'
+  seed:
+    minimum: 0
+    title: Seed
+    type: integer
+  split:
+    $ref: '#/$defs/SplitConfig'
+required:
+- model_name
+- checkpoint_dir
+- seed
+- batch_size
+- max_epochs
+- early_stopping_patience
+- bad_row_policy
+- execution
+- split
+- optimizer
+- metrics
+- model_params
+title: TrainConfig
+type: object

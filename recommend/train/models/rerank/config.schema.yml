@@ -1,0 +1,60 @@
+additionalProperties: false
+properties:
+  activation:
+    enum:
+    - relu
+    - silu
+    title: Activation
+    type: string
+  categorical_cardinalities:
+    items:
+      type: integer
+    title: Categorical Cardinalities
+    type: array
+  categorical_features:
+    items:
+      type: string
+    title: Categorical Features
+    type: array
+  dropout:
+    exclusiveMaximum: 1.0
+    minimum: 0.0
+    title: Dropout
+    type: number
+  embedding_dim:
+    maximum: 256
+    minimum: 1
+    title: Embedding Dim
+    type: integer
+  loss_weights:
+    additionalProperties:
+      type: number
+    title: Loss Weights
+    type: object
+  numeric_features:
+    items:
+      type: string
+    title: Numeric Features
+    type: array
+  shared_hidden_dims:
+    items:
+      type: integer
+    title: Shared Hidden Dims
+    type: array
+  tower_hidden_dim:
+    maximum: 4096
+    minimum: 1
+    title: Tower Hidden Dim
+    type: integer
+required:
+- numeric_features
+- categorical_features
+- categorical_cardinalities
+- embedding_dim
+- shared_hidden_dims
+- tower_hidden_dim
+- activation
+- dropout
+- loss_weights
+title: RerankModelParams
+type: object
