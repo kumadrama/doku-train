@@ -4,6 +4,11 @@ import json
 import re
 from dataclasses import asdict, dataclass
 
+from recommend.train.comm.training_output import (
+    TrainingOutputConflict,
+    TrainingOutputWriteError,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ErrorEnvelope:
@@ -19,6 +24,10 @@ class ErrorEnvelope:
 def classify_error(error: Exception, *, run_id: str, stage: str) -> ErrorEnvelope:
     raw = str(error)
     category = "TRAINING_FAILED"
+    if isinstance(error, TrainingOutputConflict):
+        category = "TRAINING_OUTPUT_CONFLICT"
+    elif isinstance(error, TrainingOutputWriteError):
+        category = "TRAINING_OUTPUT_WRITE_FAILED"
     for candidate in (
         "INPUT_CONTRACT_INVALID",
         "DATA_INTEGRITY_MISMATCH",

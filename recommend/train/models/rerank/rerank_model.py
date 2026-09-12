@@ -52,9 +52,7 @@ class RerankModel(nn.Module):
             }
         )
 
-    def forward(
-        self, numeric: torch.Tensor, categorical: torch.Tensor
-    ) -> dict[str, torch.Tensor]:
+    def forward(self, numeric: torch.Tensor, categorical: torch.Tensor) -> dict[str, torch.Tensor]:
         if numeric.ndim != 2 or categorical.ndim != 2:
             raise ValueError("numeric and categorical inputs must be rank two")
         if categorical.shape[1] != self._categorical_count:

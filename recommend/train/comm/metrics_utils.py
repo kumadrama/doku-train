@@ -57,9 +57,7 @@ def compute_target_metrics(
         if valid_count
         else None
     )
-    evaluable = (
-        valid_count >= minimum_valid_rows and positive_count > 0 and negative_count > 0
-    )
+    evaluable = valid_count >= minimum_valid_rows and positive_count > 0 and negative_count > 0
     auc = None
     if evaluable:
         auc = float(

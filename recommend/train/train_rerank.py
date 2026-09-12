@@ -33,6 +33,7 @@ from recommend.train.comm.metrics_utils import MetricSet
 from recommend.train.comm.model_params_validator import ValidatedTrainConfig, load_config
 from recommend.train.comm.model_protocol import AdapterFactory, ModelAdapter, ModelRole
 from recommend.train.comm.offline_evaluate import BacktestWindow, build_backtest_windows
+from recommend.train.comm.resource_report import ResourceTracker
 from recommend.train.comm.training_output import TrainingOutputUris, TrainingOutputWriter
 from recommend.train.comm.training_pipeline import BatchFactories, PipelineResult, TrainingPipeline
 from recommend.train.models.rerank import RerankAdapter
@@ -113,9 +114,7 @@ def validate_input(*, manifest_uri: str, config_path: Path) -> ValidatedInput:
     config = load_config(config_path, RerankModelParams)
     if config.common.model_name != "rerank":
         raise ValueError("INPUT_CONTRACT_INVALID: model_name must be rerank")
-    validate_feature_names(
-        (*config.model.numeric_features, *config.model.categorical_features)
-    )
+    validate_feature_names((*config.model.numeric_features, *config.model.categorical_features))
     return ValidatedInput(
         manifest=manifest,
         config=config,
@@ -150,9 +149,7 @@ def _lock_digest() -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "unknown"
 
 
-def _params_for_state(
-    params: RerankModelParams, state: FittedFeatureState
-) -> RerankModelParams:
+def _params_for_state(params: RerankModelParams, state: FittedFeatureState) -> RerankModelParams:
     return params.model_copy(
         update={"categorical_cardinalities": tuple(item.cardinality for item in state.categorical)}
     )
@@ -171,7 +168,9 @@ def execute_train(
     output_prefix: str,
     run_id: str,
 ) -> TrainExecutionResult:
-    validated = validate_input(manifest_uri=manifest_uri, config_path=config_path)
+    resources = ResourceTracker()
+    with resources.stage("validate_input"):
+        validated = validate_input(manifest_uri=manifest_uri, config_path=config_path)
     config = validated.config
     common = config.common
     _configure_threads(
@@ -192,18 +191,20 @@ def execute_train(
             validate_point_in_time(batch, statistical_features)
             yield batch
 
-    evaluation_state = fit_feature_state(
-        raw_batches(validated.split.train),
-        numeric_features=config.model.numeric_features,
-        categorical_features=config.model.categorical_features,
-        feature_schema_version=validated.manifest.feature_schema_version,
-    )
-    production_state = fit_feature_state(
-        raw_batches(validated.split.refit),
-        numeric_features=config.model.numeric_features,
-        categorical_features=config.model.categorical_features,
-        feature_schema_version=validated.manifest.feature_schema_version,
-    )
+    with resources.stage("feature_fit_evaluation"):
+        evaluation_state = fit_feature_state(
+            raw_batches(validated.split.train),
+            numeric_features=config.model.numeric_features,
+            categorical_features=config.model.categorical_features,
+            feature_schema_version=validated.manifest.feature_schema_version,
+        )
+    with resources.stage("feature_fit_production"):
+        production_state = fit_feature_state(
+            raw_batches(validated.split.refit),
+            numeric_features=config.model.numeric_features,
+            categorical_features=config.model.categorical_features,
+            feature_schema_version=validated.manifest.feature_schema_version,
+        )
     evaluation_params = _params_for_state(config.model, evaluation_state)
     production_params = _params_for_state(config.model, production_state)
 
@@ -237,9 +238,7 @@ def execute_train(
         [shard.model_dump(mode="json") for shard in validated.split.validation]
     )
 
-    def evaluator(
-        adapter: ModelAdapter[RerankBatch], batches: Iterable[RerankBatch]
-    ) -> MetricSet:
+    def evaluator(adapter: ModelAdapter[RerankBatch], batches: Iterable[RerankBatch]) -> MetricSet:
         return evaluate_rerank(
             adapter,
             batches,
@@ -266,16 +265,28 @@ def execute_train(
         patience=common.early_stopping_patience,
         memory_limit_bytes=common.execution.memory_limit_bytes,
     )
-    result: PipelineResult[RerankBatch, MetricSet] = pipeline.run(factories)
+    with resources.stage("train_evaluate_refit"):
+        result: PipelineResult[RerankBatch, MetricSet] = pipeline.run(factories)
     checkpoint_body = result.production_checkpoint.read_bytes()
-    verification_adapter = RerankAdapter(production_params)
-    verification_optimizer = torch.optim.AdamW(verification_adapter.module.parameters())
-    checkpoint_agent.load_bytes(
-        checkpoint_body,
-        CheckpointRole.PRODUCTION,
-        verification_adapter.module,
-        verification_optimizer,
-        lineage,
+    with resources.stage("checkpoint_verify"):
+        verification_adapter = RerankAdapter(production_params)
+        verification_optimizer = torch.optim.AdamW(verification_adapter.module.parameters())
+        checkpoint_agent.load_bytes(
+            checkpoint_body,
+            CheckpointRole.PRODUCTION,
+            verification_adapter.module,
+            verification_optimizer,
+            lineage,
+        )
+
+    batch_count = sum(
+        (shard.row_count + common.batch_size - 1) // common.batch_size
+        for shard in validated.manifest.shards
+    )
+    resource_report = resources.report(
+        row_count=validated.manifest.row_count,
+        batch_count=batch_count,
+        byte_count=sum(shard.size_bytes for shard in validated.manifest.shards),
     )
 
     metrics_body = json.dumps(
@@ -288,6 +299,7 @@ def execute_train(
             "gates": [asdict(gate) for gate in result.gates],
             "selected_epoch": result.selected_epoch,
             "traces": [asdict(trace) for trace in result.traces],
+            "resource_report": asdict(resource_report),
         },
         sort_keys=True,
         separators=(",", ":"),

@@ -13,9 +13,7 @@ def validate_feature_names(feature_names: Iterable[str]) -> None:
         raise ValueError("raw user_id is forbidden from the model feature signature")
 
 
-def validate_point_in_time(
-    batch: pa.RecordBatch, statistical_features: Iterable[str]
-) -> None:
+def validate_point_in_time(batch: pa.RecordBatch, statistical_features: Iterable[str]) -> None:
     event_times = batch.column("event_time_ms").to_pylist()
     for feature in statistical_features:
         starts = batch.column(f"{feature}__window_start_ms").to_pylist()

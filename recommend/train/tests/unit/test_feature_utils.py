@@ -76,9 +76,7 @@ def test_production_fit_is_independent_from_evaluation_state() -> None:
         categorical_features=("country",),
         feature_schema_version="features-v1",
     )
-    production_batch = training_batch().set_column(
-        0, "watch_7d", pa.array([10.0, 10.0, 10.0])
-    )
+    production_batch = training_batch().set_column(0, "watch_7d", pa.array([10.0, 10.0, 10.0]))
     production = fit_feature_state(
         [production_batch],
         numeric_features=("watch_7d",),

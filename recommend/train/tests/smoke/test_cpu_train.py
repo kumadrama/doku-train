@@ -49,4 +49,6 @@ def test_full_cpu_training_writes_and_reloads_exact_four_outputs(
         "non_fast_swipe",
         "immersive_click",
     }
+    assert metrics["resource_report"]["row_count"] == 112
+    assert metrics["resource_report"]["peak_rss_bytes"] > 0
     assert lineage["run_id"] == "smoke-run"

@@ -51,9 +51,7 @@ class TrainingPipeline[BatchT, MetricT]:
         self,
         *,
         adapter_factory: AdapterFactory[BatchT],
-        optimizer_factory: Callable[
-            [Iterable[torch.nn.Parameter]], torch.optim.Optimizer
-        ],
+        optimizer_factory: Callable[[Iterable[torch.nn.Parameter]], torch.optim.Optimizer],
         evaluator: Callable[[ModelAdapter[BatchT], Iterable[BatchT]], MetricT],
         gate_builder: Callable[[MetricT], tuple[GateResult, ...]],
         checkpoint_agent: CheckpointAgent,
@@ -127,9 +125,7 @@ class TrainingPipeline[BatchT, MetricT]:
     def run(self, batches: BatchFactories[BatchT]) -> PipelineResult[BatchT, MetricT]:
         seed_everything(self._seed)
         evaluation_adapter = self._adapter_factory("evaluation")
-        evaluation_optimizer = self._optimizer_factory(
-            evaluation_adapter.module.parameters()
-        )
+        evaluation_optimizer = self._optimizer_factory(evaluation_adapter.module.parameters())
         selected_epoch = 0
         best_loss = math.inf
         stale_epochs = 0
@@ -177,9 +173,7 @@ class TrainingPipeline[BatchT, MetricT]:
 
         seed_everything(self._seed + 1)
         production_adapter = self._adapter_factory("production")
-        production_optimizer = self._optimizer_factory(
-            production_adapter.module.parameters()
-        )
+        production_optimizer = self._optimizer_factory(production_adapter.module.parameters())
         production_step = 0
         for epoch in range(1, selected_epoch + 1):
             _, step_losses = self._train_epoch(

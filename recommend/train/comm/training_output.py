@@ -50,9 +50,7 @@ class TrainingOutputWriter:
         }
         if not normalized["checkpoint.pt"]:
             raise ValueError("checkpoint.pt must not be empty")
-        uris = {
-            name: f"{self._output_prefix}/{run_id}/{name}" for name in TRAINING_OUTPUT_NAMES
-        }
+        uris = {name: f"{self._output_prefix}/{run_id}/{name}" for name in TRAINING_OUTPUT_NAMES}
         for name in TRAINING_OUTPUT_NAMES:
             body = normalized[name]
             uri = uris[name]

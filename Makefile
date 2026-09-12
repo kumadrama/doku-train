@@ -1,4 +1,7 @@
-.PHONY: format lint typecheck unit test smoke capacity check
+.PHONY: lockcheck format lint typecheck unit test smoke capacity check
+
+lockcheck:
+	uv lock --check
 
 format:
 	uv run ruff format --check .
@@ -21,4 +24,4 @@ smoke:
 capacity:
 	uv run pytest recommend/train/tests/performance -q -m performance
 
-check: format lint typecheck test
+check: lockcheck format lint typecheck test

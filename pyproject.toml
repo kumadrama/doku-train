@@ -43,6 +43,7 @@ explicit = true
 [tool.pytest.ini_options]
 testpaths = ["recommend/train/tests"]
 pythonpath = ["."]
+addopts = ["-p", "no:cacheprovider"]
 markers = [
   "performance: records local scale evidence without a production SLA",
 ]
