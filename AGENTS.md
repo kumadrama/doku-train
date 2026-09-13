@@ -69,6 +69,8 @@ doku-train/
 - [组件划分](docs/architecture/components.md) — 目标目录、组件职责和依赖方向。
 - [数据模型](docs/architecture/data-model.md) — Dataset、Feature、Run 与 Training Output 元数据。
 - [接口合同](docs/architecture/interfaces.md) — 输入 Manifest、训练入口、模型插件和训练输出。
+- [开发者 README 信息架构](docs/architecture/developer-readme-design.md) — 面向算法开发者的
+  S3-first 上手路径、命令示例边界和验证要求。
 - [Spec 001：CPU 训练脚手架需求](specs/001-cpu-training-scaffold/requirements.md) — 首阶段范围与验收条件。
 - [Spec 001：CPU 训练脚手架设计](specs/001-cpu-training-scaffold/design.md) — Finder 对应目录、
   PyTorch CPU 多任务训练、S3 输入、四类训练产物与导出边界。
