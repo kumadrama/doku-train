@@ -2,8 +2,8 @@
 
 ## 文档状态
 
-目标设计，尚未实现。本文描述 CPU-first 训练系统的稳定边界，不把 Finder 的现状描述成
-Doku 已具备的能力。
+Implemented Locally。Spec 001 的 CPU-first 训练闭环已经实现并通过本地验证；约 2800 万行的
+生产容量 benchmark 尚未执行，本文不把 Finder 能力或开发 fixture 耗时描述成 Doku 生产能力。
 
 Source:
 

@@ -17,7 +17,7 @@
 - Modify: `recommend/train/run.py`
 - Modify: `recommend/train/tests/unit/test_cli.py`
 
-- [ ] **Step 1: Write the failing module-entry test**
+- [x] **Step 1: Write the failing module-entry test**
 
 Add a subprocess test that runs the same interpreter and requires help output:
 
@@ -33,13 +33,13 @@ def test_python_module_entrypoint_displays_cli_help() -> None:
     assert "rerank" in result.stdout
 ```
 
-- [ ] **Step 2: Run the test and observe RED**
+- [x] **Step 2: Run the test and observe RED**
 
 Run: `.venv/bin/python -m pytest recommend/train/tests/unit/test_cli.py::test_python_module_entrypoint_displays_cli_help -q`
 
 Expected: FAIL because importing `recommend.train.run` exits without invoking `app`.
 
-- [ ] **Step 3: Add the only CLI module entry**
+- [x] **Step 3: Add the only CLI module entry**
 
 Append to `recommend/train/run.py`:
 
@@ -48,13 +48,13 @@ if __name__ == "__main__":
     app()
 ```
 
-- [ ] **Step 4: Run the focused CLI tests**
+- [x] **Step 4: Run the focused CLI tests**
 
 Run: `.venv/bin/python -m pytest recommend/train/tests/unit/test_cli.py -q`
 
 Expected: all CLI tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add recommend/train/run.py recommend/train/tests/unit/test_cli.py
@@ -68,7 +68,7 @@ git commit -m "fix: expose training module cli"
 - Create: `README.md`
 - Create: `recommend/train/tests/unit/test_readme.py`
 
-- [ ] **Step 1: Write the failing README contract tests**
+- [x] **Step 1: Write the failing README contract tests**
 
 The test must require the S3-first commands, canonical outputs, documentation links, pending capacity wording,
 and reject credential examples:
@@ -92,13 +92,13 @@ def test_readme_documents_the_real_training_contract() -> None:
 
 It must also parse every relative Markdown link and assert that the referenced repository file exists.
 
-- [ ] **Step 2: Run the test and observe RED**
+- [x] **Step 2: Run the test and observe RED**
 
 Run: `.venv/bin/python -m pytest recommend/train/tests/unit/test_readme.py -q`
 
 Expected: FAIL because root `README.md` does not exist.
 
-- [ ] **Step 3: Write `README.md` in the approved order**
+- [x] **Step 3: Write `README.md` in the approved order**
 
 Create these exact top-level sections:
 
@@ -121,13 +121,13 @@ through `uv run python -m recommend.train.run`. State that only four training ou
 ONNX/serving/GPU/multi-machine/cloud scheduling remain out of scope, and the 28-day/approximately 28M-row
 production benchmark is pending rather than an SLA.
 
-- [ ] **Step 4: Run README and CLI tests**
+- [x] **Step 4: Run README and CLI tests**
 
 Run: `.venv/bin/python -m pytest recommend/train/tests/unit/test_readme.py recommend/train/tests/unit/test_cli.py -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md recommend/train/tests/unit/test_readme.py
@@ -143,16 +143,16 @@ git commit -m "docs: add s3-first developer readme"
 - Modify: `docs/architecture/interfaces.md`
 - Modify: `specs/002-s3-first-readme/tasks.md`
 
-- [ ] **Step 1: Replace stale implementation-status text**
+- [x] **Step 1: Replace stale implementation-status text**
 
 Mark the README design implemented, and change architecture/interface status text from “尚未实现” to the
 verified Spec 001 state while retaining the pending production capacity benchmark.
 
-- [ ] **Step 2: Mark this plan complete**
+- [x] **Step 2: Mark this plan complete**
 
 Change every task checkbox in this file from `[ ]` to `[x]` only after its command has passed.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run:
 
@@ -166,7 +166,7 @@ git diff --check
 Expected: all commands exit 0; pytest has no failures; help contains `rerank`; Git working tree contains no
 uncommitted files after the final commit.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/architecture/developer-readme-design.md docs/architecture/system-overview.md docs/architecture/interfaces.md specs/002-s3-first-readme/tasks.md

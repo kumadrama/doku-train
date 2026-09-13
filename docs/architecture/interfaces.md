@@ -2,7 +2,8 @@
 
 ## 文档状态
 
-目标接口，尚未实现。接口名称描述职责，具体 Python 签名与 JSON Schema 在 Spec 001 design 中冻结。
+Implemented Locally。Spec 001 接口已落地并通过本地 contract/smoke 验证；线上推理与生产容量
+benchmark 仍不在已验证范围内。具体 Python 签名与 JSON Schema 以当前代码和 Spec 001 为准。
 
 Source: [系统概览](system-overview.md)、[组件划分](components.md)、[数据模型](data-model.md)。
 

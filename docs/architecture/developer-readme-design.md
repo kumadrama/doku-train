@@ -2,7 +2,7 @@
 
 ## 状态
 
-Design Approved，等待用户确认书面版本后实施。
+Implemented。根 README、可执行模块 CLI 与合同测试已按本设计落地。
 
 Source:
 
