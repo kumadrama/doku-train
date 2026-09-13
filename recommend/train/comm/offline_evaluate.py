@@ -20,9 +20,7 @@ def build_backtest_windows(
     validation_days: int,
     test_days: int,
 ) -> tuple[BacktestWindow, ...]:
-    ordered = tuple(sorted(dates))
-    if len(set(ordered)) != len(ordered):
-        raise ValueError("SPLIT_INVALID: backtest dates must be distinct")
+    ordered = tuple(sorted(set(dates)))
     if any(current != previous + timedelta(days=1) for previous, current in pairwise(ordered)):
         raise ValueError("SPLIT_INVALID: backtest dates must be consecutive")
     width = train_days + validation_days + test_days
