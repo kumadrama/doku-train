@@ -71,6 +71,8 @@ doku-train/
 - [接口合同](docs/architecture/interfaces.md) — 输入 Manifest、训练入口、模型插件和训练输出。
 - [开发者 README 信息架构](docs/architecture/developer-readme-design.md) — 面向算法开发者的
   S3-first 上手路径、命令示例边界和验证要求。
+- [S3-first Developer README 实施计划](specs/002-s3-first-readme/tasks.md) — CLI 模块入口、根
+  README、合同测试和文档状态同步的 TDD 步骤。
 - [Spec 001：CPU 训练脚手架需求](specs/001-cpu-training-scaffold/requirements.md) — 首阶段范围与验收条件。
 - [Spec 001：CPU 训练脚手架设计](specs/001-cpu-training-scaffold/design.md) — Finder 对应目录、
   PyTorch CPU 多任务训练、S3 输入、四类训练产物与导出边界。
