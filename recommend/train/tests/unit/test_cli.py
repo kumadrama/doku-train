@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -9,6 +11,17 @@ from recommend.train.run import app
 from recommend.train.tests.fixtures import build_training_fixture
 
 runner = CliRunner()
+
+
+def test_python_module_entrypoint_displays_cli_help() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "recommend.train.run", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "rerank" in result.stdout
 
 
 def test_validate_and_backtest_commands_use_finder_style_entrypoint(tmp_path: Path) -> None:

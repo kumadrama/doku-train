@@ -79,3 +79,7 @@ def backtest_command(
             separators=(",", ":"),
         )
     )
+
+
+if __name__ == "__main__":
+    app()
