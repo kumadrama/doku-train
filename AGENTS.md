@@ -28,8 +28,11 @@
 - 当前已有数据流负责离线特征派生、标签与样本构建，并通过 S3 上的不可变 Manifest 交付训练
   数据；`doku-offline` 尚未启用，未来只能作为相同合同的可选 producer，不能成为本仓运行依赖；
 - 在线系统的消费合同尚未确定；后续 exporter 只能读取成功训练产物，不能引用训练内部实现；
-- `doku-iac` 负责存储、调度和计算资源等基础设施；
 - `doku-monitoring` 负责对生产训练任务、制品发布和在线模型进行监控告警。
+- 数据湖导出编排（RDS 快照与 DynamoDB PITR 导出）属于 `doku-data-export`；
+- 在线服务的读写路径与 RPC 实现属于 `doku-mono`；
+- 共享 Go 基础库属于 `doku-lib`，生成的 Kitex 代码属于 `doku-kitex-gen`；
+- Terraform、IAM、S3 桶、EventBridge 规则与环境装配属于 `doku-iac`；
 
 跨仓协作只能通过版本化数据合同或制品合同完成，不能通过复制内部类型或直接 import 实现。
 
