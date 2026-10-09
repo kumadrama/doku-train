@@ -20,7 +20,7 @@
 | CPU 训练运行时、模型定义、损失与优化 | 曝光日志采集、标签归因和训练样本生产 |
 | 直接从 S3 读取精确 Manifest、Parquet 分片并校验特征合同 | 直读业务 PostgreSQL、Redis 或线上 RPC 拼训练数据 |
 | 时间切分、训练、评估、Checkpoint | GPU 训练和未经批准的多机训练 |
-| PyTorch Checkpoint、指标、Feature State 与 lineage | 推理 Artifact、在线 Ranker 服务和业务可见性判断 |
+| 框架专属训练 Checkpoint、指标、Feature State 与 lineage | 推理 Artifact、在线 Ranker 服务和业务可见性判断 |
 | 本地/CI 验证入口 | S3、调度器、IAM、计算集群等基础设施创建 |
 
 相邻系统职责：
@@ -73,6 +73,14 @@ doku-train/
   S3-first 上手路径、命令示例边界和验证要求。
 - [S3-first Developer README 实施计划](specs/002-s3-first-readme/tasks.md) — CLI 模块入口、根
   README、合同测试和文档状态同步的 TDD 步骤。
+- [Spec 003：XGBoost 精排基线需求](specs/003-xgboost-rerank-baseline/requirements.md) — 当实现或
+  修改 `models/rerank_train`、四目标 Booster、树模型训练产物或本地 DNN 对比入口时。
+- [Spec 003：XGBoost 精排基线设计](specs/003-xgboost-rerank-baseline/design.md) — XGBoost 插件
+  边界、流式 DMatrix、评估/refit 生命周期和制品格式。
+- [Spec 003：XGBoost 精排基线任务](specs/003-xgboost-rerank-baseline/tasks.md) — 依赖、文件范围、
+  实施顺序和完成条件。
+- [Spec 003：XGBoost 精排基线验证](specs/003-xgboost-rerank-baseline/verification.md) — 需求到
+  自动化测试及本地 smoke train 的追踪关系。
 - [Spec 001：CPU 训练脚手架需求](specs/001-cpu-training-scaffold/requirements.md) — 首阶段范围与验收条件。
 - [Spec 001：CPU 训练脚手架设计](specs/001-cpu-training-scaffold/design.md) — Finder 对应目录、
   PyTorch CPU 多任务训练、S3 输入、四类训练产物与导出边界。
@@ -91,13 +99,15 @@ recommend/train/
 │   ├── datasvr/                # Finder 对应命名；实际是 S3/Manifest reader，不是网络服务
 │   └── eval/
 ├── models/
-│   └── rerank/                 # 首个 shared-bottom 多目标 DNN
+│   ├── rerank/                 # 首个 shared-bottom 多目标 DNN
+│   └── rerank_train/           # 四个独立 Booster 的 XGBoost 精排基线
 ├── offline/                    # 离线评估与回放，不代表 doku-offline 仓库
 ├── tools/
 │   └── checkpoint/
 ├── tests/
 ├── run.py                      # 统一 composition root
-└── train_rerank.py             # 精排训练用例
+├── train_rerank.py             # DNN 精排训练用例
+└── train_rerank_xgboost.py     # XGBoost 精排训练用例
 ```
 
 依赖规则：
@@ -129,8 +139,9 @@ recommend/train/
 - 训练数据必须分片、流式或批量读取，不得要求把 28 天全量样本一次性装入内存。
 - 为未来执行策略保留窄接口，但不得预先实现 MPI、参数服务器或多机容错。多机 CPU/GPU、
   Embedding 分片或增量训练必须单独立 Spec，经容量证据证明有必要后再建设。
-- 首版训练框架固定为 PyTorch CPU，只产出 PyTorch Checkpoint、指标、Feature State 和 lineage。
-  推理格式尚未确定，线上 Go/C++ 消费者不得把 Checkpoint 当成稳定加载合同。
+- DNN 训练框架固定为 PyTorch CPU，XGBoost 基线固定为 CPU `hist`；二者分别产出训练
+  Checkpoint、指标、Feature State 和 lineage。推理格式尚未确定，线上 Go/C++ 消费者不得把
+  任一训练 Checkpoint 当成稳定加载合同。
 
 ## 数据、特征与标签约束
 
@@ -155,8 +166,9 @@ recommend/train/
   Feature Schema version、Label Definition version 和依赖锁文件 digest。
 - 相同的冻结输入、配置、源码和运行环境应产生相同的数据切分与逻辑训练结果；时间戳等运行
   元数据不得参与模型逻辑版本计算。
-- 成功 Run 只写出 `checkpoint.pt`、`metrics.json`、`fitted-feature-state/state.json` 和
-  `lineage.json`，路径必须 run-scoped 且 create-only；训练失败不得覆盖已有输出。
+- 成功 DNN Run 只写出 `checkpoint.pt`，成功 XGBoost Run 只写出 `checkpoint.xgb.zip`；二者都
+  同时写出 `metrics.json`、`fitted-feature-state/state.json` 和 `lineage.json`。路径必须
+  run-scoped 且 create-only；训练失败不得覆盖已有输出。
 - `ModelExporter` 只保留接口，不提供 ONNX 实现。推理 Artifact、signature、parity 与 Go/C++
   serving 合同必须在方案确定后由独立 Spec 定义。
 - 未来 exporter 只能在 28 天 refit 成功后运行；导出失败只阻止推理制品交付，不得否定已完成的

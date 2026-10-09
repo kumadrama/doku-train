@@ -8,6 +8,7 @@ import pytest
 from recommend.train.comm.datasvr.local_storage import LocalStorage
 from recommend.train.comm.training_output import (
     TRAINING_OUTPUT_NAMES,
+    ModelTrainingOutputWriter,
     TrainingOutputConflict,
     TrainingOutputWriteError,
     TrainingOutputWriter,
@@ -69,3 +70,33 @@ def test_partial_write_is_not_reported_as_success(tmp_path: Path) -> None:
     with pytest.raises(TrainingOutputWriteError, match=r"lineage\.json"):
         writer.write("run-1", files())
     assert not (tmp_path / "run-1" / "lineage.json").exists()
+
+
+def test_model_writer_supports_xgboost_artifact_without_weakening_shared_outputs(
+    tmp_path: Path,
+) -> None:
+    writer = ModelTrainingOutputWriter(
+        LocalStorage(tmp_path),
+        tmp_path.as_uri(),
+        "checkpoint.xgb.zip",
+    )
+    uris = writer.write(
+        "xgboost-run",
+        model_artifact=b"xgboost-checkpoint",
+        metrics=b'{"metric_set_version":"1"}',
+        fitted_feature_state=b'{"state_version":"1"}',
+        lineage=b'{"model_name":"rerank_train"}',
+    )
+    assert uris.model_artifact.endswith("/xgboost-run/checkpoint.xgb.zip")
+    assert sorted(
+        path.relative_to(tmp_path / "xgboost-run").as_posix()
+        for path in (tmp_path / "xgboost-run").rglob("*")
+        if path.is_file()
+    ) == sorted(
+        [
+            "checkpoint.xgb.zip",
+            "metrics.json",
+            "fitted-feature-state/state.json",
+            "lineage.json",
+        ]
+    )

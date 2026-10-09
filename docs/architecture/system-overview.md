@@ -17,6 +17,8 @@ Source:
   `user_id`，目录和文件命名尽量与 Finder 对齐；`doku-offline` 尚未启用。
 - 用户于 2026-09-13 确认：首版只产出 PyTorch Checkpoint、指标、Feature State 和 lineage，保留
   `ModelExporter` 接口但不实现 ONNX；未来导出仅在 refit 后执行，失败不改变 refit 结果。
+- 用户于 2026-10-09 要求：在 `models/rerank_train/` 增加 XGBoost 模型插件，先用同一份当前数据
+  在本机对比树模型与 DNN，不先建设 SageMaker。
 
 ## 目标
 
@@ -29,9 +31,9 @@ existing dataflow
 doku-train
   ├─ contract validation
   ├─ point-in-time 7-day feature validation/encoding
-  ├─ PyTorch CPU multi-task training
+  ├─ PyTorch CPU multi-task DNN or CPU XGBoost baseline
   ├─ temporal evaluation + full-window refit
-  └─ checkpoint + metrics + fitted feature state + lineage
+  └─ framework checkpoint + metrics + fitted feature state + lineage
        ↓
 future exporter (outside Spec 001)
 ```
@@ -81,19 +83,22 @@ future exporter (outside Spec 001)
    本仓不从原始事件重新聚合。
 4. 每日评估模型使用最近 28 个已成熟自然日中的前 27 天训练、最后 1 天验证；不另留长期测试
    天，避免生产模型少看最新成熟数据。
-5. `TrainingPipeline` 以 PyTorch 在单进程 CPU 上训练 shared-bottom 四目标 DNN，并按目标有效性
-   mask 计算损失。
+5. DNN 由 `TrainingPipeline` 以 PyTorch 在单进程 CPU 上训练 shared-bottom 四目标网络；XGBoost
+   插件通过 `DataIter`/`QuantileDMatrix` 为四个目标分别训练 CPU `hist` Booster。两条路径都按
+   目标有效性 mask 过滤样本，并共享同一 validation slice 和指标语义。
 6. 数据、数值、Checkpoint 兼容性和指标可评估性使用硬门禁；AUC 及相对上一版本的质量变化先
    作为软门禁，必须在同一当前验证切片上比较。
 7. 硬门禁通过后，以相同配置在全部 28 个成熟日 refit 生产模型。
-8. 成功 Run 向调用方指定位置写出 `checkpoint.pt`、`metrics.json`、
-   `fitted-feature-state/state.json` 和 `lineage.json`，并回读 Checkpoint。首版 `ModelExporter`
-   只有接口、没有实现，也不在训练状态机中调用。
+8. 成功 Run 向调用方指定位置写出一个框架专属 Checkpoint（DNN 为 `checkpoint.pt`，XGBoost 为
+   `checkpoint.xgb.zip`）、`metrics.json`、`fitted-feature-state/state.json` 和 `lineage.json`，
+   并严格回读 Checkpoint。首版 `ModelExporter` 只有接口、没有实现，也不在训练状态机中调用。
 
 ## 阶段演进
 
 - **Spec 001**：AI-native 文档与 Finder-compatible CPU 单机训练脚手架，支持 shared-bottom 四目标
   DNN 的最小闭环。
+- **Spec 003**：在相同数据、特征、切分和指标合同下增加四目标 XGBoost CPU 基线，用于本地能力
+  与成本对比；不包含 SageMaker、超参搜索或线上 Serving。
 - 后续模型 Spec：在不改变 Runtime 接口的前提下增加 DeepFM/DCN 等模型与业务标签。
 - 容量证据表明单机无法满足训练窗口后，才设计多进程或多机执行策略。
 - 发布编排、线上灰度和回滚属于独立系统及独立 Spec，不与训练循环耦合。

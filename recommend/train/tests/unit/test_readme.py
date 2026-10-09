@@ -9,11 +9,18 @@ def test_readme_documents_the_real_training_contract() -> None:
     readme = Path("README.md").read_text()
     for command in ("rerank validate", "rerank train", "rerank backtest"):
         assert command in readme
+    for command in (
+        "rerank-train validate",
+        "rerank-train train",
+        "rerank-train backtest",
+    ):
+        assert command in readme
     for output in (
         "checkpoint.pt",
         "metrics.json",
         "fitted-feature-state/state.json",
         "lineage.json",
+        "checkpoint.xgb.zip",
     ):
         assert output in readme
     assert "约 2800 万" in readme

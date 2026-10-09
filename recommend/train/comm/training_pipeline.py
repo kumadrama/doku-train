@@ -14,14 +14,9 @@ from recommend.train.comm.checkpoint_agent import (
     CheckpointRole,
     seed_everything,
 )
+from recommend.train.comm.errors import PipelineBlocked
 from recommend.train.comm.eval.gates import GateResult, GateSeverity
 from recommend.train.comm.model_protocol import AdapterFactory, ModelAdapter
-
-
-class PipelineBlocked(RuntimeError):
-    def __init__(self, message: str, *, stage: str) -> None:
-        self.stage = stage
-        super().__init__(message)
 
 
 @dataclass(frozen=True, slots=True)

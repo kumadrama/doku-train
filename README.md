@@ -1,20 +1,20 @@
 # doku-train
 
 `doku-train` 是 Doku 推荐精排模型的 CPU-first 离线训练仓库。它直接读取 S3 上不可变的
-Dataset Manifest 和 Parquet 分片，用 PyTorch 完成四目标 DNN 的训练、验证及 28 日 production
-refit，并写出可审计的训练结果。
+Dataset Manifest 和 Parquet 分片，支持用 PyTorch DNN 或 XGBoost `hist` 完成四目标模型的训练、
+验证及 28 日 production refit，并写出可审计、可对比的训练结果。
 
 主要面向需要新增特征、调整模型或发起真实训练的算法开发者。第一次使用建议从下文的
 `validate → train` 路径开始。
 
 ## 当前能力
 
-- 单机、单进程 CPU 训练，模型为 shared-bottom DNN；
+- 单机、单进程 CPU 训练，模型包括 shared-bottom DNN 和四个独立 Booster 的 XGBoost 基线；
 - 目标为 `effective_watch`、`completion`、`non_fast_swipe`、`immersive_click`；
 - 前 27 个成熟自然日训练、最后 1 日验证，硬门禁通过后使用全部 28 日重新训练；
 - numeric/categorical 特征、冻结词表、缺失值/OOV、point-in-time 7 日统计特征检查；
 - 精确 S3 URI、SHA-256、行数、标签成熟度与连续日期校验；
-- PyTorch Checkpoint、指标、Fitted Feature State 与 lineage 四类输出。
+- 框架专属训练 Checkpoint、指标、Fitted Feature State 与 lineage 四类输出。
 
 首版不负责样本生产、S3/IAM/调度资源创建、自动发布、线上 serving、ONNX、GPU 或多机训练。
 `ModelExporter` 目前只有接口，不参与训练门禁；AUC 及其变化只产生 warning，不保证新模型 AUC
@@ -44,7 +44,7 @@ s3://<training-bucket>/rerank/datasets/2026-09-12/
 └── shards/day=YYYY-MM-DD/part-*.parquet
 ```
 
-把下一节的训练配置保存为 `configs/rerank.yml`，然后执行：
+把下一节的 DNN 训练配置保存为 `configs/rerank.yml`，然后执行：
 
 ```bash
 uv run python -m recommend.train.run rerank validate \
@@ -79,6 +79,33 @@ uv run python -m recommend.train.run rerank backtest \
 ```
 
 当前 `backtest` 只验证并生成时间窗口，不写 production 训练结果。
+
+### 4. 本地对比 XGBoost
+
+XGBoost 插件复用同一 Manifest、Feature State、四目标标签、27/1 evaluation 和 28 日 refit，
+因此其验证指标可以与 DNN 按同一 validation slice 对比。将后文配置保存为
+`configs/rerank-train.yml`：
+
+```bash
+uv run python -m recommend.train.run rerank-train validate \
+  --manifest 's3://<training-bucket>/rerank/datasets/2026-09-12/manifest.json' \
+  --config configs/rerank-train.yml \
+  --run-id xgboost-validate-20260913
+
+uv run python -m recommend.train.run rerank-train train \
+  --manifest 's3://<training-bucket>/rerank/datasets/2026-09-12/manifest.json' \
+  --config configs/rerank-train.yml \
+  --output 's3://<model-bucket>/rerank/xgboost-training-runs' \
+  --run-id xgboost-20260913-001
+
+uv run python -m recommend.train.run rerank-train backtest \
+  --manifest 's3://<training-bucket>/rerank/datasets/2026-09-12/manifest.json' \
+  --config configs/rerank-train.yml \
+  --run-id xgboost-backtest-20260913
+```
+
+当前比较的重点是每个目标的 AUC、loss、有效样本数、训练耗时和峰值 RSS；AUC floor 仍只是
+warning。树模型不会触发 SageMaker 任务、部署 Endpoint 或生成线上 Serving 制品。
 
 ## 输入合同
 
@@ -198,14 +225,62 @@ model_params:
     immersive_click: 1.0
 ```
 
+XGBoost 配置使用相同的公共数据、切分、指标和资源字段，但不包含 epoch、optimizer 或 DNN 网络
+结构。`tree_method` 和 `device` 不开放为配置，插件固定使用 CPU `hist`：
+
+```yaml
+model_name: rerank_train
+checkpoint_dir: runs/xgboost-20260913-001
+seed: 7
+batch_size: 4096
+bad_row_policy: fail
+
+execution:
+  strategy: single_process_cpu
+  intra_op_threads: 16
+  inter_op_threads: 1
+  reader_workers: 0
+  prefetch_batches: 1
+  memory_limit_bytes: 68719476736
+
+split:
+  train_days: 27
+  validation_days: 1
+  refit_days: 28
+
+metrics:
+  minimum_valid_rows: 10000
+  auc_warning_floor: 0.5
+
+model_params:
+  numeric_features:
+    - age_hours
+    - effective_watch_rate_7d
+  categorical_features:
+    - country
+    - device_type
+  num_boost_round: 500
+  early_stopping_rounds: 30
+  learning_rate: 0.05
+  max_depth: 8
+  min_child_weight: 10.0
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.0
+  reg_lambda: 1.0
+  max_bin: 256
+  max_cat_to_onehot: 16
+```
+
 首轮真实训练建议根据机器核数调整线程和 batch，但不要静默改变数据切分、随机种子或特征合同。
 配置 schema 位于
 [`comm/config.schema.yml`](recommend/train/comm/config.schema.yml) 和
-[`rerank/config.schema.yml`](recommend/train/models/rerank/config.schema.yml)。
+[`rerank/config.schema.yml`](recommend/train/models/rerank/config.schema.yml)；XGBoost 模型参数见
+[`rerank_train/config.schema.yml`](recommend/train/models/rerank_train/config.schema.yml)。
 
 ## 查看训练结果
 
-成功 Run 只写出以下四个对象：
+成功 Run 只写出四个对象。DNN 使用：
 
 ```text
 s3://<model-bucket>/rerank/training-runs/<run-id>/
@@ -219,6 +294,10 @@ s3://<model-bucket>/rerank/training-runs/<run-id>/
 - `metrics.json`：四目标 validation 指标、门禁、训练 trace 与 CPU/RSS/吞吐资源报告；
 - `fitted-feature-state/state.json`：28 日重新拟合的归一化统计、类别词表和 OOV 状态；
 - `lineage.json`：代码 revision、依赖锁、配置、Manifest、Feature/Label 版本与 seed。
+
+XGBoost 使用相同的三个 JSON 对象，但将 `checkpoint.pt` 替换为
+`checkpoint.xgb.zip`。ZIP 内含版本化 manifest 和四个 UBJ Booster；该文件仍是训练 Checkpoint，
+不是 Go/C++ 线上 Serving 合同。
 
 训练完成前后都会严格加载 production Checkpoint。任一 hard gate 失败不会进入 refit；AUC floor
 是 soft gate，`WARN` 会保留在 `metrics.json`，但不会单独阻止 refit。
@@ -248,14 +327,23 @@ URI。
 | `recommend/train/comm` | 公共训练框架 | 配置、数据读取、训练流水线、评估、Checkpoint |
 | `recommend/train/comm/datasvr` | datasvr | S3/Manifest/Parquet adapter，不是常驻服务 |
 | `recommend/train/models/rerank` | rerank model | 特征转换、shared-bottom 网络与 masked loss |
+| `recommend/train/models/rerank_train` | tree baseline model | 四目标 XGBoost、DataIter/DMatrix 与 checkpoint codec |
 | `recommend/train/run.py` | 统一入口 | Typer composition root |
 | `recommend/train/train_rerank.py` | 精排用例 | validate、27/1 evaluation、28 日 refit、输出写入 |
+| `recommend/train/train_rerank_xgboost.py` | 树模型精排用例 | 复用输入/特征/评估合同，编排 XGBoost evaluation/refit |
 | `recommend/train/offline` | 离线评估 | 后续离线分析边界，不依赖 `doku-offline` 仓库 |
 | `recommend/train/tools` | 工具 | Checkpoint 等离线工具入口 |
 
 目录名保持可对应，但实现不复制 Finder 的 TensorFlow GPU、参数服务器或内部平台依赖。
 
 ## 本地开发
+
+Linux 锁定 `xgboost-cpu`，不会安装 CUDA/NCCL runtime。macOS 使用官方 `xgboost` wheel，首次
+运行前需要 OpenMP：
+
+```bash
+brew install libomp
+```
 
 ```bash
 make check
@@ -283,3 +371,6 @@ make capacity
 - [Spec 001 需求](specs/001-cpu-training-scaffold/requirements.md)
 - [Spec 001 设计](specs/001-cpu-training-scaffold/design.md)
 - [Spec 001 验证证据](specs/001-cpu-training-scaffold/verification.md)
+- [Spec 003 XGBoost 需求](specs/003-xgboost-rerank-baseline/requirements.md)
+- [Spec 003 XGBoost 设计](specs/003-xgboost-rerank-baseline/design.md)
+- [Spec 003 XGBoost 验证证据](specs/003-xgboost-rerank-baseline/verification.md)

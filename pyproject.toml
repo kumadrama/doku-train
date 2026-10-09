@@ -12,6 +12,8 @@ dependencies = [
   "scikit-learn>=1.8,<2",
   "torch>=2.13,<3",
   "typer>=0.16,<1",
+  "xgboost>=3.0,<4; sys_platform == 'darwin'",
+  "xgboost-cpu>=3.0,<4; sys_platform != 'darwin'",
 ]
 
 [dependency-groups]

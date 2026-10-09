@@ -1,0 +1,79 @@
+additionalProperties: false
+properties:
+  categorical_features:
+    items:
+      type: string
+    title: Categorical Features
+    type: array
+  colsample_bytree:
+    exclusiveMinimum: 0.0
+    maximum: 1.0
+    title: Colsample Bytree
+    type: number
+  early_stopping_rounds:
+    maximum: 1000
+    minimum: 1
+    title: Early Stopping Rounds
+    type: integer
+  learning_rate:
+    exclusiveMinimum: 0.0
+    maximum: 1.0
+    title: Learning Rate
+    type: number
+  max_bin:
+    maximum: 65536
+    minimum: 2
+    title: Max Bin
+    type: integer
+  max_cat_to_onehot:
+    minimum: 1
+    title: Max Cat To Onehot
+    type: integer
+  max_depth:
+    maximum: 32
+    minimum: 1
+    title: Max Depth
+    type: integer
+  min_child_weight:
+    minimum: 0.0
+    title: Min Child Weight
+    type: number
+  num_boost_round:
+    maximum: 10000
+    minimum: 1
+    title: Num Boost Round
+    type: integer
+  numeric_features:
+    items:
+      type: string
+    title: Numeric Features
+    type: array
+  reg_alpha:
+    minimum: 0.0
+    title: Reg Alpha
+    type: number
+  reg_lambda:
+    minimum: 0.0
+    title: Reg Lambda
+    type: number
+  subsample:
+    exclusiveMinimum: 0.0
+    maximum: 1.0
+    title: Subsample
+    type: number
+required:
+- numeric_features
+- categorical_features
+- num_boost_round
+- early_stopping_rounds
+- learning_rate
+- max_depth
+- min_child_weight
+- subsample
+- colsample_bytree
+- reg_alpha
+- reg_lambda
+- max_bin
+- max_cat_to_onehot
+title: RerankTrainModelParams
+type: object

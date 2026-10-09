@@ -30,6 +30,12 @@ class StageFailure(RuntimeError):
         super().__init__(str(cause))
 
 
+class PipelineBlocked(RuntimeError):
+    def __init__(self, message: str, *, stage: str) -> None:
+        self.stage = stage
+        super().__init__(message)
+
+
 @contextmanager
 def error_stage(stage: str) -> Iterator[None]:
     try:

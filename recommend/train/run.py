@@ -5,14 +5,26 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
+# XGBoost must initialize OpenMP before PyTorch on macOS. The CLI loads both model plugins.
+# isort: off
+import xgboost  # noqa: F401
+
+# isort: on
 import typer
 
 from recommend.train.comm.errors import classify_error
 from recommend.train.train_rerank import execute_backtest, execute_train, validate_input
+from recommend.train.train_rerank_xgboost import (
+    execute_xgboost_backtest,
+    execute_xgboost_train,
+    validate_xgboost_input,
+)
 
 app = typer.Typer(no_args_is_help=True)
 rerank_app = typer.Typer(no_args_is_help=True)
+rerank_train_app = typer.Typer(no_args_is_help=True)
 app.add_typer(rerank_app, name="rerank")
+app.add_typer(rerank_train_app, name="rerank-train")
 
 
 def _fail(error: Exception, *, run_id: str, stage: str) -> None:
@@ -75,6 +87,68 @@ def backtest_command(
     typer.echo(
         json.dumps(
             {"status": "VALID", "fold_count": len(windows)},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+@rerank_train_app.command("validate")
+def validate_xgboost_command(
+    manifest: Annotated[str, typer.Option("--manifest")],
+    config: Annotated[Path, typer.Option("--config")],
+    run_id: Annotated[str, typer.Option("--run-id")] = "validate",
+) -> None:
+    try:
+        validated = validate_xgboost_input(manifest_uri=manifest, config_path=config)
+    except Exception as error:
+        _fail(error, run_id=run_id, stage="validate")
+    typer.echo(
+        json.dumps(
+            {
+                "status": "VALID",
+                "model_name": "rerank_train",
+                "dataset_manifest_digest": validated.manifest.content_sha256,
+                "row_count": validated.manifest.row_count,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+@rerank_train_app.command("train")
+def train_xgboost_command(
+    manifest: Annotated[str, typer.Option("--manifest")],
+    config: Annotated[Path, typer.Option("--config")],
+    output: Annotated[str, typer.Option("--output")],
+    run_id: Annotated[str, typer.Option("--run-id")],
+) -> None:
+    try:
+        result = execute_xgboost_train(
+            manifest_uri=manifest,
+            config_path=config,
+            output_prefix=output,
+            run_id=run_id,
+        )
+    except Exception as error:
+        _fail(error, run_id=run_id, stage="train")
+    typer.echo(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")))
+
+
+@rerank_train_app.command("backtest")
+def backtest_xgboost_command(
+    manifest: Annotated[str, typer.Option("--manifest")],
+    config: Annotated[Path, typer.Option("--config")],
+    run_id: Annotated[str, typer.Option("--run-id")] = "backtest",
+) -> None:
+    try:
+        windows = execute_xgboost_backtest(manifest_uri=manifest, config_path=config)
+    except Exception as error:
+        _fail(error, run_id=run_id, stage="backtest")
+    typer.echo(
+        json.dumps(
+            {"status": "VALID", "model_name": "rerank_train", "fold_count": len(windows)},
             sort_keys=True,
             separators=(",", ":"),
         )

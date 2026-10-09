@@ -31,6 +31,9 @@ Finder-compatible 目标入口：
 python -m recommend.train.run rerank validate --manifest <s3-uri> --config <path>
 python -m recommend.train.run rerank train --manifest <s3-uri> --config <path> --output <s3-prefix>
 python -m recommend.train.run rerank backtest --manifest <s3-uri> --config <path>
+python -m recommend.train.run rerank-train validate --manifest <s3-uri> --config <path>
+python -m recommend.train.run rerank-train train --manifest <s3-uri> --config <path> --output <s3-prefix>
+python -m recommend.train.run rerank-train backtest --manifest <s3-uri> --config <path>
 ```
 
 - `validate` 不启动训练，只检查数据/配置/兼容性；
@@ -38,7 +41,8 @@ python -m recommend.train.run rerank backtest --manifest <s3-uri> --config <path
   training output 并回读 production Checkpoint；
 - `backtest` 显式执行 24/2/2 或 rolling folds，不与每日训练隐式混用；
 - `run.py` 是统一 composition root，`train_rerank.py` 保留 Finder 熟悉的精排入口；可选 console
-  alias 只能转发到相同入口，不能实现第二套逻辑。
+alias 只能转发到相同入口，不能实现第二套逻辑。`rerank` 表示 PyTorch DNN，`rerank-train` 是为
+保持 Finder 对应关系而保留的 XGBoost 插件名。
 
 所有命令以非零退出码表示失败，并输出结构化、脱敏的错误摘要。CLI 不从当前目录、环境名或
 历史运行猜测输入。
@@ -63,19 +67,23 @@ Feature Transformer 分为两个阶段：
   重新拟合；
 - `transform`：以对应阶段的冻结状态转换 training/validation、production refit 和未来在线输入。
 
-Validation 数据不得参与 `evaluation_model` 的 `fit`。Transformer 输出稳定命名的 tensor batch
+Validation 数据不得参与 `evaluation_model` 的 `fit`。Transformer 输出稳定命名的 batch
 与输入签名，并可把 `FittedFeatureState` 序列化到训练输出。统计特征必须是样本曝光前 7 天的
 point-in-time 值；原始 `user_id` 不得出现在首版输入签名。
 
 ## Model 插件接口
 
-每个模型插件提供：
+PyTorch DNN 插件提供：
 
 - 稳定 `model_name=rerank` 和 `config.schema.yml`；
 - 从验证后配置构建 CPU 模型的方法；
 - 输入签名与 `effective_watch`、`completion`、`non_fast_swipe`、`immersive_click` 四个 logits；
 - 按目标有效性 mask 和可配置 loss weight 计算 multi-task loss 的逻辑；
 - 可保存为 PyTorch Checkpoint 的状态。
+
+XGBoost `model_name=rerank_train` 插件复用相同 batch、Feature State 和四目标 margin 接口；每个
+目标一个 Booster，固定 CPU `hist`，evaluation 选择 boosting round，production 在 28 日数据上
+fresh refit。其模型配置 schema 位于插件目录，Checkpoint codec 只接受固定 manifest 和四个 UBJ。
 
 Runtime 负责训练生命周期，模型插件不得：
 
@@ -87,15 +95,15 @@ Runtime 负责训练生命周期，模型插件不得：
 
 ## Execution Strategy 接口
 
-首阶段唯一实现是 `single_process_cpu`：一个 PyTorch 训练进程、一个完整模型副本、受控 CPU
-线程和可配置数据读取 worker。
+首阶段唯一实现是 `single_process_cpu`：DNN 与 XGBoost 都在一个训练进程内执行，使用受控 CPU
+线程和有界 batch 读取；XGBoost 不启动 Dask/Ray/MPI worker。
 
 [INFERRED] Future strategy 可以沿用相同 batch/model/checkpoint 接口加入多进程或多机同步训练，
 但必须通过独立 Spec 证明单机训练窗口不足。未来能力不得影响首阶段配置语义或训练输出格式。
 
 ## Checkpoint 接口
 
-Checkpoint 至少保存：
+PyTorch Checkpoint 至少保存：
 
 - 模型与优化器状态；
 - epoch/step；
@@ -106,9 +114,12 @@ Checkpoint 至少保存：
 
 恢复时 lineage 或结构配置不兼容必须拒绝；不能“尽量加载”后继续产生看似成功的模型。
 
+XGBoost Checkpoint 是确定性 ZIP，内含格式 manifest、四目标、特征名/类型、round 数与四个 UBJ
+Booster。它必须从字节严格回读并完成一次预测；未知、缺失或不安全条目均拒绝。
+
 ## Training Output 接口
 
-成功 Run 的逻辑布局固定为：
+成功 DNN Run 的逻辑布局固定为：
 
 ```text
 <output>/<run-id>/
@@ -119,10 +130,11 @@ Checkpoint 至少保存：
 └── lineage.json
 ```
 
-物理 bucket/prefix 由调用方提供，不写死在训练代码。`TrainingOutputWriter` 只接受 production refit
+XGBoost Run 将 `checkpoint.pt` 替换为 `checkpoint.xgb.zip`，其余三个 JSON 路径和语义不变。
+物理 bucket/prefix 由调用方提供，不写死在训练代码。Training Output Writer 只接受 production refit
 成功后的 Checkpoint、指标、Feature State 和 lineage，以 create-only 语义写入四个对象并返回
 类型化 URI。CLI 必须从对象存储回读 `checkpoint.pt` 并在 CPU 上严格加载，才能把 TrainExecution
-标为成功；不得从对象列表或部分文件推断成功。
+标为成功；XGBoost 入口对对应 ZIP 执行同等回读验证。不得从对象列表或部分文件推断成功。
 
 ## ModelExporter 接口
 

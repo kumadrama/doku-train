@@ -9,6 +9,7 @@ def test_finder_compatible_namespace_is_importable() -> None:
     for module in (
         "recommend.train.comm",
         "recommend.train.models",
+        "recommend.train.models.rerank_train",
         "recommend.train.offline",
         "recommend.train.tools",
     ):

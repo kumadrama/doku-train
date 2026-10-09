@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from recommend.train.comm.model_params import TrainConfig
 from recommend.train.comm.model_params_validator import schema_matches, validate_config_payload
 from recommend.train.models.rerank.model_params import RerankModelParams
+from recommend.train.models.rerank_train.model_params import RerankTrainModelParams
 
 
 def valid_payload() -> dict[str, object]:
@@ -88,4 +89,8 @@ def test_checked_schema_snapshots_match_models() -> None:
     assert schema_matches(TrainConfig, Path("recommend/train/comm/config.schema.yml"))
     assert schema_matches(
         RerankModelParams, Path("recommend/train/models/rerank/config.schema.yml")
+    )
+    assert schema_matches(
+        RerankTrainModelParams,
+        Path("recommend/train/models/rerank_train/config.schema.yml"),
     )

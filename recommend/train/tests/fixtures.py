@@ -140,3 +140,50 @@ def build_training_fixture(tmp_path: Path) -> TrainingFixture:
         config_path=config_path,
         output_uri=(tmp_path / "outputs").as_uri(),
     )
+
+
+def build_xgboost_training_fixture(tmp_path: Path) -> TrainingFixture:
+    fixture = build_training_fixture(tmp_path)
+    config_path = tmp_path / "xgboost-config.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "model_name": "rerank_train",
+                "checkpoint_dir": str(tmp_path / "xgboost-runs"),
+                "seed": 7,
+                "batch_size": 16,
+                "bad_row_policy": "fail",
+                "execution": {
+                    "strategy": "single_process_cpu",
+                    "intra_op_threads": 1,
+                    "inter_op_threads": 1,
+                    "reader_workers": 0,
+                    "prefetch_batches": 1,
+                    "memory_limit_bytes": 2_000_000_000,
+                },
+                "split": {"train_days": 27, "validation_days": 1, "refit_days": 28},
+                "metrics": {"minimum_valid_rows": 4, "auc_warning_floor": 0.5},
+                "model_params": {
+                    "numeric_features": ["watch_7d"],
+                    "categorical_features": ["country"],
+                    "num_boost_round": 4,
+                    "early_stopping_rounds": 2,
+                    "learning_rate": 0.3,
+                    "max_depth": 2,
+                    "min_child_weight": 0.0,
+                    "subsample": 1.0,
+                    "colsample_bytree": 1.0,
+                    "reg_alpha": 0.0,
+                    "reg_lambda": 1.0,
+                    "max_bin": 16,
+                    "max_cat_to_onehot": 4,
+                },
+            },
+            sort_keys=True,
+        )
+    )
+    return TrainingFixture(
+        manifest_uri=fixture.manifest_uri,
+        config_path=config_path,
+        output_uri=(tmp_path / "xgboost-outputs").as_uri(),
+    )

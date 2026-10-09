@@ -82,7 +82,8 @@ hash embedding 或外部 embedding；是否建设参数服务器由容量和更�
 
 - model name 与 model-specific config；
 - execution strategy，首阶段固定为 `single_process_cpu`；
-- batch size、epoch、optimizer、learning rate 与 early stopping；
+- 公共 batch size、线程、切分与门禁；DNN 配置 epoch/optimizer，XGBoost 配置 boosting round、
+  learning rate、树深、采样、正则、bin 与 early stopping；
 - CPU thread、reader worker 与内存预算；
 - 每日 27/1 评估、28 天 refit 规则，以及可选的周度 backtest 规则；
 - 随机种子；
@@ -128,12 +129,13 @@ hash embedding 或外部 embedding；是否建设参数服务器由容量和更�
 
 | 路径 | 语义 |
 | --- | --- |
-| `checkpoint.pt` | 28 天 production refit 的 PyTorch 模型、优化器、epoch/step、RNG、配置和输入 lineage |
+| `checkpoint.pt`（DNN） | 28 天 production refit 的 PyTorch 模型、优化器、epoch/step、RNG、配置和输入 lineage |
+| `checkpoint.xgb.zip`（XGBoost） | 版本 manifest 与四个 28 天 production refit UBJ Booster；每次 Run 二选一 |
 | `metrics.json` | 四目标评估、门禁、训练 trace 和资源报告 |
 | `fitted-feature-state/state.json` | 在 28 天 production split 上重新拟合的特征状态 |
 | `lineage.json` | source revision、依赖锁、配置、Dataset Manifest 和 seed 摘要 |
 
-四个对象位于调用方指定的 `<output>/<run_id>/`，使用 create-only 语义；已有任一同名对象时拒绝
+每个 Run 恰好四个对象，位于调用方指定的 `<output>/<run_id>/`，使用 create-only 语义；已有同名对象时拒绝
 覆盖。它们是训练结果，不是稳定的线上加载合同。Checkpoint 不允许被 Go/C++ serving 直接消费。
 
 ## 时间切分与模型角色
@@ -147,7 +149,7 @@ older ── 27 days evaluation-train ── 1 day validation ── maturity ga
 
 1. `evaluation_model` 只在前 27 天拟合 Feature State 和模型参数，在第 28 天验证；
 2. hard gates 通过后，`production_model` 使用相同冻结配置在全部 28 天重新拟合 Feature State 和
-   模型参数；
+   模型参数；DNN 按选中 epoch、XGBoost 按各目标选中 boosting round 从空模型重新训练；
 3. 只有 `production_model` 的 Checkpoint 和 Feature State 进入成功训练输出；两种模型的角色和输入
    窗口必须写入 Run Metadata；
 4. 初始标签成熟延迟按 24 小时设计，调度默认使用截至 D-2 的成熟数据；在量化延迟分布并通过独立
@@ -170,6 +172,8 @@ runs/<run_id>/checkpoints/checkpoint.pt
 │   └── state.json
 └── lineage.json
 ```
+
+XGBoost Run 的物理布局只将 `checkpoint.pt` 替换为 `checkpoint.xgb.zip`。
 
 首版只定义 `ModelExporter` 接口，不定义具体推理产物。ONNX Artifact、signature、parity 以及
 Go/C++ 推理侧的框架中立边界由后续独立 Spec 固定；任何导出只能在 refit 完成后执行，失败不得
