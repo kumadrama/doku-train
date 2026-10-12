@@ -46,7 +46,10 @@ class S3Storage:
             raise ValueError("max_bytes must be non-negative")
         location = self._location(uri)
         response = self._client.get_object(Bucket=location.bucket, Key=location.key)
-        body: bytes = response["Body"].read(max_bytes + 1)
+        try:
+            body: bytes = response["Body"].read(max_bytes + 1)
+        finally:
+            response["Body"].close()
         if len(body) > max_bytes:
             raise ValueError("object exceeds max_bytes")
         return body
@@ -56,7 +59,7 @@ class S3Storage:
         response = self._client.head_object(Bucket=location.bucket, Key=location.key)
         encoded_checksum = response.get("ChecksumSHA256")
         checksum = None
-        if encoded_checksum:
+        if encoded_checksum and response.get("ChecksumType") != "COMPOSITE":
             checksum = base64.b64decode(encoded_checksum).hex()
         return ObjectHead(int(response["ContentLength"]), checksum)
 

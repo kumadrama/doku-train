@@ -1,0 +1,505 @@
+"""Small synthetic configurations for contract tests; no production experiment inputs."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any
+
+CONFIGS: dict[str, Any] = {
+    "dnn": {
+        "config_version": "doku-train-config/v2",
+        "model_name": "rerank",
+        "dataset": {
+            "manifest_uri": "file:///fixture/manifest.json",
+            "manifest_version": "doku-train-dataset-manifest/v1",
+            "version": "fixture-v1",
+            "feature_schema_version": "fyp-rank-features/v4",
+            "label_definition_version": "fixed-5m-playback-stream-v4",
+            "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "adapter": "doku_offline_v1",
+            "aws_profile": "fixture-unused",
+            "allowed_prefixes": ["file:///fixture/"],
+        },
+        "split": {
+            "timezone": "UTC",
+            "train_from": "2026-10-01",
+            "train_to": "2026-10-06",
+            "validation_from": "2026-10-07",
+            "validation_to": "2026-10-07",
+            "test_from": "2026-10-08",
+            "test_to": "2026-10-08",
+        },
+        "execution": {
+            "strategy": "single_process_cpu",
+            "intra_op_threads": 4,
+            "inter_op_threads": 1,
+            "reader_workers": 0,
+            "prefetch_batches": 1,
+            "arrow_threads": 1,
+            "s3_transfer_threads": 1,
+            "memory_limit_bytes": 1073741824,
+            "cache_dir": "fixture-cache",
+            "cache_limit_bytes": 1073741824,
+        },
+        "seed": 42,
+        "batch_size": 2048,
+        "max_epochs": 2,
+        "early_stopping_patience": 2,
+        "optimizer": {"name": "adamw", "learning_rate": 0.001, "weight_decay": 0.0001},
+        "output": {"root": "fixture-runs", "run_id": "fixture"},
+        "features": [
+            "i_drama_id",
+            "u_skipped__drama_id",
+            "u_drama_interests__id",
+            "u_drama_interests__weight",
+            "i_genre_v2_ids",
+            "u_onboarding_genre_ids",
+            "ctx_platform",
+            "i_episode_dur_s",
+            "u_expose_count_7d_all",
+        ],
+        "item_filter": "video_finish_seen > 0",
+        "feature_default_values": {
+            "i_episode_dur_s": 0,
+            "u_expose_count_7d_all": 0,
+            "u_skipped__drama_id": [],
+            "u_drama_interests__id": [],
+            "u_drama_interests__weight": [],
+            "i_genre_v2_ids": [],
+            "u_onboarding_genre_ids": [],
+        },
+        "feature_transformations": [
+            {"expr": "watch_seconds = watch_duration_ms / 1000"},
+            {
+                "expr": "u_expose_count_7d_all_log_bucket = "
+                "cast(clip(round(log2(maximum(u_expose_count_7d_all "
+                '+ 1, 1))), 0, 31), "int64")'
+            },
+            {"expr": 'i_episode_dur_s_bucket = cast(where(i_episode_dur_s <= 10, 0, 1), "int64")'},
+        ],
+        "hist_options": {
+            "hist_drama_skip": {"max_hist_size": 100, "truncate": "tail", "duplicates": "preserve"},
+            "hist_drama_interest": {
+                "max_hist_size": 100,
+                "truncate": "top_weight",
+                "duplicates": "sum_weights",
+                "tie_break": "raw_id_ascending",
+            },
+        },
+        "input_features": {
+            "item_id": {"features": ["i_drama_id"], "combiner": "concat"},
+            "hist_drama_skip": {"features": ["u_skipped__drama_id"], "combiner": "mean"},
+            "hist_drama_interest": {
+                "features": ["u_drama_interests__id"],
+                "combiner": "weighted_mean",
+                "weight_feature": "u_drama_interests__weight",
+            },
+            "item_tag": {"features": ["i_genre_v2_ids"], "combiner": "mean"},
+            "user_profile": {"features": ["u_onboarding_genre_ids"], "combiner": "mean"},
+            "context": {"features": ["ctx_platform"], "combiner": "concat"},
+            "item_numeric": {"features": ["i_episode_dur_s_bucket"], "combiner": "concat"},
+            "user_statistics": {
+                "features": ["u_expose_count_7d_all_log_bucket"],
+                "combiner": "concat",
+            },
+        },
+        "embed_name": {
+            "i_drama_id": "drama",
+            "u_skipped__drama_id": "drama",
+            "u_drama_interests__id": "drama",
+            "i_genre_v2_ids": "genre",
+            "u_onboarding_genre_ids": "genre",
+            "ctx_platform": "platform",
+            "i_episode_dur_s_bucket": "i_episode_dur_s_bucket",
+            "u_expose_count_7d_all_log_bucket": "u_expose_count_7d_all_log_bucket",
+        },
+        "embed_dim": {"*": 8, "i_episode_dur_s_bucket": 4, "u_expose_count_7d_all_log_bucket": 4},
+        "embed_initializer": "uniform",
+        "embed_initializer_args": {"minval": -0.01, "maxval": 0.01},
+        "dnn_inputs": [
+            "item_id",
+            "hist_drama_skip",
+            "hist_drama_interest",
+            "item_tag",
+            "user_profile",
+            "context",
+            "item_numeric",
+            "user_statistics",
+        ],
+        "fm_layers": [],
+        "output_layer": {"dims": [16, 8], "acts": ["relu", "relu"], "norms": ["", ""]},
+        "tasks": {
+            "completion": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "completion",
+                "mask": "True",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+            "fast_swipe": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "1 - non_fast_swipe",
+                "mask": "True",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+            "immersive_click": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "immersive_click",
+                "mask": "True",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+            "watch_seconds": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "clip(watch_seconds, 0, 300)",
+                "mask": "not is_null(watch_seconds)",
+                "num_outputs": 61,
+                "loss_type": "softmax_soft",
+                "loss_weight": "1.0",
+                "predict_fn": "expectation",
+                "metrics": {
+                    "mae": {"func": "mae"},
+                    "mse": {"func": "mse"},
+                    "rmse": {"func": "rmse"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "overflow_rate": {"func": "mean", "label": "watch_seconds > 300"},
+                },
+                "soft_label": {"func": "normal", "scale": 5, "sigma": 2},
+                "metric_label": "watch_seconds",
+            },
+            "play10": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "watch_seconds > 10",
+                "mask": "not is_null(watch_seconds)",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+            "play30": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "watch_seconds > 30",
+                "mask": "not is_null(watch_seconds)",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+            "play50": {
+                "dims": [8],
+                "acts": ["relu"],
+                "norms": [""],
+                "label": "watch_seconds > 50",
+                "mask": "not is_null(watch_seconds)",
+                "num_outputs": 1,
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+            },
+        },
+        "selection": {
+            "mode": "min",
+            "aggregation": "weighted_sum",
+            "task_losses": {"completion": 1.0},
+        },
+    },
+    "xgboost": {
+        "config_version": "doku-train-config/v2",
+        "model_name": "rerank_tree",
+        "dataset": {
+            "manifest_uri": "file:///fixture/manifest.json",
+            "manifest_version": "doku-train-dataset-manifest/v1",
+            "version": "fixture-v1",
+            "feature_schema_version": "fyp-rank-features/v4",
+            "label_definition_version": "fixed-5m-playback-stream-v4",
+            "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "adapter": "doku_offline_v1",
+            "aws_profile": "fixture-unused",
+            "allowed_prefixes": ["file:///fixture/"],
+        },
+        "split": {
+            "timezone": "UTC",
+            "train_from": "2026-10-01",
+            "train_to": "2026-10-06",
+            "validation_from": "2026-10-07",
+            "validation_to": "2026-10-07",
+            "test_from": "2026-10-08",
+            "test_to": "2026-10-08",
+        },
+        "execution": {
+            "strategy": "single_process_cpu",
+            "intra_op_threads": 4,
+            "inter_op_threads": 1,
+            "reader_workers": 0,
+            "prefetch_batches": 1,
+            "arrow_threads": 1,
+            "s3_transfer_threads": 1,
+            "memory_limit_bytes": 1073741824,
+            "cache_dir": "fixture-cache",
+            "cache_limit_bytes": 1073741824,
+        },
+        "seed": 42,
+        "batch_size": 8192,
+        "output": {"root": "fixture-runs", "run_id": "fixture"},
+        "features": [
+            "i_drama_id",
+            "u_skipped__drama_id",
+            "u_drama_interests__id",
+            "u_drama_interests__weight",
+            "i_genre_v2_ids",
+            "u_onboarding_genre_ids",
+            "ctx_platform",
+            "i_episode_dur_s",
+            "u_expose_count_7d_all",
+        ],
+        "item_filter": "video_finish_seen > 0",
+        "feature_default_values": {
+            "i_episode_dur_s": 0,
+            "u_expose_count_7d_all": 0,
+            "u_skipped__drama_id": [],
+            "u_drama_interests__id": [],
+            "u_drama_interests__weight": [],
+            "i_genre_v2_ids": [],
+            "u_onboarding_genre_ids": [],
+        },
+        "feature_transformations": [
+            {"expr": "watch_seconds = watch_duration_ms / 1000"},
+            {
+                "expr": "u_expose_count_7d_all_log_bucket = "
+                "cast(clip(round(log2(maximum(u_expose_count_7d_all "
+                '+ 1, 1))), 0, 31), "int64")'
+            },
+            {"expr": 'i_episode_dur_s_bucket = cast(where(i_episode_dur_s <= 10, 0, 1), "int64")'},
+        ],
+        "hist_options": {
+            "hist_drama_skip": {"max_hist_size": 100, "truncate": "tail", "duplicates": "preserve"},
+            "hist_drama_interest": {
+                "max_hist_size": 100,
+                "truncate": "top_weight",
+                "duplicates": "sum_weights",
+                "tie_break": "raw_id_ascending",
+            },
+        },
+        "input_features": {
+            "hist_drama_skip": {"features": ["u_skipped__drama_id"]},
+            "hist_drama_interest": {
+                "features": ["u_drama_interests__id"],
+                "weight_feature": "u_drama_interests__weight",
+            },
+        },
+        "tasks": {
+            "completion": {
+                "label": "completion",
+                "mask": "True",
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+                "objective": "binary:logistic",
+            },
+            "fast_swipe": {
+                "label": "1 - non_fast_swipe",
+                "mask": "True",
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+                "objective": "binary:logistic",
+            },
+            "immersive_click": {
+                "label": "immersive_click",
+                "mask": "True",
+                "loss_type": "logloss",
+                "loss_weight": "1.0",
+                "predict_fn": "sigmoid",
+                "metrics": {
+                    "auc": {"func": "auc"},
+                    "logloss": {"func": "logloss"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "positive_rate": {"func": "positive_rate"},
+                },
+                "objective": "binary:logistic",
+            },
+            "watch_seconds": {
+                "label": "watch_seconds",
+                "mask": "not is_null(watch_seconds)",
+                "loss_type": "mseloss",
+                "loss_weight": "1.0",
+                "predict_fn": "identity",
+                "metrics": {
+                    "mae": {"func": "mae"},
+                    "mse": {"func": "mse"},
+                    "rmse": {"func": "rmse"},
+                    "valid_rows": {"func": "valid_rows"},
+                    "overflow_rate": {"func": "mean", "label": "watch_seconds > 300"},
+                },
+                "metric_label": "watch_seconds",
+                "objective": "reg:squarederror",
+            },
+        },
+        "selection": {
+            "mode": "min",
+            "per_task_metrics": {
+                "completion": "logloss",
+                "fast_swipe": "logloss",
+                "immersive_click": "logloss",
+                "watch_seconds": "rmse",
+            },
+        },
+        "history_scalars": {
+            "skip_count": {"history": "hist_drama_skip", "func": "count"},
+            "candidate_in_skip": {
+                "history": "hist_drama_skip",
+                "func": "contains",
+                "candidate": "i_drama_id",
+            },
+            "interest_count": {"history": "hist_drama_interest", "func": "positive_unique_count"},
+            "candidate_interest_share": {
+                "history": "hist_drama_interest",
+                "func": "normalized_weight",
+                "candidate": "i_drama_id",
+            },
+            "genre_overlap_count": {
+                "func": "unique_intersection_count",
+                "left": "i_genre_v2_ids",
+                "right": "u_onboarding_genre_ids",
+            },
+        },
+        "tree_inputs": {
+            "categorical": ["i_drama_id", "ctx_platform"],
+            "numeric": [
+                "i_episode_dur_s",
+                "u_expose_count_7d_all_log_bucket",
+                "skip_count",
+                "candidate_in_skip",
+                "interest_count",
+                "candidate_interest_share",
+                "genre_overlap_count",
+            ],
+        },
+        "model_params": {
+            "tree_method": "hist",
+            "num_boost_round": 3,
+            "early_stopping_rounds": 2,
+            "learning_rate": 0.05,
+            "max_depth": 2,
+            "min_child_weight": 1,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
+            "reg_alpha": 0,
+            "reg_lambda": 5,
+            "max_bin": 256,
+            "max_cat_to_onehot": 4,
+        },
+    },
+}
+
+SEARCH: dict[str, Any] = {
+    "base_configs": ["dnn.yaml", "deepfm.yaml"],
+    "baseline_config": "xgboost.yaml",
+    "search": {
+        "method": "grid",
+        "parameters": {
+            "output_layer.dims": [[16, 8], [8, 4]],
+            "optimizer.learning_rate": [0.001, 0.003],
+        },
+        "fixed": {"batch_size": 32},
+    },
+    "comparison": {
+        "split": "validation",
+        "baseline": "rerank_tree",
+        "tasks": {
+            "completion": {
+                "loss": "logloss",
+                "loss_direction": "min",
+                "auc": "auc",
+                "auc_direction": "max",
+            }
+        },
+    },
+}
+
+
+def synthetic_config(model: str) -> dict[str, Any]:
+    config = deepcopy(CONFIGS["dnn" if model == "deepfm" else model])
+    if model == "deepfm":
+        config["fm_layers"] = [
+            {
+                "fm_type": "embed",
+                "features": [
+                    ["item_id", "hist_drama_interest"],
+                    ["item_id", "hist_drama_skip"],
+                    ["item_tag", "user_profile"],
+                ],
+            }
+        ]
+    return config
+
+
+def synthetic_search() -> dict[str, Any]:
+    return deepcopy(SEARCH)

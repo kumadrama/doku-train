@@ -1,91 +1,126 @@
+"""Shared CPU network; FM interactions are entirely configured."""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
+from typing import Any
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from recommend.train.models.rerank.model_params import TARGETS, RerankModelParams
+
+def layers(width: int, cfg: dict[str, Any]) -> tuple[nn.Sequential, int]:
+    modules: list[nn.Module] = []
+    for size, act in zip(cfg["dims"], cfg["acts"], strict=True):
+        modules.append(nn.Linear(width, size))
+        width = size
+        if act:
+            modules.append({"relu": nn.ReLU, "silu": nn.SiLU, "prelu": nn.PReLU}[act]())
+        keep_probability = cfg.get("layer_dropout", 1.0)
+        if keep_probability < 1.0:
+            modules.append(nn.Dropout(p=1.0 - keep_probability))
+    return nn.Sequential(*modules), width
 
 
-def _activation(name: str) -> nn.Module:
-    if name == "relu":
-        return nn.ReLU()
-    if name == "silu":
-        return nn.SiLU()
-    raise ValueError(f"unsupported activation: {name}")
-
-
-class RerankModel(nn.Module):
-    def __init__(self, params: RerankModelParams) -> None:
+class ConfiguredRerank(nn.Module):
+    def __init__(self, config: dict[str, Any], state: dict[str, Any]) -> None:
         super().__init__()
-        self._categorical_count = len(params.categorical_cardinalities)
-        self.embeddings = nn.ModuleList(
-            nn.Embedding(cardinality, params.embedding_dim)
-            for cardinality in params.categorical_cardinalities
+        self.config = config
+        self.state = state
+        self.table_names = sorted(state["vocabs"])
+        self.embeddings = nn.ModuleList()
+        widths = {}
+        for name in self.table_names:
+            dim = config["embed_dim"].get(name, config["embed_dim"].get("*"))
+            if dim is None:
+                raise ValueError(f"missing embedding dimension: {name}")
+            emb = nn.Embedding(len(state["vocabs"][name]) + 2, dim, padding_idx=0)
+            args = config["embed_initializer_args"]
+            nn.init.uniform_(emb.weight, args["minval"], args["maxval"])
+            with torch.no_grad():
+                emb.weight[0].zero_()
+            self.embeddings.append(emb)
+            widths[name] = dim
+        self.group_dims = {}
+        for name, g in config["input_features"].items():
+            dims = [
+                widths[state["tables"][f]] if f in state["tables"] else 1 for f in g["features"]
+            ]
+            if g.get("combiner") in {"mean", "weighted_mean"} and (
+                len(dims) != 1 or g["features"][0] not in state["tables"]
+            ):
+                raise ValueError("pooling requires one embedding sequence")
+            self.group_dims[name] = sum(dims)
+        self.pairs = [pair for layer in config["fm_layers"] for pair in layer["features"]]
+        for a, b in self.pairs:
+            if self.group_dims[a] != self.group_dims[b]:
+                raise ValueError("FM dimensions differ")
+        self.shared, width = layers(
+            sum(self.group_dims[n] for n in config["dnn_inputs"]), config["output_layer"]
         )
-        input_dim = len(params.numeric_features) * 2 + (
-            self._categorical_count * params.embedding_dim
-        )
-        shared_layers: list[nn.Module] = []
-        previous_dim = input_dim
-        for hidden_dim in params.shared_hidden_dims:
-            shared_layers.extend(
-                [
-                    nn.Linear(previous_dim, hidden_dim),
-                    _activation(params.activation),
-                    nn.Dropout(params.dropout),
-                ]
+        self.task_names = sorted(config["tasks"])
+        self.towers = nn.ModuleList()
+        for name in self.task_names:
+            t = config["tasks"][name]
+            tower, size = layers(width + len(self.pairs), t)
+            self.towers.append(nn.Sequential(tower, nn.Linear(size, t["num_outputs"])))
+
+    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        groups = {}
+        for name, g in self.config["input_features"].items():
+            parts = []
+            for f in g["features"]:
+                if f not in self.state["tables"]:
+                    continue
+                table = self.state["tables"][f]
+                v = batch[f].long()
+                emb = self.embeddings[self.table_names.index(table)](v)
+                valid = v != 0
+                if g.get("combiner") == "weighted_mean":
+                    weight = batch[g["weight_feature"]] * valid
+                    denom = weight.sum(1, keepdim=True)
+                    value = (emb * weight.unsqueeze(-1)).sum(1) / denom.clamp_min(
+                        torch.finfo(emb.dtype).tiny
+                    )
+                else:
+                    value = (emb * valid.unsqueeze(-1)).sum(1) / valid.sum(
+                        1, keepdim=True
+                    ).clamp_min(1)
+                parts.append(value)
+            if "numeric:" + name in batch:
+                parts.append(batch["numeric:" + name].float())
+            groups[name] = torch.cat(parts, dim=1)
+        shared = self.shared(torch.cat([groups[n] for n in self.config["dnn_inputs"]], dim=1))
+        if self.pairs:
+            shared = torch.cat(
+                [shared, *[(groups[a] * groups[b]).sum(1, keepdim=True) for a, b in self.pairs]],
+                dim=1,
             )
-            previous_dim = hidden_dim
-        self.shared_bottom = nn.Sequential(*shared_layers)
-        self.towers = nn.ModuleDict(
-            {
-                target: nn.Sequential(
-                    nn.Linear(previous_dim, params.tower_hidden_dim),
-                    _activation(params.activation),
-                    nn.Dropout(params.dropout),
-                    nn.Linear(params.tower_hidden_dim, 1),
-                )
-                for target in TARGETS
-            }
-        )
-
-    def forward(self, numeric: torch.Tensor, categorical: torch.Tensor) -> dict[str, torch.Tensor]:
-        if numeric.ndim != 2 or categorical.ndim != 2:
-            raise ValueError("numeric and categorical inputs must be rank two")
-        if categorical.shape[1] != self._categorical_count:
-            raise ValueError("categorical input width does not match model configuration")
-        encoded = [numeric]
-        encoded.extend(
-            embedding(categorical[:, index]) for index, embedding in enumerate(self.embeddings)
-        )
-        shared = self.shared_bottom(torch.cat(encoded, dim=1))
-        return {target: self.towers[target](shared).squeeze(-1) for target in TARGETS}
+        return {n: layer(shared) for n, layer in zip(self.task_names, self.towers, strict=True)}
 
 
-def masked_multitask_loss(
-    logits: Mapping[str, torch.Tensor],
-    labels: Mapping[str, torch.Tensor],
-    masks: Mapping[str, torch.Tensor],
-    weights: Mapping[str, float],
-) -> torch.Tensor:
-    active_losses: list[torch.Tensor] = []
-    active_weights: list[float] = []
-    for target in TARGETS:
-        if target not in logits or target not in labels or target not in masks:
-            raise ValueError(f"missing target tensor: {target}")
-        mask = masks[target].bool()
-        if logits[target].shape != labels[target].shape or mask.shape != labels[target].shape:
-            raise ValueError(f"target tensor shape mismatch: {target}")
-        if mask.any():
-            weight = float(weights[target])
-            active_losses.append(
-                F.binary_cross_entropy_with_logits(logits[target][mask], labels[target][mask])
-                * weight
-            )
-            active_weights.append(weight)
-    if not active_losses:
-        raise ValueError("batch has no active target")
-    return torch.stack(active_losses).sum() / sum(active_weights)
+def task_loss(logits: torch.Tensor, label: torch.Tensor, task: dict[str, Any]) -> torch.Tensor:
+    if task["loss_type"] == "logloss":
+        if not ((label == 0) | (label == 1)).all():
+            raise ValueError("binary labels must be zero or one")
+        return F.binary_cross_entropy_with_logits(logits[:, 0], label, reduction="none")
+    if task["loss_type"] == "mseloss":
+        return (logits[:, 0] - label).square()
+    soft = task["soft_label"]
+    bins = torch.arange(task["num_outputs"], device=label.device, dtype=label.dtype) * soft["scale"]
+    logp = -0.5 * ((bins[None, :] - label[:, None]) / soft["sigma"]).square()
+    target = torch.softmax(logp, dim=1)
+    return -(target * F.log_softmax(logits, dim=1)).sum(1)
+
+
+def predictions(logits: torch.Tensor, task: dict[str, Any]) -> torch.Tensor:
+    if task["predict_fn"] == "sigmoid":
+        return torch.sigmoid(logits[:, 0])
+    if task["predict_fn"] == "identity":
+        return logits[:, 0]
+    bins = (
+        torch.arange(task["num_outputs"], device=logits.device, dtype=logits.dtype)
+        * task["soft_label"]["scale"]
+    )
+    result: torch.Tensor = (torch.softmax(logits, dim=1) * bins).sum(1)
+    return result

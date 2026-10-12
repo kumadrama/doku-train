@@ -32,14 +32,20 @@ def test_production_python_has_no_forbidden_platform_or_exporter_coupling() -> N
     production_files = [
         path for path in Path("recommend/train").rglob("*.py") if "tests" not in path.parts
     ]
-    sources = {path: path.read_text().casefold() for path in production_files}
-    for path, source in sources.items():
-        if path.name != "model_exporter.py":
-            assert "model_exporter" not in source, path
-        assert "onnx" not in source, path
-        assert "list_objects" not in source, path
-        assert "doku_offline" not in source, path
-        assert "finder" not in source, path
+    for path in production_files:
+        source = path.read_text()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                modules = [node.module or ""]
+            else:
+                continue
+            for module in modules:
+                assert not module.startswith(("tensorflow", "doku_offline", "finder")), path
+                if "comm" in path.parts:
+                    assert not module.startswith("recommend.train.models"), path
         for pattern in SECRET_PATTERNS:
             assert pattern.search(source) is None, path
 

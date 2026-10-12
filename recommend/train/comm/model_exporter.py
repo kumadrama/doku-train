@@ -1,8 +1,8 @@
-"""Future post-refit model delivery boundary.
+"""Future post-training model delivery boundary.
 
 Spec 001 deliberately provides no implementation or composition-root registration. A future
 implementation receives only successful training outputs and owns an independent attempt status;
-its failure cannot change the completed refit or training-run state.
+its failure cannot change the completed training or training-run state.
 """
 
 from __future__ import annotations

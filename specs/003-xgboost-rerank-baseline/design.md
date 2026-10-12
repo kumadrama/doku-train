@@ -2,7 +2,7 @@
 
 ## 决策摘要
 
-- `R101`：新增 `models/rerank_train`，训练算法、配置和 checkpoint codec 留在插件内；S3 与生命周期
+- `R101`：新增 `models/rerank_tree`，训练算法、配置和 checkpoint codec 留在插件内；S3 与生命周期
   编排留在 composition root。
 - `R102`：直接复用 `models/rerank` 已实现的 `RerankBatch`、Feature State、标签计算和时间切分，
   避免建立第二套特征语义。
@@ -15,7 +15,7 @@
   `build_metric_gates`。
 - `R107`：四个 Booster 以 UBJ 存入确定性 ZIP；ZIP manifest 固定目标集合、格式版本、round 数和
   XGBoost 版本。写出后从对象存储回读、严格解包并执行一次 validation batch 预测。
-- `R108`：Typer 新增 `rerank-train` 命令组；composition root 装配插件，不修改 PyTorch
+- `R108`：Typer 新增 `rerank-tree` 命令组；composition root 装配插件，不修改 PyTorch
   `TrainingPipeline`，避免把梯度优化器抽象强加给树模型。
 - `R109`：SageMaker 和推理 Artifact 后续独立设计。
 
@@ -28,13 +28,13 @@ XGBoost 都使用 OpenMP，统一 CLI 和测试进程在加载 PyTorch 前先初
 
 ```text
 run.py
-  └── train_rerank_xgboost.py
+  └── train_rerank.py
         ├── comm/datasvr + Manifest/S3
         ├── models/rerank feature/data contract
-        ├── models/rerank_train
+        ├── models/rerank_tree
         │     ├── model_params.py
         │     ├── data_utils.py
-        │     └── rerank_train_model.py
+        │     └── rerank_tree_model.py
         ├── comm/eval
         └── comm/training_output.py
 ```

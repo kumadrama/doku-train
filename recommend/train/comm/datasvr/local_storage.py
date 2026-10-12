@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import shutil
 from pathlib import Path
 from typing import BinaryIO
 
@@ -42,9 +41,14 @@ class LocalStorage:
 
     def download_to(self, uri: str, sink: BinaryIO) -> ObjectHead:
         path = self._path(uri)
+        digest = hashlib.sha256()
+        count = 0
         with path.open("rb") as source:
-            shutil.copyfileobj(source, sink, length=1024 * 1024)
-        return self._head(path)
+            while chunk := source.read(1024 * 1024):
+                sink.write(chunk)
+                digest.update(chunk)
+                count += len(chunk)
+        return ObjectHead(count, digest.hexdigest())
 
     def put_bytes_if_absent(self, uri: str, body: bytes) -> ObjectHead:
         path = self._path(uri)

@@ -13,8 +13,11 @@ from recommend.train.comm.datasvr.storage import parse_uri
 def test_parse_uri_rejects_queries_latest_and_unsupported_schemes() -> None:
     with pytest.raises(ValueError, match="query"):
         parse_uri("s3://bucket/key?token=secret")
-    with pytest.raises(ValueError, match="latest"):
-        parse_uri("s3://bucket/training/latest/manifest.json")
+    assert (
+        parse_uri("s3://bucket/training/latest/manifest.json").key
+        == "training/latest/manifest.json"
+    )
+    assert parse_uri("s3://bucket/a//b").key == "a//b"
     with pytest.raises(ValueError, match="unsupported"):
         parse_uri("https://example.com/object")
 

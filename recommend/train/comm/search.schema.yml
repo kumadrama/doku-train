@@ -1,0 +1,71 @@
+type: object
+properties:
+  base_configs:
+    type: array
+    items: &id001
+      type: string
+      minLength: 1
+    minItems: 1
+    uniqueItems: true
+  baseline_config: *id001
+  search:
+    type: object
+    properties:
+      method:
+        const: grid
+      parameters:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          type: array
+          minItems: 1
+          uniqueItems: true
+      fixed:
+        type: object
+    required:
+    - method
+    - parameters
+    - fixed
+    additionalProperties: false
+  comparison:
+    type: object
+    properties:
+      split:
+        const: validation
+      baseline: *id001
+      tasks:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          type: object
+          properties:
+            loss:
+              enum:
+              - logloss
+              - mse
+            loss_direction:
+              const: min
+            auc:
+              const: auc
+            auc_direction:
+              const: max
+          required:
+          - loss
+          - loss_direction
+          additionalProperties: false
+          dependentRequired:
+            auc:
+            - auc_direction
+            auc_direction:
+            - auc
+    required:
+    - split
+    - baseline
+    - tasks
+    additionalProperties: false
+required:
+- base_configs
+- baseline_config
+- search
+- comparison
+additionalProperties: false

@@ -107,7 +107,13 @@ class TrainingOutputWriter:
 
 class ModelTrainingOutputWriter:
     def __init__(self, store: ObjectStore, output_prefix: str, artifact_name: str) -> None:
-        if not artifact_name or "/" in artifact_name or artifact_name in SHARED_OUTPUT_NAMES:
+        if (
+            not artifact_name
+            or "/" in artifact_name
+            or "\\" in artifact_name
+            or artifact_name in {".", ".."}
+            or artifact_name in SHARED_OUTPUT_NAMES
+        ):
             raise ValueError("invalid model artifact name")
         self._store = store
         self._output_prefix = output_prefix.rstrip("/")

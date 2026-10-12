@@ -85,7 +85,7 @@ def test_model_writer_supports_xgboost_artifact_without_weakening_shared_outputs
         model_artifact=b"xgboost-checkpoint",
         metrics=b'{"metric_set_version":"1"}',
         fitted_feature_state=b'{"state_version":"1"}',
-        lineage=b'{"model_name":"rerank_train"}',
+        lineage=b'{"model_name":"rerank_tree"}',
     )
     assert uris.model_artifact.endswith("/xgboost-run/checkpoint.xgb.zip")
     assert sorted(
