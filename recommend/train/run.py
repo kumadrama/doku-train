@@ -1,158 +1,70 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
-# XGBoost must initialize OpenMP before PyTorch on macOS. The CLI loads both model plugins.
-# isort: off
-import xgboost  # noqa: F401
-
-# isort: on
 import typer
 
-from recommend.train.comm.errors import classify_error
-from recommend.train.train_rerank import execute_backtest, execute_train, validate_input
-from recommend.train.train_rerank_xgboost import (
-    execute_xgboost_backtest,
-    execute_xgboost_train,
-    validate_xgboost_input,
-)
+from recommend.train.comm.model_params_validator import load_config
+from recommend.train.comm.search import execute_search, expand_search
+from recommend.train.train_rerank import execute_test_local, execute_train, execute_train_local
 
 app = typer.Typer(no_args_is_help=True)
-rerank_app = typer.Typer(no_args_is_help=True)
-rerank_train_app = typer.Typer(no_args_is_help=True)
-app.add_typer(rerank_app, name="rerank")
-app.add_typer(rerank_train_app, name="rerank-train")
 
 
-def _fail(error: Exception, *, run_id: str, stage: str) -> None:
-    typer.echo(classify_error(error, run_id=run_id, stage=stage).to_json())
-    raise typer.Exit(code=1)
-
-
-@rerank_app.command("validate")
-def validate_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
-    config: Annotated[Path, typer.Option("--config")],
-    run_id: Annotated[str, typer.Option("--run-id")] = "validate",
-) -> None:
-    try:
-        validated = validate_input(manifest_uri=manifest, config_path=config)
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="validate")
+@app.command("validate")
+def validate(config: Annotated[Path, typer.Option("--config")]) -> None:
+    value = load_config(config)
     typer.echo(
         json.dumps(
-            {
-                "status": "VALID",
-                "dataset_manifest_digest": validated.manifest.content_sha256,
-                "row_count": validated.manifest.row_count,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+            {"status": "valid", "model_name": value["model_name"], "tasks": list(value["tasks"])}
         )
     )
 
 
-@rerank_app.command("train")
-def train_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
+@app.command("train")
+def train(
     config: Annotated[Path, typer.Option("--config")],
-    output: Annotated[str, typer.Option("--output")],
-    run_id: Annotated[str, typer.Option("--run-id")],
+    local_root: Annotated[Path | None, typer.Option("--local-root")] = None,
+    resume: Annotated[Path | None, typer.Option("--resume")] = None,
 ) -> None:
-    try:
-        result = execute_train(
-            manifest_uri=manifest,
-            config_path=config,
-            output_prefix=output,
-            run_id=run_id,
-        )
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="train")
-    typer.echo(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")))
+    result = execute_train_local(load_config(config), local_root=local_root, resume=resume)
+    typer.echo(json.dumps({"status": result["status"], "run_dir": result["run_dir"]}))
 
 
-@rerank_app.command("backtest")
-def backtest_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
+@app.command("test")
+def test(
+    run_dir: Annotated[Path, typer.Option("--run-dir")],
+    local_root: Annotated[Path | None, typer.Option("--local-root")] = None,
+) -> None:
+    typer.echo(json.dumps(execute_test_local(run_dir, local_root=local_root)))
+
+
+@app.command("search")
+def search(
     config: Annotated[Path, typer.Option("--config")],
-    run_id: Annotated[str, typer.Option("--run-id")] = "backtest",
+    output: Annotated[Path, typer.Option("--output")],
+    local_root: Annotated[Path | None, typer.Option("--local-root")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
-    try:
-        windows = execute_backtest(manifest_uri=manifest, config_path=config)
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="backtest")
-    typer.echo(
-        json.dumps(
-            {"status": "VALID", "fold_count": len(windows)},
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    if dry_run:
+        _, trials = expand_search(config, output)
+        typer.echo(json.dumps({"trial_count": len(trials), "experiments": [n for n, _ in trials]}))
+    else:
+        execute_search(config, output, execute_train, local_root=local_root)
+        typer.echo(str(output / "search-report.md"))
 
 
-@rerank_train_app.command("validate")
-def validate_xgboost_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
-    config: Annotated[Path, typer.Option("--config")],
-    run_id: Annotated[str, typer.Option("--run-id")] = "validate",
+@app.command("report")
+def report(
+    run_dir: Annotated[list[Path], typer.Option("--run-dir")],
+    output: Annotated[Path, typer.Option("--output")],
 ) -> None:
-    try:
-        validated = validate_xgboost_input(manifest_uri=manifest, config_path=config)
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="validate")
-    typer.echo(
-        json.dumps(
-            {
-                "status": "VALID",
-                "model_name": "rerank_train",
-                "dataset_manifest_digest": validated.manifest.content_sha256,
-                "row_count": validated.manifest.row_count,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    from recommend.train.comm.report import write_final_report
 
-
-@rerank_train_app.command("train")
-def train_xgboost_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
-    config: Annotated[Path, typer.Option("--config")],
-    output: Annotated[str, typer.Option("--output")],
-    run_id: Annotated[str, typer.Option("--run-id")],
-) -> None:
-    try:
-        result = execute_xgboost_train(
-            manifest_uri=manifest,
-            config_path=config,
-            output_prefix=output,
-            run_id=run_id,
-        )
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="train")
-    typer.echo(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")))
-
-
-@rerank_train_app.command("backtest")
-def backtest_xgboost_command(
-    manifest: Annotated[str, typer.Option("--manifest")],
-    config: Annotated[Path, typer.Option("--config")],
-    run_id: Annotated[str, typer.Option("--run-id")] = "backtest",
-) -> None:
-    try:
-        windows = execute_xgboost_backtest(manifest_uri=manifest, config_path=config)
-    except Exception as error:
-        _fail(error, run_id=run_id, stage="backtest")
-    typer.echo(
-        json.dumps(
-            {"status": "VALID", "model_name": "rerank_train", "fold_count": len(windows)},
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    write_final_report(run_dir, output)
+    typer.echo(str(output))
 
 
 if __name__ == "__main__":

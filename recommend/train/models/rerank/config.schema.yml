@@ -1,60 +1,128 @@
-additionalProperties: false
-properties:
-  activation:
-    enum:
-    - relu
-    - silu
-    title: Activation
-    type: string
-  categorical_cardinalities:
-    items:
-      type: integer
-    title: Categorical Cardinalities
-    type: array
-  categorical_features:
-    items:
-      type: string
-    title: Categorical Features
-    type: array
-  dropout:
-    exclusiveMaximum: 1.0
-    minimum: 0.0
-    title: Dropout
-    type: number
-  embedding_dim:
-    maximum: 256
-    minimum: 1
-    title: Embedding Dim
-    type: integer
-  loss_weights:
-    additionalProperties:
-      type: number
-    title: Loss Weights
-    type: object
-  numeric_features:
-    items:
-      type: string
-    title: Numeric Features
-    type: array
-  shared_hidden_dims:
-    items:
-      type: integer
-    title: Shared Hidden Dims
-    type: array
-  tower_hidden_dim:
-    maximum: 4096
-    minimum: 1
-    title: Tower Hidden Dim
-    type: integer
-required:
-- numeric_features
-- categorical_features
-- categorical_cardinalities
-- embedding_dim
-- shared_hidden_dims
-- tower_hidden_dim
-- activation
-- dropout
-- loss_weights
-title: RerankModelParams
 type: object
+properties:
+  embed_name:
+    type: object
+    additionalProperties: &id002
+      type: string
+  embed_dim:
+    type: object
+    additionalProperties: &id003
+      type: integer
+      minimum: 1
+  embed_initializer:
+    enum:
+    - uniform
+  embed_initializer_args:
+    type: object
+    properties:
+      minval: &id001
+        type: number
+      maxval: *id001
+    required:
+    - minval
+    - maxval
+    additionalProperties: false
+  dnn_inputs:
+    type: array
+    items: *id002
+    minItems: 1
+    uniqueItems: true
+  output_layer:
+    type: object
+    properties:
+      layer_dropout:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1
+        default: 1
+      dims:
+        type: array
+        items: *id003
+      acts:
+        type: array
+        items:
+          enum:
+          - relu
+          - silu
+          - prelu
+          - ''
+      norms:
+        type: array
+        items:
+          enum:
+          - ''
+    required:
+    - dims
+    - acts
+    - norms
+    additionalProperties: false
+  fm_layers:
+    type: array
+    items:
+      type: object
+      properties:
+        fm_type:
+          enum:
+          - embed
+        features:
+          type: array
+          items:
+            type: array
+            items: *id002
+            minItems: 2
+            maxItems: 2
+      required:
+      - fm_type
+      - features
+      additionalProperties: false
+  optimizer:
+    type: object
+    properties:
+      name:
+        enum:
+        - adamw
+        - adam
+        - sgd
+      learning_rate:
+        type: number
+        exclusiveMinimum: 0
+      weight_decay: &id004
+        type: number
+        minimum: 0
+    required:
+    - name
+    - learning_rate
+    - weight_decay
+    additionalProperties: false
+  max_epochs: *id003
+  early_stopping_patience: *id003
+  selection:
+    type: object
+    properties:
+      mode:
+        enum:
+        - min
+      aggregation:
+        enum:
+        - weighted_sum
+      task_losses:
+        type: object
+        additionalProperties: *id004
+    required:
+    - mode
+    - aggregation
+    - task_losses
+    additionalProperties: false
+required:
+- embed_name
+- embed_dim
+- embed_initializer
+- embed_initializer_args
+- dnn_inputs
+- output_layer
+- fm_layers
+- optimizer
+- max_epochs
+- early_stopping_patience
+- selection
+additionalProperties: false

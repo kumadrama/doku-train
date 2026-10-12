@@ -6,7 +6,7 @@
 | --- | --- |
 | R101 | layout/dependency tests；模型源码无 boto3、Manifest 和输出写入 |
 | R102 | XGBoost smoke fixture 复用 DNN Manifest、Feature State 和 27/1/28 split |
-| R103 | `test_rerank_train_model.py` 验证四目标 Booster、mask 和 margin 输出 |
+| R103 | `test_rerank_tree_model.py` 验证四目标 Booster、mask 和 margin 输出 |
 | R104 | DataIter/mask row-count unit test；smoke 从 Parquet batch 构建 QuantileDMatrix |
 | R105 | smoke metrics 验证每目标 selected rounds 与 fresh refit |
 | R106 | 复用 `evaluate_rerank`；smoke 检查四目标 metrics/gates/resource report |

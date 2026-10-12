@@ -1,0 +1,104 @@
+type: object
+properties:
+  history_scalars:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        history: &id001
+          type: string
+        func:
+          enum:
+          - count
+          - contains
+          - positive_unique_count
+          - normalized_weight
+          - unique_intersection_count
+        candidate: *id001
+        left: *id001
+        right: *id001
+      required:
+      - func
+      additionalProperties: false
+  tree_inputs:
+    type: object
+    properties:
+      categorical: &id002
+        type: array
+        items: *id001
+      numeric: *id002
+    required:
+    - categorical
+    - numeric
+    additionalProperties: false
+  model_params:
+    type: object
+    properties:
+      tree_method:
+        enum:
+        - hist
+      num_boost_round: &id003
+        type: integer
+        minimum: 1
+      early_stopping_rounds: *id003
+      learning_rate:
+        type: number
+        exclusiveMinimum: 0
+      max_depth:
+        type: integer
+        minimum: 0
+      min_child_weight: &id004
+        type: number
+        minimum: 0
+      subsample:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1
+      colsample_bytree:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1
+      reg_alpha: *id004
+      reg_lambda: *id004
+      max_bin:
+        type: integer
+        minimum: 2
+      max_cat_to_onehot: *id003
+    required:
+    - tree_method
+    - num_boost_round
+    - early_stopping_rounds
+    - learning_rate
+    - max_depth
+    - min_child_weight
+    - subsample
+    - colsample_bytree
+    - reg_alpha
+    - reg_lambda
+    - max_bin
+    - max_cat_to_onehot
+    additionalProperties: false
+  selection:
+    type: object
+    properties:
+      mode:
+        enum:
+        - min
+      per_task_metrics:
+        type: object
+        additionalProperties:
+          enum:
+          - logloss
+          - rmse
+          - mse
+          - mae
+    required:
+    - mode
+    - per_task_metrics
+    additionalProperties: false
+required:
+- history_scalars
+- tree_inputs
+- model_params
+- selection
+additionalProperties: false

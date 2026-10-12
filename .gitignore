@@ -12,3 +12,19 @@ outputs/
 .env
 *.pem
 credentials*
+
+# Local experiments and generated reports are not source deliverables.
+.DS_Store
+/configs/model-comparison-20261001/
+/specs/004-three-model-comparison/examples/
+/specs/004-three-model-comparison/real-v4-results.md
+/specs/004-three-model-comparison/numeric-bucket-analysis.md
+/specs/004-three-model-comparison/completion-only-results.md
+/specs/004-three-model-comparison/numeric-bucket-results.md
+/specs/004-three-model-comparison/deepfm-full20-results.md
+/specs/004-three-model-comparison/completion-only-diagnosis.md
+/specs/004-three-model-comparison/neural-diagnosis.md
+/specs/004-three-model-comparison/real-v4-validation.md
+/specs/004-three-model-comparison/real-v4-search-results.md
+/specs/004-three-model-comparison/deepfm-abc-results.md
+*.xgb.zip

@@ -1,152 +1,278 @@
-$defs:
-  ExecutionConfig:
-    additionalProperties: false
+type: object
+properties:
+  config_version:
+    enum:
+    - doku-train-config/v2
+  model_name:
+    enum:
+    - rerank
+    - rerank_tree
+  dataset:
+    type: object
     properties:
-      inter_op_threads:
-        minimum: 1
-        title: Inter Op Threads
-        type: integer
-      intra_op_threads:
-        minimum: 1
-        title: Intra Op Threads
-        type: integer
-      memory_limit_bytes:
-        minimum: 1
-        title: Memory Limit Bytes
-        type: integer
-      prefetch_batches:
-        const: 1
-        title: Prefetch Batches
-        type: integer
-      reader_workers:
-        const: 0
-        title: Reader Workers
-        type: integer
-      strategy:
-        const: single_process_cpu
-        title: Strategy
+      manifest_uri: &id001
         type: string
+      manifest_version:
+        enum:
+        - doku-train-dataset-manifest/v1
+      version: *id001
+      feature_schema_version: *id001
+      label_definition_version: *id001
+      manifest_sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      adapter:
+        enum:
+        - doku_offline_v1
+      aws_profile: *id001
+      allowed_prefixes:
+        type: array
+        items: *id001
+    required:
+    - manifest_uri
+    - manifest_version
+    - version
+    - feature_schema_version
+    - label_definition_version
+    - manifest_sha256
+    - adapter
+    - aws_profile
+    - allowed_prefixes
+    additionalProperties: false
+  split:
+    type: object
+    properties:
+      timezone: *id001
+      train_from: *id001
+      train_to: *id001
+      validation_from: *id001
+      validation_to: *id001
+      test_from: *id001
+      test_to: *id001
+    required:
+    - timezone
+    - train_from
+    - train_to
+    - validation_from
+    - validation_to
+    - test_from
+    - test_to
+    additionalProperties: false
+  execution:
+    type: object
+    properties:
+      strategy:
+        enum:
+        - single_process_cpu
+      intra_op_threads: &id002
+        type: integer
+        minimum: 1
+      inter_op_threads: *id002
+      reader_workers:
+        type: integer
+        minimum: 0
+      prefetch_batches: *id002
+      arrow_threads: *id002
+      s3_transfer_threads: *id002
+      memory_limit_bytes: *id002
+      cache_dir: *id001
+      cache_limit_bytes: *id002
     required:
     - strategy
     - intra_op_threads
     - inter_op_threads
     - reader_workers
     - prefetch_batches
+    - arrow_threads
+    - s3_transfer_threads
     - memory_limit_bytes
-    title: ExecutionConfig
-    type: object
-  MetricsConfig:
+    - cache_dir
+    - cache_limit_bytes
     additionalProperties: false
-    properties:
-      auc_warning_floor:
-        maximum: 1.0
-        minimum: 0.0
-        title: Auc Warning Floor
-        type: number
-      minimum_valid_rows:
-        minimum: 2
-        title: Minimum Valid Rows
-        type: integer
-    required:
-    - minimum_valid_rows
-    - auc_warning_floor
-    title: MetricsConfig
-    type: object
-  OptimizerConfig:
-    additionalProperties: false
-    properties:
-      learning_rate:
-        exclusiveMinimum: 0.0
-        title: Learning Rate
-        type: number
-      name:
-        const: adamw
-        default: adamw
-        title: Name
-        type: string
-      weight_decay:
-        minimum: 0.0
-        title: Weight Decay
-        type: number
-    required:
-    - learning_rate
-    - weight_decay
-    title: OptimizerConfig
-    type: object
-  SplitConfig:
-    additionalProperties: false
-    properties:
-      refit_days:
-        const: 28
-        default: 28
-        title: Refit Days
-        type: integer
-      train_days:
-        const: 27
-        default: 27
-        title: Train Days
-        type: integer
-      validation_days:
-        const: 1
-        default: 1
-        title: Validation Days
-        type: integer
-    title: SplitConfig
-    type: object
-additionalProperties: false
-properties:
-  bad_row_policy:
-    const: fail
-    title: Bad Row Policy
-    type: string
-  batch_size:
-    minimum: 1
-    title: Batch Size
-    type: integer
-  checkpoint_dir:
-    format: path
-    title: Checkpoint Dir
-    type: string
-  early_stopping_patience:
-    minimum: 1
-    title: Early Stopping Patience
-    type: integer
-  execution:
-    $ref: '#/$defs/ExecutionConfig'
-  max_epochs:
-    minimum: 1
-    title: Max Epochs
-    type: integer
-  metrics:
-    $ref: '#/$defs/MetricsConfig'
-  model_name:
-    minLength: 1
-    title: Model Name
-    type: string
-  model_params:
-    additionalProperties: true
-    title: Model Params
-    type: object
-  optimizer:
-    $ref: '#/$defs/OptimizerConfig'
   seed:
-    minimum: 0
-    title: Seed
     type: integer
-  split:
-    $ref: '#/$defs/SplitConfig'
+    minimum: 0
+  batch_size: *id002
+  output:
+    type: object
+    properties:
+      root: *id001
+      run_id:
+        type: string
+        pattern: ^[A-Za-z0-9][A-Za-z0-9_.-]*$
+    required:
+    - root
+    - run_id
+    additionalProperties: false
+  features:
+    type: array
+    items: *id001
+    uniqueItems: true
+  item_filter: *id001
+  feature_default_values:
+    type: object
+    additionalProperties: {}
+  feature_transformations:
+    type: array
+    items:
+      type: object
+      properties:
+        expr: *id001
+        feature_list:
+          type: array
+          items: *id001
+          uniqueItems: true
+      required:
+      - expr
+      additionalProperties: false
+  hist_options:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        max_hist_size: *id002
+        truncate:
+          enum:
+          - tail
+          - top_weight
+        duplicates:
+          enum:
+          - preserve
+          - sum_weights
+        tie_break:
+          enum:
+          - raw_id_ascending
+      required:
+      - max_hist_size
+      - truncate
+      - duplicates
+      additionalProperties: false
+  input_features:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        features:
+          type: array
+          items: *id001
+          minItems: 1
+        combiner:
+          enum:
+          - concat
+          - mean
+          - weighted_mean
+        weight_feature: *id001
+      required:
+      - features
+      additionalProperties: false
+  selection: {}
+  tasks:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        dims:
+          type: array
+          items: *id002
+        acts:
+          type: array
+          items:
+            enum:
+            - relu
+            - silu
+            - prelu
+            - ''
+        norms:
+          type: array
+          items:
+            enum:
+            - ''
+        layer_dropout:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+          default: 1
+        label: *id001
+        mask: *id001
+        num_outputs: *id002
+        loss_type:
+          enum:
+          - logloss
+          - mseloss
+          - softmax_soft
+        loss_weight: *id001
+        predict_fn:
+          enum:
+          - sigmoid
+          - identity
+          - expectation
+        metrics:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              func:
+                enum:
+                - auc
+                - logloss
+                - mae
+                - mse
+                - rmse
+                - valid_rows
+                - positive_rate
+                - mean
+              filter: *id001
+              label: *id001
+            required:
+            - func
+            additionalProperties: false
+        soft_label:
+          type: object
+          properties:
+            func:
+              enum:
+              - normal
+            scale:
+              type: number
+              exclusiveMinimum: 0
+            sigma:
+              type: number
+              exclusiveMinimum: 0
+          required:
+          - func
+          - scale
+          - sigma
+          additionalProperties: false
+        metric_label: *id001
+        objective:
+          enum:
+          - binary:logistic
+          - reg:squarederror
+      required:
+      - label
+      - mask
+      - loss_type
+      - loss_weight
+      - predict_fn
+      - metrics
+      additionalProperties: false
+    minProperties: 1
 required:
+- config_version
 - model_name
-- checkpoint_dir
+- dataset
+- split
+- execution
 - seed
 - batch_size
-- max_epochs
-- early_stopping_patience
-- bad_row_policy
-- execution
-- split
-- optimizer
-- metrics
-- model_params
-title: TrainConfig
-type: object
+- output
+- features
+- item_filter
+- feature_default_values
+- feature_transformations
+- hist_options
+- input_features
+- selection
+- tasks
+additionalProperties: false
+$schema: https://json-schema.org/draft/2020-12/schema

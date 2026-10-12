@@ -1,161 +1,20 @@
 # 接口合同
 
-## 文档状态
+Source: Spec004及实现。旧格式、固定四目标、固定28天与refit生命周期已移除。
 
-Implemented Locally。Spec 001 接口已落地并通过本地 contract/smoke 验证；线上推理与生产容量
-benchmark 仍不在已验证范围内。具体 Python 签名与 JSON Schema 以当前代码和 Spec 001 为准。
+配置：公共/模型config.schema.yml运行时合成；搜参独立search.schema.yml。未知字段报错。
+模型工厂接收展开配置和feature state，返回fit/evaluate/load/checkpoint_name接口。
+模型不读取环境配置、不访问上游存储；checkpoint写入由训练用例提供的本地run目录。
 
-Source: [系统概览](system-overview.md)、[组件划分](components.md)、[数据模型](data-model.md)。
+数据：当前版本adapter读取doku-train-dataset-manifest/v1；校验逻辑SHA256、合同版本、
+指定分片SHA256/行数/事件时间，按显式train/validation/test自然日选择。
+源合同对象摘要写入lineage；源v1未提供合同摘要及完整成熟性关联，不能因此声称已证明成熟性。
+真实v4实验区间已完成独立历史证据核查；数据集名称不作为训练白名单。
+详情见真实数据核查（本地实验记录，不随源码发布）。
 
-## 上游输入接口
+模型产物：checkpoint.pt或checkpoint.xgb.zip、metrics.json、fitted-feature-state/state.json、
+lineage.json和status.json；另有resolved-config、resume及编码缓存。status=complete最后写出，
+失败仅记录failure，不覆盖原run。测试评估显式产生test-metrics.json，不参与训练选模。
 
-调用方必须提供：
-
-1. 精确 Dataset Manifest URI；
-2. Train Config URI 或本地路径；
-3. `train` 的显式输出前缀；
-4. 非本地环境下的显式环境名与已配置身份。
-
-系统读取 Manifest 后依次验证合同版本、Feature/Label 版本、分片时间范围、行数和校验和。
-任一关键验证失败时停止训练，不回退到上一份数据，也不扫描 `latest`。
-
-当前 producer 是已有数据流，本仓直接读取 S3。`doku-offline` 尚未启用；未来若接入，也只能
-生产同一 Dataset Manifest，不能让本仓共享其内部 Python 类。序列化 schema 必须版本化，并由
-producer/consumer contract test 共同验证。
-
-## CLI 接口
-
-Finder-compatible 目标入口：
-
-```text
-python -m recommend.train.run rerank validate --manifest <s3-uri> --config <path>
-python -m recommend.train.run rerank train --manifest <s3-uri> --config <path> --output <s3-prefix>
-python -m recommend.train.run rerank backtest --manifest <s3-uri> --config <path>
-python -m recommend.train.run rerank-train validate --manifest <s3-uri> --config <path>
-python -m recommend.train.run rerank-train train --manifest <s3-uri> --config <path> --output <s3-prefix>
-python -m recommend.train.run rerank-train backtest --manifest <s3-uri> --config <path>
-```
-
-- `validate` 不启动训练，只检查数据/配置/兼容性；
-- `train` 是完整每日用例：27 天 train、1 天 validation、hard/soft gate、28 天 refit、写出四类
-  training output 并回读 production Checkpoint；
-- `backtest` 显式执行 24/2/2 或 rolling folds，不与每日训练隐式混用；
-- `run.py` 是统一 composition root，`train_rerank.py` 保留 Finder 熟悉的精排入口；可选 console
-alias 只能转发到相同入口，不能实现第二套逻辑。`rerank` 表示 PyTorch DNN，`rerank-train` 是为
-保持 Finder 对应关系而保留的 XGBoost 插件名。
-
-所有命令以非零退出码表示失败，并输出结构化、脱敏的错误摘要。CLI 不从当前目录、环境名或
-历史运行猜测输入。
-
-## Dataset Reader 接口
-
-Dataset Reader 消费已验证 Manifest，并提供：
-
-- schema inspection；
-- 确定性的时间切分和分片顺序；
-- 有界内存 batch iteration；
-- 行数、正负例数和坏样本计数；
-- 可中止的读取与明确错误分类。
-
-Reader 不做网络结构相关变换，不随机丢弃样本；Spec 001 保留全部曝光，不实现负采样。
-
-## Feature Transformer 接口
-
-Feature Transformer 分为两个阶段：
-
-- `fit`：评估阶段只在 27 天 training split 上拟合统计量和类别状态；生产 refit 在全部 28 天上
-  重新拟合；
-- `transform`：以对应阶段的冻结状态转换 training/validation、production refit 和未来在线输入。
-
-Validation 数据不得参与 `evaluation_model` 的 `fit`。Transformer 输出稳定命名的 batch
-与输入签名，并可把 `FittedFeatureState` 序列化到训练输出。统计特征必须是样本曝光前 7 天的
-point-in-time 值；原始 `user_id` 不得出现在首版输入签名。
-
-## Model 插件接口
-
-PyTorch DNN 插件提供：
-
-- 稳定 `model_name=rerank` 和 `config.schema.yml`；
-- 从验证后配置构建 CPU 模型的方法；
-- 输入签名与 `effective_watch`、`completion`、`non_fast_swipe`、`immersive_click` 四个 logits；
-- 按目标有效性 mask 和可配置 loss weight 计算 multi-task loss 的逻辑；
-- 可保存为 PyTorch Checkpoint 的状态。
-
-XGBoost `model_name=rerank_train` 插件复用相同 batch、Feature State 和四目标 margin 接口；每个
-目标一个 Booster，固定 CPU `hist`，evaluation 选择 boosting round，production 在 28 日数据上
-fresh refit。其模型配置 schema 位于插件目录，Checkpoint codec 只接受固定 manifest 和四个 UBJ。
-
-Runtime 负责训练生命周期，模型插件不得：
-
-- 读取数据文件或 Manifest；
-- 访问存储、网络或环境凭据；
-- 自行启动 worker/process；
-- 决定训练输出路径、推理 Artifact 路径或线上发布；
-- 根据 DTE/PROD 改变网络结构。
-
-## Execution Strategy 接口
-
-首阶段唯一实现是 `single_process_cpu`：DNN 与 XGBoost 都在一个训练进程内执行，使用受控 CPU
-线程和有界 batch 读取；XGBoost 不启动 Dask/Ray/MPI worker。
-
-[INFERRED] Future strategy 可以沿用相同 batch/model/checkpoint 接口加入多进程或多机同步训练，
-但必须通过独立 Spec 证明单机训练窗口不足。未来能力不得影响首阶段配置语义或训练输出格式。
-
-## Checkpoint 接口
-
-PyTorch Checkpoint 至少保存：
-
-- 模型与优化器状态；
-- epoch/step；
-- 随机数状态；
-- config 与输入 lineage 摘要；
-- early stopping 状态；
-- Checkpoint 格式版本和校验和。
-
-恢复时 lineage 或结构配置不兼容必须拒绝；不能“尽量加载”后继续产生看似成功的模型。
-
-XGBoost Checkpoint 是确定性 ZIP，内含格式 manifest、四目标、特征名/类型、round 数与四个 UBJ
-Booster。它必须从字节严格回读并完成一次预测；未知、缺失或不安全条目均拒绝。
-
-## Training Output 接口
-
-成功 DNN Run 的逻辑布局固定为：
-
-```text
-<output>/<run-id>/
-├── checkpoint.pt
-├── metrics.json
-├── fitted-feature-state/
-│   └── state.json
-└── lineage.json
-```
-
-XGBoost Run 将 `checkpoint.pt` 替换为 `checkpoint.xgb.zip`，其余三个 JSON 路径和语义不变。
-物理 bucket/prefix 由调用方提供，不写死在训练代码。Training Output Writer 只接受 production refit
-成功后的 Checkpoint、指标、Feature State 和 lineage，以 create-only 语义写入四个对象并返回
-类型化 URI。CLI 必须从对象存储回读 `checkpoint.pt` 并在 CPU 上严格加载，才能把 TrainExecution
-标为成功；XGBoost 入口对对应 ZIP 执行同等回读验证。不得从对象列表或部分文件推断成功。
-
-## ModelExporter 接口
-
-`comm/model_exporter.py` 定义类型化 `ModelExporter` Protocol，输入只引用一个成功的
-`TrainingOutputUris`，输出包含独立的 export attempt 状态与未来制品引用。Spec 001 不注册具体
-实现、不调用此接口，也不依赖 ONNX。待 Go/C++ serving 方案确定后，由独立 Spec 冻结推理格式、
-signature、parity 和交付合同。未来 exporter 只能在 refit 成功后运行，其失败只阻止推理制品交付，
-不得修改 Training Run 或 refit 的成功状态。
-
-## 错误合同
-
-错误至少分为：
-
-- input contract invalid；
-- unsupported schema/version；
-- data integrity mismatch；
-- label not mature / split invalid；
-- resource budget exceeded；
-- training numerical failure；
-- checkpoint incompatible；
-- evaluation hard gate failed / quality soft gate warning；
-- training output conflict / write / checkpoint reload failed。
-
-失败必须保留足够的结构化诊断和 `run_id`，但不得记录原始样本、凭据或完整敏感 URI 查询参数。
+分类预测均为概率；树使用raw margin后应用一次sigmoid。神经soft label预测按scale还原秒数。
+比较分类logloss/AUC、回归MSE；训练loss和可比较指标单列，不跨模型直接比较不同目标函数。

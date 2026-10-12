@@ -1,215 +1,201 @@
+"""CPU execution and artifact lifecycle, independent of model implementations."""
+
 from __future__ import annotations
 
-import math
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+import hashlib
+import json
+import random
+import subprocess
+import time
 from pathlib import Path
+from typing import Any, Protocol
 
+import numpy as np
 import psutil
-import torch
 
-from recommend.train.comm.checkpoint_agent import (
-    CheckpointAgent,
-    CheckpointLineage,
-    CheckpointRole,
-    seed_everything,
-)
-from recommend.train.comm.errors import PipelineBlocked
-from recommend.train.comm.eval.gates import GateResult, GateSeverity
-from recommend.train.comm.model_protocol import AdapterFactory, ModelAdapter
+from recommend.train.comm.checkpoint_agent import CheckpointAgent
+from recommend.train.comm.datasvr.published_dataset import PublishedDataset, digest
+from recommend.train.comm.feature_plan import FeaturePlan, prepare_arrays
+from recommend.train.comm.model_params_validator import ROOT, validate_config
+from recommend.train.comm.runtime_budget import MemoryBudget
 
 
-@dataclass(frozen=True, slots=True)
-class BatchFactories[BatchT]:
-    train: Callable[[], Iterable[BatchT]]
-    validation: Callable[[], Iterable[BatchT]]
-    refit: Callable[[], Iterable[BatchT]]
+class Runner(Protocol):
+    checkpoint_name: str
 
-
-@dataclass(frozen=True, slots=True)
-class EpochTrace:
-    role: str
-    epoch: int
-    step_losses: tuple[float, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class PipelineResult[BatchT, MetricT]:
-    selected_epoch: int
-    metrics: MetricT
-    gates: tuple[GateResult, ...]
-    production_adapter: ModelAdapter[BatchT]
-    production_checkpoint: Path
-    traces: tuple[EpochTrace, ...]
-
-
-class TrainingPipeline[BatchT, MetricT]:
-    def __init__(
+    def fit(
         self,
-        *,
-        adapter_factory: AdapterFactory[BatchT],
-        optimizer_factory: Callable[[Iterable[torch.nn.Parameter]], torch.optim.Optimizer],
-        evaluator: Callable[[ModelAdapter[BatchT], Iterable[BatchT]], MetricT],
-        gate_builder: Callable[[MetricT], tuple[GateResult, ...]],
-        checkpoint_agent: CheckpointAgent,
-        run_id: str,
-        lineage: CheckpointLineage,
-        seed: int,
-        max_epochs: int,
-        patience: int,
-        memory_limit_bytes: int,
-    ) -> None:
-        self._adapter_factory = adapter_factory
-        self._optimizer_factory = optimizer_factory
-        self._evaluator = evaluator
-        self._gate_builder = gate_builder
-        self._checkpoint_agent = checkpoint_agent
-        self._run_id = run_id
-        self._lineage = lineage
-        self._seed = seed
-        self._max_epochs = max_epochs
-        self._patience = patience
-        self._memory_limit_bytes = memory_limit_bytes
+        train: dict[str, np.ndarray],
+        validation: dict[str, np.ndarray],
+        checkpoint: CheckpointAgent,
+        identity: str,
+        resume: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+    def evaluate(self, arrays: dict[str, np.ndarray]) -> dict[str, Any]: ...
+    def load(self, payload: bytes) -> None: ...
 
-    def _check_memory(self, stage: str) -> None:
-        if psutil.Process().memory_info().rss > self._memory_limit_bytes:
-            raise PipelineBlocked("RESOURCE_BUDGET_EXCEEDED", stage=stage)
 
-    def _train_epoch(
-        self,
-        adapter: ModelAdapter[BatchT],
-        optimizer: torch.optim.Optimizer,
-        batches: Iterable[BatchT],
-        *,
-        stage: str,
-    ) -> tuple[float, tuple[float, ...]]:
-        adapter.module.train()
-        losses: list[float] = []
-        for batch in batches:
-            optimizer.zero_grad(set_to_none=True)
-            loss = adapter.loss(batch)
-            if not torch.isfinite(loss):
-                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
-            torch.autograd.backward(loss)
-            if any(
-                parameter.grad is not None and not torch.isfinite(parameter.grad).all()
-                for parameter in adapter.module.parameters()
-            ):
-                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
-            optimizer.step()
-            if any(
-                not torch.isfinite(parameter).all() for parameter in adapter.module.parameters()
-            ):
-                raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
-            losses.append(float(loss.detach()))
-            self._check_memory(stage)
-        if not losses:
-            raise PipelineBlocked("DATA_EXHAUSTED", stage=stage)
-        return sum(losses) / len(losses), tuple(losses)
+def write_json(path: Path, value: Any) -> None:
+    with path.open("x") as f:
+        json.dump(value, f, sort_keys=True, indent=2, allow_nan=False)
 
-    @staticmethod
-    def _mean_loss(
-        adapter: ModelAdapter[BatchT], batches: Iterable[BatchT], *, stage: str
-    ) -> float:
-        adapter.module.eval()
-        values: list[float] = []
-        with torch.inference_mode():
-            for batch in batches:
-                loss = adapter.loss(batch)
-                if not torch.isfinite(loss):
-                    raise PipelineBlocked("NUMERICAL_FAILURE", stage=stage)
-                values.append(float(loss))
-        if not values:
-            raise PipelineBlocked("DATA_EXHAUSTED", stage=stage)
-        return sum(values) / len(values)
 
-    def run(self, batches: BatchFactories[BatchT]) -> PipelineResult[BatchT, MetricT]:
-        seed_everything(self._seed)
-        evaluation_adapter = self._adapter_factory("evaluation")
-        evaluation_optimizer = self._optimizer_factory(evaluation_adapter.module.parameters())
-        selected_epoch = 0
-        best_loss = math.inf
-        stale_epochs = 0
-        evaluation_step = 0
-        traces: list[EpochTrace] = []
-        for epoch in range(1, self._max_epochs + 1):
-            _, step_losses = self._train_epoch(
-                evaluation_adapter,
-                evaluation_optimizer,
-                batches.train(),
-                stage="evaluate",
-            )
-            evaluation_step += len(step_losses)
-            traces.append(EpochTrace("evaluation", epoch, step_losses))
-            validation_loss = self._mean_loss(
-                evaluation_adapter,
-                batches.validation(),
-                stage="evaluate",
-            )
-            if validation_loss < best_loss:
-                best_loss = validation_loss
-                selected_epoch = epoch
-                stale_epochs = 0
-                self._checkpoint_agent.save(
-                    self._run_id,
-                    CheckpointRole.EVALUATION,
-                    evaluation_adapter.module,
-                    evaluation_optimizer,
-                    epoch=epoch,
-                    step=evaluation_step,
-                    lineage=self._lineage,
-                    training_state={"best_loss": best_loss, "stale_epochs": stale_epochs},
-                )
-            else:
-                stale_epochs += 1
-            if stale_epochs >= self._patience:
-                break
-        if selected_epoch == 0:
-            raise PipelineBlocked("DATA_EXHAUSTED", stage="evaluate")
-        self._checkpoint_agent.restore(
-            self._run_id,
-            CheckpointRole.EVALUATION,
-            evaluation_adapter.module,
-            evaluation_optimizer,
-            self._lineage,
+def source_identity() -> dict[str, str]:
+    root = ROOT.parents[1]
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=True
+    ).stdout.strip()
+    h = hashlib.sha256()
+    for p in sorted((root / "recommend").rglob("*")):
+        if p.is_file() and p.suffix in {".py", ".yml", ".yaml"}:
+            h.update(str(p.relative_to(root)).encode())
+            h.update(p.read_bytes())
+    lock = root / "uv.lock"
+    return {
+        "revision": revision,
+        "working_source_sha256": h.hexdigest(),
+        "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+    }
+
+
+def setup(config: dict[str, Any]) -> None:
+    random.seed(config["seed"])
+    np.random.seed(config["seed"])
+
+
+def arrays_for(
+    dataset: PublishedDataset, plan: FeaturePlan, split: str, root: Path
+) -> dict[str, np.ndarray]:
+    count = sum(p["rows"] for p in dataset.partitions(split))
+    # Sequence widths are allocation metadata, not fitted vocabulary. Inspect only this split.
+    for source in dataset.rows(split, plan.columns):
+        row = plan.row(source)
+        if row:
+            for field in plan.tables:
+                if isinstance(row[field], list):
+                    plan.lengths[field] = max(plan.lengths.get(field, 1), len(row[field]))
+    return prepare_arrays(
+        plan,
+        dataset.rows(split, plan.columns),
+        root,
+        count,
+        max(
+            0,
+            dataset.config["execution"]["cache_limit_bytes"]
+            - sum(p.stat().st_size for p in root.parent.rglob("*.npy")),
+        ),
+    )
+
+
+def train(
+    config: dict[str, Any],
+    factory: Any,
+    *,
+    local_root: Path | None = None,
+    resume: Path | None = None,
+) -> dict[str, Any]:
+    config = validate_config(config)
+    setup(config)
+    started = time.monotonic()
+    root = Path(config["output"]["root"]) / config["output"]["run_id"]
+    root.mkdir(parents=True, exist_ok=False)
+    budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
+    try:
+        budget.start()
+        dataset = PublishedDataset(config, local_root=local_root)
+        plan = FeaturePlan(config, dataset.dtypes)
+        plan.fit(dataset.rows("train", plan.columns))
+        state = plan.state()
+        write_json(root / "resolved-config.json", config)
+        (root / "fitted-feature-state").mkdir()
+        write_json(root / "fitted-feature-state/state.json", state)
+        train_data = arrays_for(dataset, plan, "train", root / "encoded-train")
+        valid_data = arrays_for(dataset, plan, "validation", root / "encoded-validation")
+        source = source_identity()
+        logical = {k: v for k, v in config.items() if k != "output"}
+        identity = digest(
+            {
+                "config": logical,
+                "dataset": dataset.manifest["content_sha256"],
+                "features": state,
+                "source": source,
+            }
         )
-        metrics = self._evaluator(evaluation_adapter, batches.validation())
-        gates = self._gate_builder(metrics)
-        blocked = [gate.name for gate in gates if gate.severity is GateSeverity.BLOCK]
-        if blocked:
-            raise PipelineBlocked(
-                "EVALUATION_GATE_FAILED:" + ",".join(blocked),
-                stage="evaluate",
-            )
+        runner = factory(config, state)
+        metrics = runner.fit(
+            train_data,
+            valid_data,
+            CheckpointAgent(root),
+            identity,
+            CheckpointAgent.read_resume(resume) if resume else None,
+        )
+        metrics["resources"] = {
+            "wall_seconds": time.monotonic() - started,
+            "rss_at_completion_bytes": psutil.Process().memory_info().rss,
+            "sampled_peak_rss_bytes": budget.peak,
+            "cpu_threads": config["execution"]["intra_op_threads"],
+            "train_rows": len(next(iter(train_data.values()))),
+            "validation_rows": len(next(iter(valid_data.values()))),
+        }
+        budget.check()
+        write_json(root / "metrics.json", metrics)
+        with (root / runner.checkpoint_name).open("rb") as checkpoint:
+            checkpoint_digest = hashlib.file_digest(checkpoint, "sha256").hexdigest()
+        write_json(
+            root / "lineage.json",
+            {
+                "identity": identity,
+                **source,
+                "manifest_sha256": dataset.manifest["content_sha256"],
+                "contract_digests": dataset.contract_digests,
+                "adapter": "doku_offline_v1",
+                "maturity_status": dataset.maturity_status,
+                "split": config["split"],
+                "feature_state_sha256": digest(state),
+                "checkpoint_sha256": checkpoint_digest,
+            },
+        )
+        write_json(root / "status.json", {"status": "complete", "selection": metrics["selection"]})
+        return {"run_dir": str(root.resolve()), "metrics": metrics, "status": "complete"}
+    except Exception as e:
+        write_json(
+            root / "failure.json",
+            {"status": "failed", "error_type": type(e).__name__, "message": str(e)},
+        )
+        raise
+    finally:
+        budget.close()
 
-        seed_everything(self._seed + 1)
-        production_adapter = self._adapter_factory("production")
-        production_optimizer = self._optimizer_factory(production_adapter.module.parameters())
-        production_step = 0
-        for epoch in range(1, selected_epoch + 1):
-            _, step_losses = self._train_epoch(
-                production_adapter,
-                production_optimizer,
-                batches.refit(),
-                stage="refit",
-            )
-            production_step += len(step_losses)
-            traces.append(EpochTrace("production", epoch, step_losses))
-        production_checkpoint = self._checkpoint_agent.save(
-            self._run_id,
-            CheckpointRole.PRODUCTION,
-            production_adapter.module,
-            production_optimizer,
-            epoch=selected_epoch,
-            step=production_step,
-            lineage=self._lineage,
-            training_state={},
-        )
-        return PipelineResult(
-            selected_epoch=selected_epoch,
-            metrics=metrics,
-            gates=gates,
-            production_adapter=production_adapter,
-            production_checkpoint=production_checkpoint,
-            traces=tuple(traces),
-        )
+
+def _test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> dict[str, Any]:
+    status = json.loads((run_dir / "status.json").read_text())
+    if status["selection"]["status"] != "selected":
+        raise ValueError("final evaluation requires an explicitly selected model")
+    config = validate_config(json.loads((run_dir / "resolved-config.json").read_text()))
+    setup(config)
+    data = PublishedDataset(config, local_root=local_root)
+    state = json.loads((run_dir / "fitted-feature-state/state.json").read_text())
+    plan = FeaturePlan(config, data.dtypes)
+    plan.restore(state)
+    arrays = arrays_for(data, plan, "test", run_dir / "encoded-test")
+    runner = factory(config, state)
+    lineage = json.loads((run_dir / "lineage.json").read_text())
+    if digest(state) != lineage["feature_state_sha256"]:
+        raise ValueError("feature state digest mismatch")
+    with (run_dir / runner.checkpoint_name).open("rb") as checkpoint:
+        if hashlib.file_digest(checkpoint, "sha256").hexdigest() != lineage["checkpoint_sha256"]:
+            raise ValueError("checkpoint digest mismatch")
+    runner.load((run_dir / runner.checkpoint_name).read_bytes())
+    metrics: dict[str, Any] = runner.evaluate(arrays)
+    write_json(run_dir / "test-metrics.json", metrics)
+    return metrics
+
+
+def test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> dict[str, Any]:
+    config = json.loads((run_dir / "resolved-config.json").read_text())
+    budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
+    try:
+        budget.start()
+        return _test_run(run_dir, factory, local_root=local_root)
+    finally:
+        budget.close()

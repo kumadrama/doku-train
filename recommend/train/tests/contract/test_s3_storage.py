@@ -12,6 +12,9 @@ class Body:
     def __init__(self, value: bytes) -> None:
         self.value = value
 
+    def close(self) -> None:
+        pass
+
     def read(self, amount: int) -> bytes:
         return self.value[:amount]
 

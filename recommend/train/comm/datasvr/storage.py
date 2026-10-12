@@ -32,13 +32,10 @@ def parse_uri(uri: str) -> ParsedUri:
     parsed = urlsplit(uri)
     if parsed.query or parsed.fragment:
         raise ValueError("object URI query and fragment are forbidden")
-    segments = [segment for segment in parsed.path.split("/") if segment]
-    if "latest" in segments:
-        raise ValueError("latest discovery is forbidden")
     if parsed.scheme == "s3":
-        if not parsed.netloc or not segments:
+        if not parsed.netloc or len(parsed.path) <= 1:
             raise ValueError("s3 URI requires bucket and exact key")
-        return ParsedUri("s3", parsed.netloc, "/".join(segments))
+        return ParsedUri("s3", parsed.netloc, parsed.path[1:])
     if parsed.scheme == "file":
         if parsed.netloc not in ("", "localhost") or not parsed.path.startswith("/"):
             raise ValueError("file URI must be an absolute local path")

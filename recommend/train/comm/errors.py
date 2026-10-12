@@ -30,12 +30,6 @@ class StageFailure(RuntimeError):
         super().__init__(str(cause))
 
 
-class PipelineBlocked(RuntimeError):
-    def __init__(self, message: str, *, stage: str) -> None:
-        self.stage = stage
-        super().__init__(message)
-
-
 @contextmanager
 def error_stage(stage: str) -> Iterator[None]:
     try:
@@ -64,7 +58,6 @@ def classify_error(error: Exception, *, run_id: str, stage: str) -> ErrorEnvelop
         "RESOURCE_BUDGET_EXCEEDED",
         "NUMERICAL_FAILURE",
         "CHECKPOINT_INCOMPATIBLE",
-        "EVALUATION_GATE_FAILED",
         "TRAINING_OUTPUT_CONFLICT",
         "TRAINING_OUTPUT_WRITE_FAILED",
     ):

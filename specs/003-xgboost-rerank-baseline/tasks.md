@@ -7,7 +7,7 @@
 - 状态：完成。
 
 - 依赖：无。
-- 文件：`pyproject.toml`、`uv.lock`、`models/rerank_train/model_params.py`、schema、配置测试。
+- 文件：`pyproject.toml`、`uv.lock`、`models/rerank_tree/model_params.py`、schema、配置测试。
 - 完成条件：XGBoost CPU 依赖锁定；未知参数、非 CPU tree method 和非法范围被拒绝。
 
 ## T302 流式矩阵与四目标训练
@@ -15,7 +15,7 @@
 - 状态：完成。
 
 - 依赖：T301。
-- 文件：`models/rerank_train/data_utils.py`、`rerank_train_model.py` 及单元测试。
+- 文件：`models/rerank_tree/data_utils.py`、`rerank_tree_model.py` 及单元测试。
 - 完成条件：DataIter 可重置、按 mask 过滤；四个 Booster 可训练、返回 margin、确定性序列化并
   严格回读。
 
@@ -24,7 +24,7 @@
 - 状态：完成。
 
 - 依赖：T302。
-- 文件：`train_rerank_xgboost.py`、`comm/training_output.py`、smoke/contract tests。
+- 文件：`train_rerank.py`、`comm/training_output.py`、smoke/contract tests。
 - 完成条件：完成 evaluation、门禁、28 日 fresh refit、create-only 四制品写出和回读预测验证。
 
 ## T304 CLI 与文档
@@ -33,7 +33,7 @@
 
 - 依赖：T303。
 - 文件：`run.py`、`README.md`、architecture 文档、CLI/layout tests。
-- 完成条件：`rerank-train validate|train|backtest` 可发现，README 给出本地对比命令和限制。
+- 完成条件：`rerank-tree validate|train|backtest` 可发现，README 给出本地对比命令和限制。
 
 ## T305 验证
 

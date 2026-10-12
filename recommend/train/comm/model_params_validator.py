@@ -1,41 +1,93 @@
+"""Runtime schema validation and semantic compilation of flat model configurations."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
+import copy
+import json
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from jsonschema import Draft202012Validator
 
-from recommend.train.comm.model_params import TrainConfig
+from recommend.train.comm.expressions import dependencies, transformations
 
-
-@dataclass(frozen=True, slots=True)
-class ValidatedTrainConfig[ModelParamsT: BaseModel]:
-    common: TrainConfig
-    model: ModelParamsT
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def validate_config_payload[ModelParamsT: BaseModel](
-    payload: dict[str, object], model_type: type[ModelParamsT]
-) -> ValidatedTrainConfig[ModelParamsT]:
-    common = TrainConfig.model_validate(payload)
-    model = model_type.model_validate(common.model_params)
-    return ValidatedTrainConfig(common=common, model=model)
+def validate_config(config: dict[str, Any]) -> dict[str, Any]:
+    json.dumps(config, allow_nan=False)
+    common = yaml.safe_load((ROOT / "comm/config.schema.yml").read_text())
+    name = config.get("model_name")
+    if name not in {"rerank", "rerank_tree"}:
+        raise ValueError("unknown model_name; old configuration format is not supported")
+    plugin = yaml.safe_load((ROOT / "models" / name / "config.schema.yml").read_text())
+    schema = copy.deepcopy(common)
+    for key, value in plugin["properties"].items():
+        if key in schema["properties"] and key != "selection":
+            raise ValueError("schema ownership conflict")
+        schema["properties"][key] = value
+    schema["required"] = list(set(schema["required"]) | set(plugin["required"]))
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(config)
+    split = config["split"]
+    if split["timezone"] != "UTC":
+        raise ValueError("source manifest uses UTC event partitions")
+    previous = None
+    for part in ["train", "validation", "test"]:
+        start, end = (date.fromisoformat(split[f"{part}_{edge}"]) for edge in ["from", "to"])
+        if start > end or (previous is not None and start <= previous):
+            raise ValueError("date splits must be ordered and disjoint")
+        previous = end
+    features = set(config["features"])
+    if features & {"u_account_id", "user_id", "ctx_score", "ctx_position"}:
+        raise ValueError("unapproved identifier or serving feature")
+    if not set(config["feature_default_values"]) <= features:
+        raise ValueError("defaults are allowed only for raw features")
+    derived = features.copy()
+    for target, expr in transformations(config):
+        dependencies(expr)
+        derived.add(target)
+    for group, options in config["input_features"].items():
+        if not set(options["features"]) <= derived:
+            raise ValueError(f"unknown input field in {group}")
+        if options.get("combiner") == "weighted_mean" and "weight_feature" not in options:
+            raise ValueError("weighted_mean requires weight_feature")
+    if not set(config["hist_options"]) <= set(config["input_features"]):
+        raise ValueError("history options reference unknown group")
+    for task in config["tasks"].values():
+        for key in ["label", "mask", "loss_weight"]:
+            dependencies(task[key])
+        if task["loss_type"] == "softmax_soft":
+            if (
+                "soft_label" not in task
+                or task.get("num_outputs", 0) < 2
+                or task["predict_fn"] != "expectation"
+            ):
+                raise ValueError("invalid soft-label task")
+        elif "soft_label" in task:
+            raise ValueError("soft_label requires softmax_soft")
+    if name == "rerank":
+        if not set(config["dnn_inputs"]) <= set(config["input_features"]):
+            raise ValueError("unknown dnn input group")
+        for layer in [config["output_layer"], *config["tasks"].values()]:
+            if (
+                not all(k in layer for k in ["dims", "acts", "norms"])
+                or len(layer["dims"]) != len(layer["acts"])
+                or len(layer["dims"]) != len(layer["norms"])
+            ):
+                raise ValueError("each layer requires aligned dims/acts/norms")
+        if not set(config["selection"]["task_losses"]) <= set(config["tasks"]):
+            raise ValueError("selection references unknown task")
+    else:
+        if not set(config["selection"]["per_task_metrics"]) == set(config["tasks"]):
+            raise ValueError("tree selection must describe every task")
+    return copy.deepcopy(config)
 
 
-def load_config[ModelParamsT: BaseModel](
-    path: Path, model_type: type[ModelParamsT]
-) -> ValidatedTrainConfig[ModelParamsT]:
-    payload = yaml.safe_load(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError("training config must be a mapping")
-    return validate_config_payload(payload, model_type)
-
-
-def write_schema(model_type: type[BaseModel], path: Path) -> None:
-    path.write_text(yaml.safe_dump(model_type.model_json_schema(), sort_keys=True))
-
-
-def schema_matches(model_type: type[BaseModel], path: Path) -> bool:
-    loaded: object = yaml.safe_load(path.read_text())
-    return loaded == model_type.model_json_schema()
+def load_config(path: Path) -> dict[str, Any]:
+    value = yaml.safe_load(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError("config must be a mapping")
+    return validate_config(value)

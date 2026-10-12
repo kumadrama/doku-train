@@ -1,1 +1,1 @@
-"""Evaluation metrics and training gates."""
+"""Evaluation reports facts without quality gates."""
