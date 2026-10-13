@@ -22,3 +22,10 @@ dataset 两种互斥输入：
 
 每日自动化由 doku-offline 日 join 成功后串行投影负责；doku-iac 仅修改现有日任务参数。
 本仓不启动云训练或应用生产 IaC。
+
+## 2026-10-13 Dataset 简化（当前规则）
+
+Source: 用户确认单 Manifest 地址方案。dataset 只声明 manifest_uri；旧版本/摘要、adapter、
+aws_profile、allowed_prefixes 和训练内 daily_prefix 说明被本规则取代。
+版本与摘要从 Manifest 读取并校验，AWS 身份由启动环境提供，无生产默认值。
+每次 Run 冻结 Manifest/合同原文及摘要，resume/test 使用原冻结记录；不重新解析日更指针。

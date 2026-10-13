@@ -7,7 +7,7 @@ Doku 推荐精排的单机 CPU 训练仓库。运行时读取公共和模型 YAM
 - `comm`：Manifest、特征、时间切分、指标、产物和搜参编排，不引用具体模型实现。
 
 默认值只作用于原始 features；转换表达式可声明 log 缩放、数值分桶和 embedding。不自动添加缺失标记。
-共享词表仅训练集拟合。没有固定四目标、27/1/28、refit、旧格式兼容或指标质量门禁。
+共享词表仅训练集拟合。没有固定四目标、27/1/28、refit 或旧格式兼容；训练不设质量门禁，发布门禁由 YAML 声明。
 
 ## 本地使用
 
@@ -22,7 +22,7 @@ make check
 ```
 
 `--local-root` 可指定精确发布前缀的本地镜像，仍校验源Manifest和分片摘要。不会发现latest，
-不会从当前业务存储补特征，不写PROD。输入身份和范围在配置显式声明，输出仅本地create-only目录。
+不会从当前业务存储补特征，不写PROD。输入身份和范围在配置显式声明，训练输出为本地 create-only 目录；显式 daily/publish 命令可写入指定 S3 前缀。
 
 实验 YAML、结果报告、权重与运行产物不随源码发布。测试独立生成合成数据和配置，
 不依赖本地实验文件或生产访问权限。字段合同见 [配置说明](specs/004-three-model-comparison/config-contract.md)。
@@ -47,18 +47,79 @@ make check
 各任务以 `not is_null(label)` 为 mask；不能把上游缺失填成负例，也不能只保留正例。
 五列属于标签，不能加入模型输入 `features`。已有 v4 配置继续用于原实验。
 
-## 每日投影数据输入
-
-按日输入与冻结契约见 [Spec 006](specs/006-daily-projected-input/design.md)。将 dataset 中
-`manifest_uri`、`manifest_sha256`、`version` 替换为：
+## Dataset 输入
 
 ```yaml
-daily_prefix: s3://<data-lake>/ml/fyp-rank-train/daily/environment=prod/
-projection_sha256: <由发布 manifest 提供的规范投影 SHA256>
+dataset:
+  manifest_uri: 's3://<data-lake>/<frozen-input>/manifest.json'
 ```
 
-其他 manifest/feature/label 版本、AWS profile、adapter 和 allowed_prefixes 仍显式配置。
-`feature_schema_version` 与所有选中日期一致，日期沿用 split。只有已发布 `_SUCCESS` 的日期可用。
-训练会在 run/input/ 固定 manifest 与契约，之后使用不可变分片，不复制训练数据。
-`resolved-config.json` 可用于重现；`--resume` 使用原 checkpoint 对应的冻结输入。
-首次切换前需由离线任务发布所需历史日期；之前的整段 manifest 继续有效。
+日期在 split 配置。版本、摘要与合同由读取层从 Manifest 校验，不在 YAML 重复声明。
+使用 AWS_PROFILE 或运行环境角色提供访问身份，例如
+`AWS_PROFILE=<profile> uv run python -m recommend.train.run train --config <config.yaml>`。
+日更目录须先产出冻结 Manifest；训练不解析可变 daily 指针。
+每轮保存 run/input/ 下的 Manifest、合同和摘要，resume/test 使用这份冻结输入。
+独立新训练会重新冻结源地址。详见 [Spec 007](specs/007-manifest-only-dataset/design.md)。
+
+## 树模型每日发布
+
+Source: [Spec 009 需求](specs/009-daily-tree-model-publication/requirements.md)、
+[设计](specs/009-daily-tree-model-publication/design.md)、
+[验证](specs/009-daily-tree-model-publication/verification.md)。
+
+已实现本地/S3 发布入口；尚未云端部署，也未接入 mono。两个服务后台下载 S3 模型包、在
+内存中选定同一已就绪版本，预测请求不读 S3；不使用 Redis 存模型。S3 published 不等于
+消费者 ready，实例加载、就绪协调、pin 注册/释放由 mono 接入。
+
+配置迁移：原 `model_name: rerank_tree` 改为 `model_type: rerank_tree`，新增用户自定
+`model_name`；不保留旧字段语义兼容。以下是追加到完整模型配置的字段片段，非完整配置：
+
+```yaml
+model_type: rerank_tree
+model_name: recommendation_tree
+daily:
+  training_window_days: 30
+# 每个 task 显式声明 output_unit，并在 metrics 下声明发布指标。
+# 分类 func: auc，回归 func: regression_auc；任务名及 metric 键由配置定义。
+publication:
+  completion: {metric: auc, minimum: 0.60}
+  watch_seconds: {metric: regression_auc, minimum: 0.60}
+```
+
+`publication` 必须覆盖全部配置任务；每个 task 的 `output_unit`（如 probability/seconds）
+与 `predict_fn` 描述输出；示例任务不能当作框架固定任务。daily 将模板 split 解析成明确的
+train_dates/validation_dates/test_dates，三段各至少一天，缺日允许跳过。
+
+```sh
+# 由 iac 在上游投影成功后执行一次。根路径、日期和 AWS 身份必须显式提供。
+uv run python -m recommend.train.run daily --config /absolute/path/model.yaml \
+  --daily-root 's3://<data-bucket>/<daily-prefix>/environment=<env>' \
+  --frozen-root 's3://<output-bucket>/<frozen-prefix>' --cutoff YYYY-MM-DD \
+  --artifact-root 's3://<output-bucket>/<model-prefix>' --export-root /absolute/path/exports
+
+# 独立评估与导出；test 可重跑，checkpoint 不变。
+uv run python -m recommend.train.run test --run-dir /absolute/path/run
+uv run python -m recommend.train.run export --run-dir /absolute/path/run --output /absolute/path/exports
+uv run python -m recommend.train.run publish --package /absolute/path/exported-version \
+  --artifact-root 's3://<output-bucket>/<model-prefix>'
+
+# 默认 dry-run；--apply 仍受 consumer_protocol_ready、current、pin 和过渡期保护。
+uv run python -m recommend.train.run cleanup --model-name recommendation_tree \
+  --artifact-root 's3://<output-bucket>/<model-prefix>'
+```
+
+本地替身使用 `file:///absolute/path` 根目录，走同一发布状态机。`--force` 可显式重跑相同
+输入；同名 active_run 不自动超时释放。进程崩溃后，确认停止才能用 `recover-run --owner
+<id> --confirmed-stopped` 释放；不要在原进程仍运行时恢复。已发布的同一版本不重写。
+`rollback --version <id>` 先校验保留文件，恢复版本引用；不允许回滚 deleting/deleted。
+
+`pin --version <id> --owner <instance-boot-id>` 登记，排空后加 `--release` 释放。
+消费者全部实现该协议后，由运维显式执行 `consumer-protocol-ready` 开启自动删除能力；
+这些命令均需 `--artifact-root` 和 `--model-name`，不能只凭失联判定 pin 失效。
+清理带 `--run-root` 与 `--export-root` 时，仅删除远端已 tombstone 的本地对应目录；未知
+目录保留。上游数据与共享冻结 Manifest 不由模型清理程序删除，避免破坏其他 run 的引用。
+
+上传中断恢复：独立 `publish` 可加 `--run-dir /absolute/path/original-run`，补齐原先登记但
+尚未上传的训练归档；不提供目录时只可复用远端已存在且摘要一致的归档。manifest 最后写入，
+发布清单提交前校验完整对象集。清理按 run_id 保护共享训练目录，并与本地 test/export
+读锁协调；不要通过复制或复用已退休的 run_id 绕过这些保护。

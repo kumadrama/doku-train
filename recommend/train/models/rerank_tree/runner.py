@@ -94,6 +94,17 @@ class TreeRunner:
             self.boosters[name] = booster[: selected[name]] if selected[name] else booster
             history[name] = log
             print(f"task={name} selected_rounds={selected[name]}", flush=True)
+        checkpoint.save_bytes(self.checkpoint_name, self.serialize(identity, selected))
+        return {
+            "selection": {
+                "status": "selected" if all(selected.values()) else "unavailable",
+                "rounds": selected,
+            },
+            "validation": self.evaluate(validation),
+            "history": history,
+        }
+
+    def serialize(self, identity: str, selected: dict[str, Any]) -> bytes:
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as z:
             z.writestr(
@@ -110,15 +121,7 @@ class TreeRunner:
             )
             for i, booster in enumerate(self.boosters.values()):
                 z.writestr(f"{i}.ubj", booster.save_raw(raw_format="ubj"))
-        checkpoint.save_bytes(self.checkpoint_name, buffer.getvalue())
-        return {
-            "selection": {
-                "status": "selected" if all(selected.values()) else "unavailable",
-                "rounds": selected,
-            },
-            "validation": self.evaluate(validation),
-            "history": history,
-        }
+        return buffer.getvalue()
 
     def evaluate(self, arrays: dict[str, np.ndarray]) -> dict[str, Any]:
         matrix = self.matrix(arrays)

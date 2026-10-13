@@ -11,7 +11,9 @@ from typing import Any
 
 import yaml
 
-from recommend.train.comm.training_pipeline import test_run, train
+from recommend.train.comm.training_pipeline import train
+from recommend.train.eval_rerank import execute_test as execute_test
+from recommend.train.eval_rerank import execute_test_local as execute_test_local
 
 
 def model_factory(name: str) -> Any:
@@ -29,14 +31,9 @@ def model_factory(name: str) -> Any:
 def execute_train_local(
     config: dict[str, Any], *, local_root: Path | None = None, resume: Path | None = None
 ) -> dict[str, Any]:
-    if resume is not None and config["model_name"] == "rerank_tree":
+    if resume is not None and config["model_type"] == "rerank_tree":
         raise ValueError("XGBoost partial training resume is unsupported")
-    return train(config, model_factory(config["model_name"]), local_root=local_root, resume=resume)
-
-
-def execute_test_local(run_dir: Path, *, local_root: Path | None = None) -> dict[str, Any]:
-    config = json.loads((run_dir / "resolved-config.json").read_text())
-    return test_run(run_dir, model_factory(config["model_name"]), local_root=local_root)
+    return train(config, model_factory(config["model_type"]), local_root=local_root, resume=resume)
 
 
 def execute_train(
@@ -63,14 +60,3 @@ def execute_train(
             "run_dir": str(root.resolve()),
             "metrics": json.loads((root / "metrics.json").read_text()),
         }
-
-
-def execute_test(run_dir: Path, *, local_root: Path | None = None) -> dict[str, Any]:
-    args = [sys.executable, "-m", "recommend.train.run", "test", "--run-dir", str(run_dir)]
-    if local_root:
-        args += ["--local-root", str(local_root)]
-    completed = subprocess.run(args, text=True, capture_output=True, check=False)
-    if completed.returncode:
-        raise RuntimeError(f"evaluation process failed: {completed.stderr[-2000:]}")
-    result: dict[str, Any] = json.loads((run_dir / "test-metrics.json").read_text())
-    return result

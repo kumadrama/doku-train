@@ -23,7 +23,7 @@ Source: 已确认的 Spec 004 设计、运行时 schema 与合成 fixture 验证
 
 | 字段 | 合同与所有者 | 缺省处理 |
 | --- | --- | --- |
-| config_version / model_name | 公共；版本与注册插件标识 | 必填；示例提案版本 doku-train-config/v2 |
+| config_version / model_type / model_name | 公共；配置版本、插件类型、业务模型名 | 必填；示例提案版本 doku-train-config/v2 |
 | dataset | 公共；精确源 Manifest、版本、逻辑摘要、adapter、读取身份、允许前缀 | 必填；无生产身份/URI 默认值 |
 | split | 公共；timezone、train/validation/test 的 from/to 自然日（两端包含） | 必填；有序互斥；不读区间外日期 |
 | execution | 公共；线程/worker/prefetch、内存、校验缓存路径与容量 | 显式；0 worker 仅为本轮选择 |
@@ -199,7 +199,7 @@ comparison.split=validation；tasks列出对齐的指标及方向。分类严格
 
 ## 实施授权与模型目录（最新确认）
 
-DNN 与 DeepFM 都使用 model_name: 'rerank'，不创建 models/deepfm。
+DNN 与 DeepFM 都使用 model_type: 'rerank'，不创建 models/deepfm。
 空 fm_layers 表示 DNN；显式配对表示 Finder 式 DeepFM。模型插件只注册 rerank/rerank_tree。
 搜参使用基准配置文件名 dnn/deepfm 作为实验身份，不能按 model_name 合并结果。
 用户已授权实施训练与4+4+1搜参代码，并在本机CPU各运行一次XGBoost、DNN检查链路。
@@ -271,3 +271,39 @@ C：仅共享 dims=[64,32]、completion dims=[16]。其他配置固定，不累�
 未引入 regs/额外正则损失；B 是既有 AdamW 衰减，不宣称等价于 Finder kernel L2。
 独立配置保存在 configs/model-comparison-20261001/regularization/。
 Source: 用户本轮明确授权 A/B/C 依次本机训练。
+
+## 2026-10-13 特征范围更新
+
+Source: 用户确认当前配置加入 14/28 天统计及完播、进入沉浸观看的 drama 序列。
+此决定取代此前首轮排除这两条历史及仅选 7 天统计的实验范围；不修改已完成实验的冻结配置。
+三模型本地 YAML/examples 各从 38 个原始特征扩展到 84 个：新增 44 个统计字段及
+`u_finished__drama_id`、`u_immersive_enter__drama_id`。
+统计范围为用户七类行为的 all/fyp 14/28 天计数、item 七类行为 fyp 14/28 天计数，
+以及用户 14/28 天活跃天数。仅选合同存在字段。
+
+编码沿用各模型现有约定：神经计数 log2 分桶且独立 4 维 embedding；活跃天数按窗口
+截断为整数桶；树计数 log1p、活跃天数原值。原始统计默认 0，原始历史默认 []，
+派生特征不声明默认值。新增历史 tail 100、保留重复，神经 mean pooling 并共享 drama 表；
+DeepFM 增加候选与每条新历史的交互，树增加每条历史的长度及候选命中标量。
+
+配置已加入不等于已验证收益。迟上线字段的空值不能解释成真实无行为；下一轮训练前核查
+逐日覆盖率。此次仅改配置与文档，不改 Python 实现、不训练，测试集保持未读取。
+三份示例保留原 v4 Manifest、日期和任务权重；v5 已运行目录仅用于历史复现，不覆盖。
+
+### 冻结日更输入替换（2026-10-13）
+
+Source: 用户指定 daily-migration-20261013/frozen-input/manifest.json 更新 dataset。
+当前三份本地 YAML/examples 改用上述不可变 Manifest，替代上一节保留 v4 的说明；
+实际版本 frozen-33b251cf811004b523d5db41de7f366a4ec79f8326f6e6dce78635c9f18db80d，
+feature schema v5，label definition fixed-5m-playback-stream-v4。Manifest 逻辑 SHA256
+为 320ede137bede5f3642326339bc8b311621f4eac23cadd51da329797c4533908，已重算核对。
+允许读取冻结目录中的合同和 daily/environment=prod/ 下精确分片；不以可变日期模板训练。
+数据覆盖 10-01～10-11（1,167,111 行），本次不修改 split、任务、特征或已完成 Run。
+验证：三份配置 CLI validate 成功，未读取样本、未训练。
+
+## 2026-10-13 Dataset 简化（当前规则）
+
+Source: 用户确认单 Manifest 地址方案。dataset 只声明 manifest_uri；旧版本/摘要、adapter、
+aws_profile、allowed_prefixes 和训练内 daily_prefix 说明被本规则取代。
+版本与摘要从 Manifest 读取并校验，AWS 身份由启动环境提供，无生产默认值。
+每次 Run 冻结 Manifest/合同原文及摘要，resume/test 使用原冻结记录；不重新解析日更指针。

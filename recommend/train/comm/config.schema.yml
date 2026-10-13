@@ -4,56 +4,30 @@ properties:
     enum:
     - doku-train-config/v2
   model_name:
+    type: string
+    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
+  model_type:
     enum:
     - rerank
     - rerank_tree
   dataset:
     type: object
     properties:
-      daily_prefix:
-        type: string
-      projection_sha256:
-        type: string
-        pattern: ^[a-f0-9]{64}$
       manifest_uri: &id001
         type: string
-      manifest_version:
-        enum:
-        - doku-train-dataset-manifest/v1
-      version: *id001
-      feature_schema_version: *id001
-      label_definition_version: *id001
-      manifest_sha256:
-        type: string
-        pattern: ^[a-f0-9]{64}$
-      adapter:
-        enum:
-        - doku_offline_v1
-      aws_profile: *id001
-      allowed_prefixes:
-        type: array
-        items: *id001
-    required:
-    - manifest_version
-    - feature_schema_version
-    - label_definition_version
-    - adapter
-    - aws_profile
-    - allowed_prefixes
-    oneOf:
-    - required: [manifest_uri, version, manifest_sha256]
-      not:
-        required: [daily_prefix]
-    - required: [daily_prefix, projection_sha256]
-      not:
-        anyOf:
-        - required: [manifest_uri]
-        - required: [version]
-        - required: [manifest_sha256]
+        minLength: 1
+    required: [manifest_uri]
     additionalProperties: false
   split:
     type: object
     properties:
+      train_dates: &dates
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: {type: string, format: date}
+      validation_dates: *dates
+      test_dates: *dates
       timezone: *id001
       train_from: *id001
       train_to: *id001
@@ -177,6 +151,22 @@ properties:
       required:
       - features
       additionalProperties: false
+  daily:
+    type: object
+    properties:
+      training_window_days: {type: integer, minimum: 1}
+    required: [training_window_days]
+    additionalProperties: false
+  publication:
+    type: object
+    minProperties: 1
+    additionalProperties:
+      type: object
+      properties:
+        metric: {type: string, minLength: 1}
+        minimum: {type: number, minimum: 0, maximum: 1}
+      required: [metric, minimum]
+      additionalProperties: false
   selection: {}
   tasks:
     type: object
@@ -226,6 +216,7 @@ properties:
               func:
                 enum:
                 - auc
+                - regression_auc
                 - logloss
                 - mae
                 - mse
@@ -255,6 +246,7 @@ properties:
           - scale
           - sigma
           additionalProperties: false
+        output_unit: *id001
         metric_label: *id001
         objective:
           enum:
@@ -272,6 +264,7 @@ properties:
 required:
 - config_version
 - model_name
+- model_type
 - dataset
 - split
 - execution

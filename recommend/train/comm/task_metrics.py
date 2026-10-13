@@ -36,6 +36,10 @@ def metric_values(
                 reason = "single_class"
             else:
                 value = float(roc_auc_score(y, p))
+        elif func == "regression_auc":
+            value = regression_auc(y, p)
+            if value is None:
+                reason = "no_comparable_pairs"
         elif func == "logloss":
             if not np.isin(y, [0, 1]).all():
                 raise ValueError("logloss requires binary labels")
@@ -52,3 +56,38 @@ def metric_values(
         result[key] = {"value": value, "reason": reason, "valid_rows": n}
     result["label_rows"] = int(arrays["mask:" + name].sum())
     return result
+
+
+def regression_auc(y: np.ndarray, prediction: np.ndarray) -> float | None:
+    """Exact unweighted concordance, O(n log n); equal labels are not compared."""
+    order = np.argsort(y, kind="stable")
+    labels = y[order]
+    _, ranks = np.unique(prediction[order], return_inverse=True)
+    tree = [0] * (int(ranks.max()) + 3) if len(ranks) else [0]
+
+    def prefix(index: int) -> int:
+        result = 0
+        while index:
+            result += tree[index]
+            index -= index & -index
+        return result
+
+    score = 0
+    pairs = 0
+    start = 0
+    while start < len(labels):
+        end = start + 1
+        while end < len(labels) and labels[end] == labels[start]:
+            end += 1
+        for rank in ranks[start:end]:
+            below = prefix(int(rank))
+            equal = prefix(int(rank) + 1) - below
+            score += 2 * below + equal
+            pairs += start
+        for rank in ranks[start:end]:
+            index = int(rank) + 1
+            while index < len(tree):
+                tree[index] += 1
+                index += index & -index
+        start = end
+    return score / (2 * pairs) if pairs else None
