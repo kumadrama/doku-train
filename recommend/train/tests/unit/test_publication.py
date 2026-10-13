@@ -173,6 +173,9 @@ def test_s3_conditional_write_and_missing_are_not_permissions():
         with pytest.raises(FileNotFoundError):
             store.get("missing")
         stub.add_client_error("get_object", service_error_code="AccessDenied", http_status_code=403)
+        stub.add_client_error(
+            "list_objects_v2", service_error_code="AccessDenied", http_status_code=403
+        )
         with pytest.raises(client.exceptions.ClientError):
             store.get("denied")
         stub.assert_no_pending_responses()

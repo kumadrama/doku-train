@@ -44,9 +44,14 @@ def write_json(path: Path, value: Any) -> None:
 
 def source_identity() -> dict[str, str]:
     root = ROOT.parents[1]
-    revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=True
-    ).stdout.strip()
+    if (root / "build-revision.txt").is_file():
+        revision = (root / "build-revision.txt").read_text().strip()
+        if len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
+            raise ValueError("invalid image source revision")
+    else:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=True
+        ).stdout.strip()
     h = hashlib.sha256()
     for p in sorted((root / "recommend").rglob("*")):
         if p.is_file() and p.suffix in {".py", ".yml", ".yaml"}:

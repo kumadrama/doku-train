@@ -335,3 +335,46 @@ Source: 用户要求重点审查 S3 发布、版本一致性与清理；本次�
 - 本地 test/export/上传归档持有 run 共享文件锁，清理取得非阻塞排他锁后才退休并删除。
   锁文件在 run 目录外，避免删除后产生不同锁 inode；活跃读者存在时保留，不提前退休。
   未登记目录仍保守保留；外部读者必须遵守同一锁或 pin 协议。
+
+### PROD 编排与容器接入（2026-10-13）
+
+Source: 用户确认接在投影成功之后，PROD 启用，DTE 不新增定时训练；独立北京时间 20:00 清理。
+
+- iac 保留 PROD 06:00 UTC 的上游日任务，`join --project-training` 发布完成且容器退出为 0 后，
+  在同一 Standard workflow 的上游重试范围外启动训练 ECS。`--cutoff` 从原始 Scheduler 时间减
+  24 小时生成；不使用训练开始/重试时的墙钟。训练无自动重试，不回到上游；异常锁不自动清除。
+- 独立 12:00 UTC 清理 workflow 调用 `recommend.train.scheduled cleanup`，等待退出码，
+  不自动重试；消费者协议未就绪仍 dry-run。DTE 不创建对应调度或训练资源。
+- `recommend.train.scheduled` 是容器边界适配器。环境显式提供输入、冻结输入、产物前缀、
+  模型名、配置 S3 URI/sha256 和 KMS key。配置摘要与 model_name/model_type 校验后才调用日更用例。
+  清理不需要读取训练配置。结构化完成日志区分 daily/cleanup，异常返回非零并输出 completed=false。
+- 生产配置以本地 `daily-expanded-20261013/configs/xgboost.yaml` 为基础，保留特征和树参数；
+  将实现键迁移为 model_type，业务名为 rerank_tree，窗口 30 天，四任务发布阈值均为 0.60，
+  watch_seconds 补 regression_auc 和 seconds 单位，二分类为 probability。本地生成配置位于
+  `runs/prod-daily/config.yaml`，不随源码发布。实际使用的摘要在 iac tfvars 声明并随部署审查。
+- 写 S3 时显式传递 `DOKU_TRAIN_S3_KMS_KEY_ARN` 对应的 SSE-KMS 头，同时保留条件写。
+  针对前缀限制 ListBucket 权限下的 GET 403，只有授权的精确前缀 LIST 证明对象不存在才映射
+  FileNotFoundError；对象存在或 LIST 被拒绝仍失败，不能把权限问题当成空发布清单。
+- 独立训练/清理角色：训练能读输入和指定配置、写冻结输入及本模型制品，无删除权限；清理只可
+  读写/删除本模型前缀，不可删除共享冻结输入。模型前缀不匹配数据湖按天过期规则。
+- 训练仓提供 CPU 镜像构建与 PROD task definition（PSM doku-reco-train，4 vCPU、16 GiB、100 GiB 临时盘）；
+  模型线程仍由 YAML 显式指定。训练 deadline 初始为 8 小时，是执行上限，不是吞吐 SLA。
+  本地 Run/缓存位于 /work，任务结束临时盘销毁；远端模型和训练归档由发布流程保存。
+- 镜像携带构建 Git revision、实际源码和 uv.lock，source_identity 在无 Git 镜像中仍计算源码及
+  依赖摘要。镜像不包含本地实验数据或配置；依赖仍使用 CPU Torch/XGBoost。
+- 上线顺序：准备精确配置并按摘要路径上传（携带 KMS 头）、先以 tree_publication_enabled=false 创建必要 IAM/日志资源、生成 binding、
+  由 dkd 构建注册训练 task definition，再启用含训练节点的编排及清理调度。iac apply 与云端验收
+  需另行执行；不能在 task definition/config 尚未就绪时切换正在开启的上游 workflow。
+
+AWS GetObject 对不存在对象的 403/404 行为依据：
+https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html 。
+
+### 接入审查补充
+
+- PROD `tree_publication_enabled` 默认 false，防止首次普通 apply 把已有日投影接到尚未准备的 TD/config。
+  显式启用后才串接训练并开启清理；DTE 不新增这些资源。
+- 清理固定使用同步工作流；开关只控制调度状态，不能切换成直接 ECS 或重建工作流。
+- dkd PSM 必须是三段式，统一使用 `doku-reco-train`，TD family `doku-reco-train_prod`。
+  容器默认无业务命令时失败，不能用 `--help` 的退出 0 冒充运行成功。
+- Scheduler 在同步模式只获 StartExecution；ECS RunTask/PassRole 留给工作流角色。
+  训练角色 ListBucket 的模型范围与其 Get/Put 范围一致，限制为配置 model_name。

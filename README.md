@@ -123,3 +123,11 @@ uv run python -m recommend.train.run cleanup --model-name recommendation_tree \
 尚未上传的训练归档；不提供目录时只可复用远端已存在且摘要一致的归档。manifest 最后写入，
 发布清单提交前校验完整对象集。清理按 run_id 保护共享训练目录，并与本地 test/export
 读锁协调；不要通过复制或复用已退休的 run_id 绕过这些保护。
+
+生产调度由 iac 衔接：PROD 日投影成功后执行 `python -m recommend.train.scheduled daily --cutoff YYYY-MM-DD`，
+每天北京时间 20:00 执行 `python -m recommend.train.scheduled cleanup`。DTE 不部署对应调度。
+容器使用环境显式绑定 `DOKU_TRAIN_{ARTIFACT_ROOT,MODEL_NAME,S3_KMS_KEY_ARN}`；daily 另需
+`DOKU_TRAIN_{DAILY_ROOT,FROZEN_ROOT,CONFIG_URI,CONFIG_SHA256}`。配置先校验 SHA256 和模型身份，
+不使用可变 latest 配置。实际实验 YAML 保留本地，部署前按 iac 声明的摘要上传；不打进源码镜像。
+镜像及 task definition 入口见 `build/` 和 `deploy/prod/`；`./build/build.sh` 仅打包源码和依赖锁，
+`./build/docker-build.sh <image>` 构建 CPU 镜像。跨仓接线与上线顺序见 Spec 009 设计。

@@ -65,8 +65,19 @@ class ObjectStore:
         try:
             response = self.client.get_object(Bucket=self.url.netloc, Key=self.key(key))
         except Exception as exc:
-            if getattr(exc, "response", {}).get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if code in {"NoSuchKey", "404"}:
                 raise FileNotFoundError(key) from exc
+            if code in {"AccessDenied", "403"}:
+                # Prefix-scoped ListBucket grants can leave missing GETs as 403.
+                # Establish absence using an authorized exact-prefix LIST; never
+                # reinterpret denial for an existing object as an empty registry.
+                full_key = self.key(key)
+                listed = self.client.list_objects_v2(
+                    Bucket=self.url.netloc, Prefix=full_key, MaxKeys=1
+                )
+                if not any(o["Key"] == full_key for o in listed.get("Contents", [])):
+                    raise FileNotFoundError(key) from exc
             raise
         stream = response["Body"]
         try:
@@ -115,6 +126,9 @@ class ObjectStore:
                         os.unlink(tmp)
             return
         args = {"IfNoneMatch": "*"} if expected is None else {"IfMatch": expected}
+        kms_key = os.environ.get("DOKU_TRAIN_S3_KMS_KEY_ARN")
+        if kms_key:
+            args.update(ServerSideEncryption="aws:kms", SSEKMSKeyId=kms_key)
         try:
             self.client.put_object(Bucket=self.url.netloc, Key=self.key(key), Body=data, **args)
         except Exception as exc:

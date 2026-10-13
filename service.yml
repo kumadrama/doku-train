@@ -1,0 +1,4 @@
+psm: doku-reco-train
+kind: task
+build_image: aws/codebuild/standard:7.0
+secrets: []
