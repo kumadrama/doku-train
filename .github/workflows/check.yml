@@ -1,0 +1,20 @@
+name: Train checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.18"
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: make check
+      - run: ./build/build.sh && bash -n build/build.sh build/docker-build.sh
