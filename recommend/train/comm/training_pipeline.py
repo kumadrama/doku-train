@@ -95,6 +95,16 @@ def train(
     resume: Path | None = None,
 ) -> dict[str, Any]:
     config = validate_config(config)
+    if resume is not None and "daily_prefix" in config["dataset"]:
+        # Resuming must not resolve current pointers again: a backfill may have
+        # changed them since the checkpoint. Its original manifest is the input.
+        previous = json.loads((resume.parent / "resolved-config.json").read_text())
+        for key in ["projection_sha256", "feature_schema_version", "label_definition_version"]:
+            if config["dataset"][key] != previous["dataset"].get(key):
+                raise ValueError("resume projection differs from frozen input")
+        if config["split"] != previous["split"]:
+            raise ValueError("resume dates differ from frozen input")
+        config["dataset"] = previous["dataset"]
     setup(config)
     started = time.monotonic()
     root = Path(config["output"]["root"]) / config["output"]["run_id"]
@@ -103,10 +113,11 @@ def train(
     try:
         budget.start()
         dataset = PublishedDataset(config, local_root=local_root)
+        config = dataset.config
+        write_json(root / "resolved-config.json", config)
         plan = FeaturePlan(config, dataset.dtypes)
         plan.fit(dataset.rows("train", plan.columns))
         state = plan.state()
-        write_json(root / "resolved-config.json", config)
         (root / "fitted-feature-state").mkdir()
         write_json(root / "fitted-feature-state/state.json", state)
         train_data = arrays_for(dataset, plan, "train", root / "encoded-train")

@@ -46,3 +46,19 @@ make check
 [Spec 005](specs/005-behavior-label-delivery/design.md)。使用新 Manifest 的真实身份与摘要，
 各任务以 `not is_null(label)` 为 mask；不能把上游缺失填成负例，也不能只保留正例。
 五列属于标签，不能加入模型输入 `features`。已有 v4 配置继续用于原实验。
+
+## 每日投影数据输入
+
+按日输入与冻结契约见 [Spec 006](specs/006-daily-projected-input/design.md)。将 dataset 中
+`manifest_uri`、`manifest_sha256`、`version` 替换为：
+
+```yaml
+daily_prefix: s3://<data-lake>/ml/fyp-rank-train/daily/environment=prod/
+projection_sha256: <由发布 manifest 提供的规范投影 SHA256>
+```
+
+其他 manifest/feature/label 版本、AWS profile、adapter 和 allowed_prefixes 仍显式配置。
+`feature_schema_version` 与所有选中日期一致，日期沿用 split。只有已发布 `_SUCCESS` 的日期可用。
+训练会在 run/input/ 固定 manifest 与契约，之后使用不可变分片，不复制训练数据。
+`resolved-config.json` 可用于重现；`--resume` 使用原 checkpoint 对应的冻结输入。
+首次切换前需由离线任务发布所需历史日期；之前的整段 manifest 继续有效。

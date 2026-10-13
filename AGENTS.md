@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 006：按日投影训练输入](specs/006-daily-projected-input/design.md) — 固定日期目录、投影兼容与训练输入冻结。
+
 Spec 004 与本文件的新规则取代 Spec 001/003 及尚未更新的 architecture/README 中
 固定目标、固定日期、强制 refit、旧配置和评估门禁的描述；这些旧描述仅说明历史实现，
 不能作为新增约束。实施时同步迁移对应文档及测试，不复制旧语义。

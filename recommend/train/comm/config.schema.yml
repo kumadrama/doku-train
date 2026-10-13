@@ -10,6 +10,11 @@ properties:
   dataset:
     type: object
     properties:
+      daily_prefix:
+        type: string
+      projection_sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
       manifest_uri: &id001
         type: string
       manifest_version:
@@ -29,15 +34,22 @@ properties:
         type: array
         items: *id001
     required:
-    - manifest_uri
     - manifest_version
-    - version
     - feature_schema_version
     - label_definition_version
-    - manifest_sha256
     - adapter
     - aws_profile
     - allowed_prefixes
+    oneOf:
+    - required: [manifest_uri, version, manifest_sha256]
+      not:
+        required: [daily_prefix]
+    - required: [daily_prefix, projection_sha256]
+      not:
+        anyOf:
+        - required: [manifest_uri]
+        - required: [version]
+        - required: [manifest_sha256]
     additionalProperties: false
   split:
     type: object

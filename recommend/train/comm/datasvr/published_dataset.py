@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from collections import deque
@@ -28,12 +29,16 @@ def digest(value: Any) -> str:
 
 class PublishedDataset:
     def __init__(self, config: dict[str, Any], *, local_root: Path | None = None) -> None:
-        self.config = config
-        self.options = config["dataset"]
+        self.config = copy.deepcopy(config)
+        self.options = self.config["dataset"]
         self.local_root = local_root.resolve() if local_root else None
         self.cache = Path(config["execution"]["cache_dir"]).resolve()
         self.cache.mkdir(parents=True, exist_ok=True)
         self.client: Any = None
+        if "daily_prefix" in self.options:
+            if local_root is not None:
+                raise ValueError("daily input does not support a range-manifest local mirror")
+            self._freeze_daily()
         self.manifest_uri = self.options["manifest_uri"]
         self.source_prefix = self.manifest_uri.rsplit("/", 1)[0] + "/"
         body = self._read(self.manifest_uri)
@@ -61,6 +66,11 @@ class PublishedDataset:
         for name in ["features", "labels"]:
             raw = self._read(self.source_prefix + f"contracts/{name}.json")
             self.contract_digests[name] = hashlib.sha256(raw).hexdigest()
+            if (
+                m.get("contract_sha256", {}).get(name, self.contract_digests[name])
+                != self.contract_digests[name]
+            ):
+                raise ValueError("frozen contract checksum mismatch")
             contracts[name] = json.loads(raw)
         if (
             contracts["features"]["feature_spec_version"] != m["feature_schema_version"]
@@ -76,6 +86,33 @@ class PublishedDataset:
         self.maturity_status = "not_declared_by_source_manifest"
         pa.set_cpu_count(config["execution"]["arrow_threads"])
         self._verified: dict[str, Path] = {}
+
+    def _freeze_daily(self) -> None:
+        from recommend.train.comm.datasvr.daily_input import resolve_days
+
+        self.source_prefix = self.options["daily_prefix"].rstrip("/") + "/"
+        dates: set[date] = set()
+        for split in ["train", "validation", "test"]:
+            start, end = [
+                date.fromisoformat(self.config["split"][f"{split}_{k}"]) for k in ["from", "to"]
+            ]
+            dates.update(start + timedelta(days=i) for i in range((end - start).days + 1))
+        manifest, contracts = resolve_days(self.options, sorted(dates), self._read)
+        target = Path(self.config["output"]["root"]) / self.config["output"]["run_id"] / "input"
+        target.mkdir(parents=True, exist_ok=False)
+        (target / "contracts").mkdir()
+        for name, body in contracts.items():
+            with (target / "contracts" / f"{name}.json").open("xb") as f:
+                f.write(body)
+        with (target / "manifest.json").open("x") as f:
+            json.dump(manifest, f, sort_keys=True)
+        self.options.pop("daily_prefix")
+        self.options.update(
+            manifest_uri=(target / "manifest.json").resolve().as_uri(),
+            manifest_sha256=manifest["content_sha256"],
+            version=manifest["dataset_version"],
+        )
+        self.options["allowed_prefixes"].append(target.resolve().as_uri() + "/")
 
     def _local_path(self, uri: str) -> Path | None:
         parsed = urlsplit(uri)
