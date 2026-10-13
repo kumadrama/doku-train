@@ -63,7 +63,7 @@ def test_grid_identity(tmp_path):
     _, trials = expand_search(p, tmp_path / "search")
     assert len(trials) == 9
     assert len({x["output"]["run_id"] for _, x in trials}) == 9
-    assert all(x["model_name"] == "rerank" for _, x in trials[:-1])
+    assert all(x["model_type"] == "rerank" for _, x in trials[:-1])
 
 
 def test_tradeoff_is_not_win():

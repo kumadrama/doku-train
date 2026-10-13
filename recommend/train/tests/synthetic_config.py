@@ -8,18 +8,9 @@ from typing import Any
 CONFIGS: dict[str, Any] = {
     "dnn": {
         "config_version": "doku-train-config/v2",
-        "model_name": "rerank",
-        "dataset": {
-            "manifest_uri": "file:///fixture/manifest.json",
-            "manifest_version": "doku-train-dataset-manifest/v1",
-            "version": "fixture-v1",
-            "feature_schema_version": "fyp-rank-features/v4",
-            "label_definition_version": "fixed-5m-playback-stream-v4",
-            "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "adapter": "doku_offline_v1",
-            "aws_profile": "fixture-unused",
-            "allowed_prefixes": ["file:///fixture/"],
-        },
+        "model_type": "rerank",
+        "model_name": "fixture-neural",
+        "dataset": {"manifest_uri": "file:///fixture/manifest.json"},
         "split": {
             "timezone": "UTC",
             "train_from": "2026-10-01",
@@ -260,18 +251,9 @@ CONFIGS: dict[str, Any] = {
     },
     "xgboost": {
         "config_version": "doku-train-config/v2",
-        "model_name": "rerank_tree",
-        "dataset": {
-            "manifest_uri": "file:///fixture/manifest.json",
-            "manifest_version": "doku-train-dataset-manifest/v1",
-            "version": "fixture-v1",
-            "feature_schema_version": "fyp-rank-features/v4",
-            "label_definition_version": "fixed-5m-playback-stream-v4",
-            "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "adapter": "doku_offline_v1",
-            "aws_profile": "fixture-unused",
-            "allowed_prefixes": ["file:///fixture/"],
-        },
+        "model_type": "rerank_tree",
+        "model_name": "fixture-tree",
+        "dataset": {"manifest_uri": "file:///fixture/manifest.json"},
         "split": {
             "timezone": "UTC",
             "train_from": "2026-10-01",

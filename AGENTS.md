@@ -68,6 +68,9 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 009：树模型每日训练与发布需求](specs/009-daily-tree-model-publication/requirements.md) 与
+  [设计](specs/009-daily-tree-model-publication/design.md) — 已实现本仓入口；云端与消费者接入待验证。
+
 - [Spec 006：按日投影训练输入](specs/006-daily-projected-input/design.md) — 固定日期目录、投影兼容与训练输入冻结。
 
 Spec 004 与本文件的新规则取代 Spec 001/003 及尚未更新的 architecture/README 中
@@ -227,3 +230,33 @@ recommend/train/
 - 禁止直接更新远端 `main`/`master`；所有变更通过短生命周期分支和 PR 合入。
 - 禁止 force push 覆盖远端历史；确需更新自己的 PR 分支时只使用 `--force-with-lease`。
 - 不使用 `--no-verify` 绕过检查，不提交生成缓存、数据集、Checkpoint、模型权重或凭据。
+
+## 2026-10-13 Dataset 简化（当前规则）
+
+Source: 用户确认单 Manifest 地址方案。dataset 只声明 manifest_uri；旧版本/摘要、adapter、
+aws_profile、allowed_prefixes 和训练内 daily_prefix 说明被本规则取代。
+版本与摘要从 Manifest 读取并校验，AWS 身份由启动环境提供，无生产默认值。
+每次 Run 冻结 Manifest/合同原文及摘要，resume/test 使用原冻结记录；不重新解析日更指针。
+设计及验证索引：[Spec 007](specs/007-manifest-only-dataset/design.md)、[验证](specs/007-manifest-only-dataset/verification.md)。
+
+## 2026-10-13 树模型每日发布（目标规则，Spec 009）
+
+Source: 用户确认每日训练、独立评估、导出与 S3 发布、版本解析、30 天清理方案；
+用户随后授权本仓实施，仍未授权云端操作。
+
+在 Spec 009 树模型范围内，以下目标规则取代上文对应首阶段限制，其他约束继续有效：
+
+- 本仓新增推理模型包、S3 上传/发布清单、回滚与清理能力；基础设施归 iac，消费者实现归 mono。
+  exporter 仍只读取成功训练产物，不导入训练内部实现；不提供 ONNX。
+- model_type/model_name 均由配置指定；前者选择实现，后者是可复用业务名称。同名不同合同
+  允许正常发布，不加兼容性门禁；不可变版本加可更新清单，不覆盖旧版本文件。
+- 新增独立发布指标门禁，由 YAML 声明，本次阈值 0.60；不阻断训练产物保存，不恢复旧训练门禁。
+- 日更窗口由配置声明并解析为冻结日期列表，训练最多 30 自然日，validation/test 各一天，
+  三段各至少一天，允许缺日；不够三段就跳过，不做隐式降级。
+- 上游训练投影成功后触发单次流水线；本仓不常驻计时。按创建时间保留 30 天，保护当前发布
+  版本及被替换后至少 24 小时的版本；清理须与发布/回滚和活动引用协调。
+- 具体需求和目标设计以文档索引中的 Spec 009 为准。上述均非当前实现能力声明。
+
+Source: Spec 009 实施证据见 [任务](specs/009-daily-tree-model-publication/tasks.md) 与
+[验证](specs/009-daily-tree-model-publication/verification.md)。本仓本地/S3 入口已实现，
+消费端仍是跨仓目标；上述目标不代表已在生产运行。

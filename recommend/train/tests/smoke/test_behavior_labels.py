@@ -56,10 +56,6 @@ def behavior_experiment(root: Path, model: str):
         {k: v for k, v in manifest.items() if k != "content_sha256"}
     )
     manifest_path.write_text(json.dumps(manifest))
-    config["dataset"].update(
-        feature_schema_version="fyp-rank-features/v5",
-        manifest_sha256=manifest["content_sha256"],
-    )
     for name in BEHAVIORS:
         config["tasks"][name] = copy.deepcopy(config["tasks"]["immersive_click"])
         config["tasks"][name].update(label=name, mask=f"not is_null({name})", loss_weight="1.0")

@@ -95,7 +95,6 @@ def test_published_identity_is_not_a_fixture_only_gate(tmp_path):
         {k: v for k, v in manifest.items() if k != "content_sha256"}
     )
     path.write_text(json.dumps(manifest))
-    config["dataset"]["manifest_sha256"] = manifest["content_sha256"]
     result = execute_train(config)
     root = Path(result["run_dir"])
     assert execute_test(root)["watch_seconds"]["metrics"]["mse"]["value"] >= 0

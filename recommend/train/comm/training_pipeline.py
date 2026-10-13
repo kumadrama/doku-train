@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import platform
 import random
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -55,6 +57,8 @@ def source_identity() -> dict[str, str]:
         "revision": revision,
         "working_source_sha256": h.hexdigest(),
         "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+        "python": platform.python_version(),
+        "platform": platform.platform(),
     }
 
 
@@ -95,16 +99,6 @@ def train(
     resume: Path | None = None,
 ) -> dict[str, Any]:
     config = validate_config(config)
-    if resume is not None and "daily_prefix" in config["dataset"]:
-        # Resuming must not resolve current pointers again: a backfill may have
-        # changed them since the checkpoint. Its original manifest is the input.
-        previous = json.loads((resume.parent / "resolved-config.json").read_text())
-        for key in ["projection_sha256", "feature_schema_version", "label_definition_version"]:
-            if config["dataset"][key] != previous["dataset"].get(key):
-                raise ValueError("resume projection differs from frozen input")
-        if config["split"] != previous["split"]:
-            raise ValueError("resume dates differ from frozen input")
-        config["dataset"] = previous["dataset"]
     setup(config)
     started = time.monotonic()
     root = Path(config["output"]["root"]) / config["output"]["run_id"]
@@ -112,7 +106,10 @@ def train(
     budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
     try:
         budget.start()
-        dataset = PublishedDataset(config, local_root=local_root)
+        dataset = PublishedDataset(
+            config, local_root=local_root, frozen_input=resume.parent / "input" if resume else None
+        )
+        dataset.freeze(root / "input")
         config = dataset.config
         write_json(root / "resolved-config.json", config)
         plan = FeaturePlan(config, dataset.dtypes)
@@ -160,6 +157,10 @@ def train(
                 "manifest_sha256": dataset.manifest["content_sha256"],
                 "contract_digests": dataset.contract_digests,
                 "adapter": "doku_offline_v1",
+                "manifest_uri": dataset.manifest_uri,
+                "dataset_version": dataset.manifest["dataset_version"],
+                "feature_schema_version": dataset.manifest["feature_schema_version"],
+                "label_definition_version": dataset.manifest["label_definition_version"],
                 "maturity_status": dataset.maturity_status,
                 "split": config["split"],
                 "feature_state_sha256": digest(state),
@@ -178,17 +179,19 @@ def train(
         budget.close()
 
 
-def _test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> dict[str, Any]:
+def _test_run(
+    run_dir: Path, factory: Any, *, local_root: Path | None = None, encoding_dir: Path
+) -> dict[str, Any]:
     status = json.loads((run_dir / "status.json").read_text())
-    if status["selection"]["status"] != "selected":
-        raise ValueError("final evaluation requires an explicitly selected model")
+    if status.get("status") != "complete":
+        raise ValueError("evaluation requires successful training")
     config = validate_config(json.loads((run_dir / "resolved-config.json").read_text()))
     setup(config)
-    data = PublishedDataset(config, local_root=local_root)
+    data = PublishedDataset(config, local_root=local_root, frozen_input=run_dir / "input")
     state = json.loads((run_dir / "fitted-feature-state/state.json").read_text())
     plan = FeaturePlan(config, data.dtypes)
     plan.restore(state)
-    arrays = arrays_for(data, plan, "test", run_dir / "encoded-test")
+    arrays = arrays_for(data, plan, "test", encoding_dir)
     runner = factory(config, state)
     lineage = json.loads((run_dir / "lineage.json").read_text())
     if digest(state) != lineage["feature_state_sha256"]:
@@ -198,7 +201,19 @@ def _test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) ->
             raise ValueError("checkpoint digest mismatch")
     runner.load((run_dir / runner.checkpoint_name).read_bytes())
     metrics: dict[str, Any] = runner.evaluate(arrays)
-    write_json(run_dir / "test-metrics.json", metrics)
+    report_tmp = run_dir / "test-metrics.partial"
+    report_tmp.write_text(json.dumps(metrics, sort_keys=True, allow_nan=False))
+    report_tmp.replace(run_dir / "test-metrics.json")
+    (run_dir / "test-evidence.partial").unlink(missing_ok=True)
+    write_json(
+        run_dir / "test-evidence.partial",
+        {
+            "checkpoint_sha256": lineage["checkpoint_sha256"],
+            "config_sha256": digest(config),
+            "metrics_sha256": digest(metrics),
+        },
+    )
+    (run_dir / "test-evidence.partial").replace(run_dir / "test-evidence.json")
     return metrics
 
 
@@ -207,6 +222,14 @@ def test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> 
     budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
     try:
         budget.start()
-        return _test_run(run_dir, factory, local_root=local_root)
+        from recommend.train.comm.run_lock import run_lock
+
+        with (
+            run_lock(run_dir),
+            tempfile.TemporaryDirectory(prefix="evaluation-", dir=run_dir) as tmp,
+        ):
+            return _test_run(
+                run_dir, factory, local_root=local_root, encoding_dir=Path(tmp) / "arrays"
+            )
     finally:
         budget.close()

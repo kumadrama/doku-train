@@ -104,12 +104,7 @@ def make_experiment(root: Path, model: str = "dnn", rows_per_day: int = 32) -> d
     }
     manifest["content_sha256"] = digest(manifest)
     (dataset / "manifest.json").write_text(json.dumps(manifest))
-    config["dataset"].update(
-        manifest_uri=(dataset / "manifest.json").as_uri(),
-        version="fixture-v1",
-        manifest_sha256=manifest["content_sha256"],
-        allowed_prefixes=[dataset.as_uri() + "/"],
-    )
+    config["dataset"] = {"manifest_uri": (dataset / "manifest.json").as_uri()}
     config["execution"]["cache_dir"] = str(root / "cache")
     config["output"] = {"root": str(root / "runs"), "run_id": model + "-smoke"}
     config["batch_size"] = 64

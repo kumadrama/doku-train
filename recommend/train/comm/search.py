@@ -54,7 +54,7 @@ def expand_search(
             c["output"] = {"root": str(output), "run_id": label}
             trials.append((label, validate_config(c)))
     base = load_config(path.parent / spec["baseline_config"])
-    if spec["comparison"]["baseline"] != base["model_name"]:
+    if spec["comparison"]["baseline"] != base["model_type"]:
         raise ValueError("comparison baseline identity mismatch")
     for _, candidate in trials:
         if candidate["dataset"] != base["dataset"] or candidate["split"] != base["split"]:
