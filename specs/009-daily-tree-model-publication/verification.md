@@ -79,3 +79,37 @@ UV_CACHE_DIR=/tmp/doku-train-uv-cache uv run --offline pytest \
 结果 exit 0：锁文件、97 文件格式检查、ruff、mypy 39 源码文件均通过；
 **73 tests passed，61.93 秒**。另运行 `publish --help` 确认 --run-dir 参数可用；
 `git diff --check` 通过，49 个本地文档链接有效。
+
+## 2026-10-13 PROD 编排接入验证
+
+- `UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check`：exit 0，99 文件格式、
+  Ruff、mypy 40 源文件通过；**81 passed，62.07 秒**。
+- 新增 8 项容器边界测试：SSE-KMS 头保留 IfMatch/IfNoneMatch、配置 SHA256/model identity、
+  原 cutoff 传递且不 force、门禁拒绝作为正常完成、异常日志、清理消费者 dry-run、无 Git 的
+  镜像 lineage，以及 S3 GET 403 下的存在/不存在区分。已有拒绝权限测试补覆盖 LIST 也被拒绝。
+- `./build/build.sh` 和 `bash -n build/build.sh build/docker-build.sh` 通过；从 output 源码包
+  （在 /tmp 启动，确认实际导入 output 路径）执行 source_identity 成功，未读取仓库 .git。
+- JSONata 2.0.6 原调度日期/跨日重试与容器退出码表达式测试通过。
+- 本地迁移配置通过 validate_config；SHA256 为
+  `9a392ef411c54acfbae151d674dbe4fe7b75a7a7cd63eb07e6ed50ddd9f2b6a1`，与 iac PROD 配置一致。
+- iac `terraform -chdir=modules/ecs_scheduled_task test -no-color`：3 passed；覆盖旧调用方、
+  训练位于上游重试范围之外、静态清理命令无重试；PROD 和 DTE `terraform validate` 均通过。
+- iac `test-tree-publication-contract.py`、`test-fyp-rank-samples-contract.py`、
+  `test-scheduler-time-input.py` 通过；修改文件 terraform fmt 检查、两仓 git diff --check 通过。
+
+未执行 Docker 镜像构建/发布、配置上传、Terraform apply、binding 生成或生产调度验收。
+首次发布须先以 tree_publication_enabled=false 建立资源，注册 TD 并上传配置后再启用。
+AWS provider 的 mock 测试使用本机已有 provider（沙箱外本地进程通信），没有连接 AWS。
+
+## 接入 Review 最终验证（2026-10-13）
+
+修复 dkd 两段式 PSM 无法发布、首次 apply 默认提前启用、关闭开关改变清理工作流结构、
+训练角色列举其他模型和同步 Scheduler 保留无用 ECS 权限的问题。
+新增部署合同及首次训练前清理回归测试，清理不创建空发布清单。
+
+- `UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check`：exit 0，99 文件格式、
+  Ruff、mypy 40 源文件均通过；**83 passed，62.07 秒**。
+- `./build/build.sh`、`bash -n build/build.sh build/docker-build.sh`、`git diff --check` 通过。
+- iac 从最新 main 的独立工作树验证：mock Terraform **4 passed**；PROD/DTE validate、
+  fmt、接线合同、上游合同、Scheduler 输入与 JSONata 2.0.6 表达式测试全部通过。
+- Docker 镜像构建、真实 IAM 调用、S3 上传、apply 和生产调度均未执行；上述为本地证据。

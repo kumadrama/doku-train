@@ -17,3 +17,10 @@ Source: 2026-10-13 用户确认继续使用 S3 并开始实施代码；不执行
 - mono：后台下载、内存缓存、固定版本请求、实例 pin 与多副本就绪协调。
 - monitoring：消费 published/rejected/failed/skipped 结果与持久 pin 告警。
 - 云端 smoke、Go parity 和真实数据容量验证需对应接入及授权；见 verification.md。
+
+### PROD 编排接入
+
+- [x] 上游成功后独立训练阶段，冻结 cutoff、隔离重试，DTE 不接入。
+- [x] PROD 每日 12:00 UTC 清理、按模型范围 IAM、SSE-KMS 写入。
+- [x] 固定摘要配置的容器适配器、CPU 镜像构建、PROD task definition、无 Git lineage。
+- [x] mock 编排和容器边界测试；云端 apply、配置上传、镜像发布和调度验收尚未执行。

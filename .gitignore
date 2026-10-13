@@ -28,3 +28,5 @@ credentials*
 /specs/004-three-model-comparison/real-v4-search-results.md
 /specs/004-three-model-comparison/deepfm-abc-results.md
 *.xgb.zip
+
+/output/
