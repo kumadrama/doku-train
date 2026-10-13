@@ -1,0 +1,44 @@
+version: 0.2
+
+# Repo-root shared buildspec (installed by dk cicd init / update cb-spec).
+# Project env from dk cicd init: SERVICE_DIR, ECR_REPOSITORY, AWS_DEFAULT_REGION
+# Optional from dk cicd build: BUILD_CHANNEL=main|dev  SOURCE_REF=<ref>
+#
+# Phases are bash scripts under lib/ — CodeBuild's default shell is /bin/sh (no pipefail).
+# Image tags use the latest commit that touched SERVICE_DIR (not whole-repo HEAD):
+#   main → YYYYMMDD.N-<7-char service commit>
+#   dev  → dev-YYYYMMDD.N-<7-char service commit>
+# Prod should only accept: ^[0-9]{8}\.[0-9]+-[0-9a-f]+$
+
+env:
+  git-credential-helper: yes
+  variables:
+    AWS_DEFAULT_REGION: "us-east-2"
+    SERVICE_DIR: ""
+    ECR_REPOSITORY: ""
+    BUILD_CHANNEL: "main"
+    SOURCE_REF: "main"
+    GOPRIVATE: "github.com/kumadrama/*"
+
+phases:
+  install:
+    runtime-versions:
+      golang: 1.25
+      nodejs: 22
+    commands:
+      - go version
+  pre_build:
+    commands:
+      - bash "${CODEBUILD_SRC_DIR}/.ci/codebuild/lib/phase-pre-build.sh"
+  build:
+    commands:
+      - bash "${CODEBUILD_SRC_DIR}/.ci/codebuild/lib/phase-build.sh"
+  post_build:
+    commands:
+      - bash "${CODEBUILD_SRC_DIR}/.ci/codebuild/lib/phase-post-build.sh"
+
+artifacts:
+  files:
+    - image_uri.txt
+    - image_tag.env
+  discard-paths: yes
