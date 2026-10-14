@@ -88,7 +88,7 @@ def test_pinned_config_and_model_identity(tmp_path):
 
 
 def test_daily_passes_frozen_cutoff_and_never_forces_retry(tmp_path, monkeypatch, capsys):
-    from recommend.train.comm import daily_publication
+    from recommend.train import run
 
     config = synthetic_config("xgboost")
     path = tmp_path / "config.yaml"
@@ -110,7 +110,7 @@ def test_daily_passes_frozen_cutoff_and_never_forces_retry(tmp_path, monkeypatch
         received.update(kwargs)
         return {"status": "rejected"}
 
-    monkeypatch.setattr(daily_publication, "daily_run", fake_daily)
+    monkeypatch.setattr(run, "daily_run", fake_daily)
     monkeypatch.setattr(sys, "argv", ["scheduled", "daily", "--cutoff", "2026-10-12"])
     scheduled.main()
     assert received["cutoff"] == "2026-10-12" and "force" not in received

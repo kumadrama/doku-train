@@ -41,13 +41,15 @@ def execute() -> None:
     if args.operation == "daily":
         if not args.cutoff:
             parser.error("daily requires --cutoff")
-        from recommend.train.comm.daily_publication import daily_run
+        from recommend.train.run import daily_run
 
         config = read_config(
             os.environ["DOKU_TRAIN_CONFIG_URI"],
             os.environ["DOKU_TRAIN_CONFIG_SHA256"],
             name,
         )
+        from recommend.train.publish_model import distribution_from_environment
+
         result = daily_run(
             config,
             daily_root=os.environ["DOKU_TRAIN_DAILY_ROOT"],
@@ -55,11 +57,18 @@ def execute() -> None:
             cutoff=args.cutoff,
             artifact_root=root,
             export_root=Path("/work/exports"),
+            distribution=distribution_from_environment(root, name),
         )
     else:
         from recommend.train.comm.publication import Registry
+        from recommend.train.publish_model import distribution_from_environment
 
-        result = Registry(ObjectStore(root), name).cleanup(apply=True)
+        distribution = distribution_from_environment(root, name)
+        result = (
+            distribution.cleanup(apply=True)
+            if distribution
+            else Registry(ObjectStore(root), name).cleanup(apply=True)
+        )
     print(json.dumps({"operation": args.operation, "completed": True, "result": result}))
 
 

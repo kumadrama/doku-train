@@ -42,3 +42,21 @@ Spec 009 在树模型日更范围内扩展。
 
 Source: 2026-10-13 用户确认 S3 方案并授权实施。消费者后台下载与加载，在线请求只用内存中
 已就绪的固定版本，不逐请求读 S3；发布成功不等于服务就绪，不引入 Redis 模型存储。
+
+
+## Redis 分发：本仓实现与消费者目标（Spec 010）
+
+Source: 2026-10-14 用户要求保留 S3 并同步线上所需模型和特征产物到 Redis；
+[需求](../../specs/010-redis-model-distribution/requirements.md)、
+[设计](../../specs/010-redis-model-distribution/design.md)。
+
+当前状态：此前“未部署云端”的描述属于历史阶段；本会话已完成 PROD S3 发布、清理 dry-run
+及调度启用验收。本仓已实现 Redis 分发入口，尚未部署；mono 双服务消费仍待实现，清理受消费者和分发双门禁保护。
+
+实现及跨仓合同：S3 保存完整制品与生命周期权威；Redis 分发原 Manifest、特征合同、
+拟合状态与任务 UBJ；服务后台校验加载，热路径用本地内存。特征服务解析一次版本，RPC
+携带精确 model_name/model_version 与摘要，predictor 不自行选择 latest。
+S3 发布与 Redis 分发分别记状态；完整 Redis 包校验后原子切换目录，同步失败保留旧引用。
+清理同时保护两侧 current、同步操作与双方持久 pins；先停止解析并排空，再删 Redis，最后删 S3。
+发布入口为 publish_model.py，日更统一由 run.py 编排，scheduled.py 只适配参数。
+registry v2、Redis catalog v1、恢复/取消及精确键清理协议详见 Spec 010；消费者行为尚待 mono 实施。
