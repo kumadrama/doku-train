@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from recommend.train.comm.artifact_store import ObjectStore
-from recommend.train.comm.daily_publication import daily_run
 from recommend.train.comm.datasvr.published_dataset import digest
 from recommend.train.comm.publication import Registry, encode
+from recommend.train.run import daily_run
 from recommend.train.tests.experiment_fixture import make_experiment
 
 

@@ -38,7 +38,14 @@ class Registry:
         try:
             raw, etag = self.store.get(self.key)
             value = json.loads(raw)
-            if value["format"] != "doku-publication/v1" or value["model_name"] != self.name:
+            if (
+                value["format"] not in {"doku-publication/v1", "doku-publication/v2"}
+                or value["model_name"] != self.name
+                or (
+                    value["format"] == "doku-publication/v2"
+                    and not isinstance(value.get("distribution"), dict)
+                )
+            ):
                 raise ValueError("invalid publication registry")
             return value, etag
         except FileNotFoundError:
@@ -77,6 +84,8 @@ class Registry:
 
     def start(self, owner: str, fingerprint: str, *, force: bool = False) -> bool:
         def operation(value: dict[str, Any]) -> None:
+            if value.get("distribution", {}).get("operation"):
+                raise ConflictError("distribution operation pending; recover it first")
             if value.get("active_run") not in {None, owner}:
                 raise ConflictError("another run is active; explicit recovery required")
             if not force and any(
@@ -145,10 +154,19 @@ class Registry:
 
         self.update(operation)
 
-    def publish(self, version: str, owner: str, *, rollback: bool = False) -> None:
+    def publish(
+        self, version: str, owner: str, *, rollback: bool = False, control: str | None = None
+    ) -> None:
         now = datetime.now(UTC).isoformat()
 
         def operation(value: dict[str, Any]) -> None:
+            distribution = value.get("distribution")
+            if distribution:
+                pending = distribution.get("operation")
+                if pending and pending["owner"] != control:
+                    raise ConflictError("distribution operation pending")
+                if rollback and not pending:
+                    raise ConflictError("Redis rollback requires coordinated publication")
             entry = value["versions"][version]
             if rollback:
                 if not entry["published"] or entry["state"] not in {"available", "draining"}:
@@ -203,12 +221,16 @@ class Registry:
         self.update(operation)
 
     def cleanup(self, *, apply: bool = False, now: datetime | None = None) -> dict[str, Any]:
+        if self.read()[0]["format"] == "doku-publication/v2":
+            raise ConflictError("Redis-enabled registry requires coordinated cleanup")
         now = now or datetime.now(UTC)
         if now.tzinfo is None:
             raise ValueError("timezone required")
         plan: list[dict[str, str]] = []
 
         def operation(value: dict[str, Any]) -> None:
+            if value["format"] != "doku-publication/v1":
+                raise ConflictError("registry migrated; use coordinated cleanup")
             plan.clear()
             for version, entry in value["versions"].items():
                 reason = "retained"

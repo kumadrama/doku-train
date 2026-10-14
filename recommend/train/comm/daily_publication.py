@@ -1,11 +1,10 @@
-"""Prepare immutable multi-day inputs and execute one CPU tree publication attempt."""
+"""Prepare immutable multi-day inputs and upload registered publication artifacts."""
 
 from __future__ import annotations
 
 import copy
 import hashlib
 import json
-import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,7 +14,6 @@ from recommend.train.comm.datasvr.daily_input import resolve_days
 from recommend.train.comm.datasvr.published_dataset import digest
 from recommend.train.comm.model_params_validator import validate_config
 from recommend.train.comm.publication import Registry, encode, verify_objects
-from recommend.train.comm.training_pipeline import source_identity
 
 
 def read_uri(uri: str, max_bytes: int) -> bytes:
@@ -245,75 +243,6 @@ def publish_package(
     verify_objects(registry.store, entry)
     registry.publish(version, owner)
     return version
-
-
-def daily_run(
-    config: dict[str, Any],
-    *,
-    daily_root: str,
-    frozen_root: str,
-    cutoff: str,
-    artifact_root: str,
-    export_root: Path,
-    force: bool = False,
-) -> dict[str, Any]:
-    from recommend.train.eval_rerank import execute_test
-    from recommend.train.export_model import execute_export, gate
-    from recommend.train.train_rerank import execute_train
-
-    config = validate_config(config)
-    if config["model_type"] != "rerank_tree" or "publication" not in config:
-        raise ValueError("daily publication requires tree model and publication rules")
-    if "daily" not in config:
-        raise ValueError("daily.training_window_days must be declared in YAML")
-    prepared = prepare(
-        config, daily_root, frozen_root, cutoff, window_days=config["daily"]["training_window_days"]
-    )
-    if prepared is None:
-        return {"status": "skipped", "reason": "insufficient_days"}
-    config = prepared
-    logical = {k: v for k, v in config.items() if k != "output"}
-    logical["execution"] = {k: v for k, v in config["execution"].items() if k != "cache_dir"}
-    fingerprint = digest(
-        {
-            "config": logical,
-            "source": source_identity(),
-            "manifest": hashlib.sha256(
-                read_uri(
-                    config["dataset"]["manifest_uri"], config["execution"]["memory_limit_bytes"]
-                )
-            ).hexdigest(),
-        }
-    )
-    owner = uuid.uuid4().hex
-    registry = Registry(
-        ObjectStore(artifact_root, max_bytes=config["execution"]["memory_limit_bytes"]),
-        config["model_name"],
-    )
-    if not registry.start(owner, fingerprint, force=force):
-        return {"status": "skipped", "reason": "duplicate_input"}
-    config["output"]["run_id"] = owner
-    status = "failed"
-    try:
-        trained = execute_train(config)
-        root = Path(trained["run_dir"])
-        metrics = execute_test(root)
-        decision = gate(config, metrics)
-        (root / "publication-gate.json").write_bytes(encode(decision))
-        if not decision["passed"]:
-            status = "rejected"
-            return {"status": status, "run_dir": str(root), "gate": decision}
-        package = execute_export(root, export_root, version=owner)
-        version = publish_package(package, registry, owner, run_dir=root)
-        status = "published"
-        return {"status": status, "model_version": version, "run_dir": str(root)}
-    finally:
-        try:
-            if status != "published":
-                root = Path(config["output"]["root"]) / owner
-                archive_unpublished_run(root, config, registry, owner)
-        finally:
-            registry.finish(owner, status)
 
 
 def archive_unpublished_run(

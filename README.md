@@ -67,9 +67,9 @@ Source: [Spec 009 需求](specs/009-daily-tree-model-publication/requirements.md
 [设计](specs/009-daily-tree-model-publication/design.md)、
 [验证](specs/009-daily-tree-model-publication/verification.md)。
 
-已实现本地/S3 发布入口；尚未云端部署，也未接入 mono。两个服务后台下载 S3 模型包、在
-内存中选定同一已就绪版本，预测请求不读 S3；不使用 Redis 存模型。S3 published 不等于
-消费者 ready，实例加载、就绪协调、pin 注册/释放由 mono 接入。
+已完成 PROD S3 日更发布和清理 dry-run 接线（Spec 009）；本仓新增可选 Redis 分发
+（Spec 010），尚未部署该功能。两个服务后台加载模型、请求使用同一已就绪内存版本。
+S3 published、Redis committed 与消费者 ready 分别记录；加载、RPC 和 pin 由 mono 接入。
 
 配置迁移：原 `model_name: rerank_tree` 改为 `model_type: rerank_tree`，新增用户自定
 `model_name`；不保留旧字段语义兼容。以下是追加到完整模型配置的字段片段，非完整配置：
@@ -131,3 +131,58 @@ uv run python -m recommend.train.run cleanup --model-name recommendation_tree \
 不使用可变 latest 配置。实际实验 YAML 保留本地，部署前按 iac 声明的摘要上传；不打进源码镜像。
 镜像及 task definition 入口见 `build/` 和 `deploy/prod/`；`./build/build.sh` 仅打包源码和依赖锁，
 `./build/docker-build.sh <image>` 构建 CPU 镜像。跨仓接线与上线顺序见 Spec 009 设计。
+
+
+## 可选 Redis 分发
+
+Source: [Spec 010 设计](specs/010-redis-model-distribution/design.md)、
+[验证](specs/010-redis-model-distribution/verification.md)。
+
+`run.py` 统一编排训练、测试、导出、发布；`publish_model.py` 独立装配 S3 发布与 Redis 分发，
+不触发训练或导出。`python -m recommend.train.publish_model --package ... --artifact-root ...`
+与 `run publish` 使用同一用例。
+
+由部署环境显式注入以下绑定，不能把凭据写进 YAML 或提交到仓库：
+
+| 环境变量前缀 `DOKU_TRAIN_REDIS_` | 值 |
+| --- | --- |
+| URL | TLS Redis URL（rediss，凭据运行时注入）；仅本地测试允许 loopback redis |
+| ENVIRONMENT | 安全的环境标识，参与键前缀 |
+| CLUSTER | `true` 或 `false`，无默认值 |
+| TIMEOUT_SECONDS | 正数，连接/命令超时 |
+| MAX_FILE_BYTES | 单个对象预算，包括读取上限 |
+| MAX_PACKAGE_BYTES | 单版本 serving 文件、descriptor、ready 总字节预算 |
+| MAX_MODEL_BYTES | 同模型所有未删除版本的保留字节预算，含未完成上传 |
+
+未配置时继续 S3-only；部分配置报错。首次同步将该模型的 registry 升为 v2，旧发布/清理
+二进制不支持 v2，须先停止旧任务并升级；v2 不允许因缺少 Redis 绑定而静默降级。
+
+以下管理命令都要求 `--artifact-root <root>`、`--model-name <name>` 和上述绑定：
+
+- `redis-sync --version <exact-version> --stage-only`：验证既有 S3 包并上传，不切换目录。
+- `redis-sync --version <exact-version>`：同步 S3 current，完整校验后原子切换目录。
+- `redis-resume --operation-id <id> --confirmed-stopped`：旧执行者及其未决请求已停止后恢复。
+  pending 期间 Redis 丢失/回退时加 `--rebuild-redis`：以新 epoch 重建原操作完整目标目录，
+  保持原发布/回滚/排空意图；shadow 不变成上线，删除先提交已撤销旧引用的目录。
+- `redis-cancel --operation-id <id> --confirmed-stopped`：仅取消尚未提交目录的 sync/stage；
+  已提交、未知结果、回滚或清理必须 resume，已登记半包保留供恢复/合规清理。
+- `redis-rebuild --confirmed-stopped`：确认旧写入者停止后，从 S3 重建权威引用并更换 epoch。
+- `rollback --version <exact-version>`：用新 generation 同时协调 S3 与 Redis 回滚。
+- `cleanup`：默认 dry-run。`--apply` 还要求 consumer-protocol-ready 和
+  distribution-protocol-ready 两个门禁；只有完成 mono 双服务引用验收后才显式开启。
+
+重复输入去重仍检查成功版本的 Redis 分发；被门禁拒绝的 run 不同步。若存在未完成操作，
+日更明确报失败并给出 operation_id，运维确认终止后恢复，不能自动抢占。迟到旧输入不覆盖
+后续发布或人工回滚。Redis 失败不撤销 S3 发布，不伪称完整分发成功。
+
+清理保护两侧 current 和持久 pins；版本超过 30 天、替换保护期结束后，先从两侧日期目录
+撤销并进入 draining。两侧撤销确认后再等至少 24 小时且 pins 清空，先删 Redis，再删 S3。
+不设 TTL，不扫描全库删除；Redis 状态未知或有未完成操作时停止清理。每次优先完成
+已到期删除，避免日更排空候选让删除永久等待；逐项删除及转入 S3 删除前复核目录。
+
+iac 后续装配专用容量、TLS/ACL、noeviction、网络与上述任务绑定；mono 实现一次解析版本、
+RPC 携带精确版本/摘要、两服务独立 pin 与排空。先 stage-only，再验证完整请求，最后接通
+日更同步和双清理门禁。DTE 不部署。本轮没有修改 PROD 或开启任何门禁。
+
+本地真实 Redis 验证使用 `DOKU_TEST_REDIS_URL=redis://127.0.0.1:<port>/0 make check`；
+CI 自带隔离 Redis 服务。未提供该变量时仅跳过两项真实 Redis 测试，其余故障注入测试照常运行。

@@ -378,3 +378,12 @@ https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html 。
   容器默认无业务命令时失败，不能用 `--help` 的退出 0 冒充运行成功。
 - Scheduler 在同步模式只获 StartExecution；ECS RunTask/PassRole 留给工作流角色。
   训练角色 ListBucket 的模型范围与其 Get/Put 范围一致，限制为配置 model_name。
+
+
+### Redis 分发扩展（2026-10-14，Spec 010）
+
+Source: 用户要求保留 S3，并新增 Redis 模型/特征产物分发。
+[Spec 010](../010-redis-model-distribution/design.md) 已实现本仓可选 Redis 分发，扩展此前的
+“不引入 Redis 模型存储”选择；本轮未部署该功能。Spec 009 的不可变版本、发布门禁和持久
+引用继续保留。Redis current 可能落后 S3，v2 registry 强制走双侧引用保护及协调清理，
+旧清理器不得处理 Redis 分发模型。使用说明和跨仓接入步骤见 Spec 010。
