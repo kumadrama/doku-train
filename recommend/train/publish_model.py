@@ -104,6 +104,37 @@ def execute_publish(
     }
 
 
+def redis_url_from_secret(secret_id: str) -> str:
+    """Resolve the platform Redis Secret at runtime; never log its contents."""
+    import re
+    from urllib.parse import quote
+
+    import boto3
+
+    try:
+        raw = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)["SecretString"]
+        value = json.loads(raw)
+        host, port, db = value["host"], value["port"], value["db"]
+        username, password = value["username"], value["password"]
+        if (
+            value["tls"] is not True
+            or not isinstance(host, str)
+            or not re.fullmatch(r"[A-Za-z0-9.-]+", host)
+            or type(port) is not int
+            or not 1 <= port <= 65535
+            or type(db) is not int
+            or db != 0
+            or not isinstance(username, str)
+            or not username
+            or not isinstance(password, str)
+            or not password
+        ):
+            raise ValueError("invalid secret")
+        return f"rediss://{quote(username, safe='')}:{quote(password, safe='')}@{host}:{port}/{db}"
+    except Exception:
+        raise ValueError("Redis Secret unavailable or invalid; verify binding and IAM") from None
+
+
 def distribution_from_environment(artifact_root: str, model_name: str) -> Distribution | None:
     """Explicit runtime bindings; no Redis endpoint or environment defaults."""
     import os
@@ -111,6 +142,9 @@ def distribution_from_environment(artifact_root: str, model_name: str) -> Distri
     from recommend.train.comm.redis_artifact_store import RedisArtifactStore
 
     url = os.environ.get("DOKU_TRAIN_REDIS_URL")
+    secret_id = os.environ.get("DOKU_TRAIN_REDIS_SECRET_ID")
+    if url and secret_id:
+        raise ValueError("configure only one Redis URL or SECRET_ID")
     keys = [
         "ENVIRONMENT",
         "CLUSTER",
@@ -119,7 +153,7 @@ def distribution_from_environment(artifact_root: str, model_name: str) -> Distri
         "MAX_MODEL_BYTES",
         "TIMEOUT_SECONDS",
     ]
-    if not url:
+    if not url and not secret_id:
         if any("DOKU_TRAIN_REDIS_" + key in os.environ for key in keys):
             raise ValueError("incomplete Redis bindings")
         return None
@@ -132,7 +166,7 @@ def distribution_from_environment(artifact_root: str, model_name: str) -> Distri
     if not 0 < file_budget <= package_budget <= model_budget:
         raise ValueError("invalid Redis byte budgets")
     redis = RedisArtifactStore.connect(
-        url,
+        redis_url_from_secret(secret_id) if secret_id else str(url),
         cluster=values["CLUSTER"] == "true",
         max_file_bytes=file_budget,
         timeout_seconds=float(values["TIMEOUT_SECONDS"]),

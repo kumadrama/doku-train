@@ -337,3 +337,7 @@ lineage、配置摘要或模型版本。没有绑定时保留 v1 S3-only 行为�
 容量验收额外测量。同模型同 hash slot，不能通过增加分片绕过该模型单槽容量约束。
 由于保留旧版本的安全规则优先，容量不足的 pending 操作可确认停止后 cancel，再扩容或清理
 符合条件的非 current 版本；不能为了新发布直接驱逐受保护版本。
+
+## PROD 连接装配
+
+运行时支持 DOKU_TRAIN_REDIS_SECRET_ID 与 URL 二选一，Secret 使用平台 username/password/host/port/db/tls 合同，强制 TLS 和 db=0；只授权训练/清理 task role 读取指定 readwrite Secret。密码不进入 Terraform 或工作流环境。db/doku-redis-model 为平台 setup 身份声明。

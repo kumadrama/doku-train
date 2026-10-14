@@ -146,6 +146,7 @@ Source: [Spec 010 设计](specs/010-redis-model-distribution/design.md)、
 
 | 环境变量前缀 `DOKU_TRAIN_REDIS_` | 值 |
 | --- | --- |
+| SECRET_ID | 平台 Redis Secret 名称，运行时读取，和 URL 二选一；PROD 采用此项 |
 | URL | TLS Redis URL（rediss，凭据运行时注入）；仅本地测试允许 loopback redis |
 | ENVIRONMENT | 安全的环境标识，参与键前缀 |
 | CLUSTER | `true` 或 `false`，无默认值 |
