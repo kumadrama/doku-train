@@ -7,3 +7,9 @@
 - 训练进行中关闭 publication 或 redis：保留 checkpoint 和诊断对象，registry current 不推进。
 - 关闭训练/清理：业务依赖不初始化，跳过不计完成指标。
 - 无效 JSON/字段/预算与读取失败：fail closed。
+
+## DTE 部署入口
+
+- 新增正式 DTE 任务声明，复用 model-publisher 角色，不新增定时任务。
+- 部署合同测试同时覆盖 DTE/prod 的角色、日志与默认命令：DTE 只显示帮助，prod 保留必须显式传入操作的约束。
+- `make check`：141 passed、3 skipped；格式、lint、类型和锁文件检查通过。

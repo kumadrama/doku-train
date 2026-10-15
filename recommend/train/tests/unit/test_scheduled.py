@@ -146,18 +146,27 @@ def test_scoped_list_distinguishes_missing_from_denied(exists):
         stub.assert_no_pending_responses()
 
 
-def test_deployment_contract_matches_dkd_psm_and_fails_without_command():
+@pytest.mark.parametrize("env", ["dte", "prod"])
+def test_deployment_contract_matches_dkd_psm_and_fails_without_command(env):
     import re
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[4]
     service = yaml.safe_load((root / "service.yml").read_text())
     assert re.fullmatch(r"([a-z][a-z0-9]*-){2}[a-z][a-z0-9]*", service["psm"])
-    task = yaml.safe_load((root / "deploy/prod/task-definition.yml").read_text())
+    task = yaml.safe_load((root / f"deploy/{env}/task-definition.yml").read_text())
     container = task["containerDefinitions"][0]
     assert container["name"] == "{{PSM}}"
     assert container["logConfiguration"]["options"]["awslogs-group"].endswith(service["psm"])
-    assert not (root / "deploy/dte").exists()
+    if env == "dte":
+        assert container["command"] == ["python", "-m", "recommend.train.scheduled", "--help"]
+    else:
+        assert "command" not in container
+    expected_role = "model-publisher" if env == "dte" else "tree-train"
+    assert task["taskRoleArn"] == f"doku-{env}-taskrole-{expected_role}"
+    assert container["logConfiguration"]["options"]["awslogs-group"] == (
+        f"/ecs/doku-{env}/{service['psm']}"
+    )
     dockerfile = (root / "build/Dockerfile").read_text()
     assert 'CMD ["python", "-m", "recommend.train.scheduled"]' in dockerfile
 
