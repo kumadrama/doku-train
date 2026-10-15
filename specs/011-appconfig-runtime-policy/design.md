@@ -21,3 +21,9 @@ Redis timeout_seconds、max_file_bytes、max_package_bytes、max_model_bytes 从
 3. 验证后单独移除 tree_publication_enabled / tree_redis_enabled 和旧数值环境变量；bootstrap PR 保留旧镜像仍依赖的字段、原调度启停及告警。训练 timer 永久保持 false，不因迁移打开。
 
 回滚前确保旧镜像所需环境变量存在，运行开关不会控制旧代码。不得把 AppConfig 的关闭当成旧镜像已停机。
+
+## DTE 正式入口
+
+用户授权补齐 deploy/dte。复用既有 doku-dte-taskrole-model-publisher，1 vCPU / 2 GiB，
+只注册 doku-reco-train_dte 任务定义，不新增 ECS service 或 Scheduler。默认命令为 --help，
+直接启动也不触发训练/发布。受控验收另行指定 operation 和明确 DTE 绑定。
