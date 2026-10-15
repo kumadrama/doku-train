@@ -24,7 +24,7 @@ Source: 本仓 comm/daily_publication.py、comm/publication.py、scheduled.py；
 | --- | --- |
 | R1 | S3 保持不可变制品及发布/生命周期权威，Redis 可从 S3 重建；model_type、model_name、model_version 语义沿用 Spec 009。 |
 | R2 | Redis 同步线上加载必需的 Manifest、feature-contract、fitted-feature-state 和全部任务 UBJ；checkpoint、训练输入、训练配置和评估归档保留 S3。 |
-| R3 | 特征组装服务与 predictor 独立部署，但一次请求只解析一次版本；RPC 携带名称、精确版本及合同摘要。禁止 predictor 再选 latest 或按目录推测版本。 |
+| R3 | 特征组装服务与 predictor 独立部署，但一次请求只解析一次版本；RPC 仅携带 model_name 与 model_version 作为版本身份；摘要在加载时从权威 registry/descriptor 获取并校验。禁止 predictor 再选 latest 或按目录推测版本。 |
 | R4 | 两个服务均后台预加载并校验，热路径使用本地内存；Redis 不承担模型计算，不要求每个预测请求下载模型或访问 S3。 |
 | R5 | 先成功发布 S3，再同步并校验完整 Redis 版本，最后原子切换 Redis 线上目录；不得暴露半包。Redis 成功不等于所有服务实例已就绪。 |
 | R6 | S3 发布、Redis 分发、消费者就绪分别记录结果。同步失败保留旧线上目录，可独立重试同一版本，不重训、不伪造全链路发布成功。 |

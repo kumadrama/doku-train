@@ -23,3 +23,5 @@ Source: 2026-10-14 用户授权“开始实施代码”；requirements/design �
 - [ ] monitoring：分发失败/未知、pending 操作、孤儿 pin、容量、版本不一致监控。
 - [ ] PROD stage-only、完整请求、每日同步、清理 dry-run 验收；完成双协议验收后再开门禁。
 - [ ] Redis Cluster/TLS/ACL 与 failover 的真实部署验收。DTE 不部署。
+
+- [x] 2026-10-15：请求只传 model_name/model_version，摘要改由加载阶段校验；同步 R3 和设计 3.1。
