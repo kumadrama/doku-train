@@ -12,6 +12,7 @@ from recommend.train.comm.artifact_store import ObjectStore
 from recommend.train.comm.daily_publication import publish_package
 from recommend.train.comm.publication import Registry, verify_objects
 from recommend.train.comm.redis_distribution import Distribution
+from recommend.train.runtime_policy import OperationPaused, check, policy_for, skipped
 
 
 class DistributionFailed(RuntimeError):
@@ -28,7 +29,14 @@ class DistributionFailed(RuntimeError):
         super().__init__(json.dumps(self.result))
 
 
-def sync_version(distribution: Distribution, version: str) -> dict[str, Any]:
+def sync_version(
+    distribution: Distribution, version: str, *, policy_checked: bool = False
+) -> dict[str, Any]:
+    try:
+        if not policy_checked:
+            check(distribution.registry.store.root, "publication")
+    except OperationPaused as error:
+        return skipped(error)
     try:
         result = distribution.sync(version)
     except Exception:
@@ -52,6 +60,7 @@ def publish_prepared(
     package: Path, registry: Registry, owner: str, *, run_dir: Path | None = None
 ) -> str:
     """S3 stage for an already-owned run; no training/export dependency."""
+    check(registry.store.root, "publication")
     return publish_package(package, registry, owner, run_dir=run_dir)
 
 
@@ -63,6 +72,10 @@ def execute_publish(
     force: bool = False,
     distribution: Distribution | None = None,
 ) -> dict[str, Any]:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        return skipped(error)
     raw = (package / "manifest.json").read_bytes()
     manifest = json.loads(raw)
     version = manifest["model_version"]
@@ -83,7 +96,7 @@ def execute_publish(
             raise ValueError("published version has retired")
         verify_objects(registry.store, existing)
         if distribution is not None:
-            return sync_version(distribution, version)
+            return sync_version(distribution, version, policy_checked=True)
         return {"status": "skipped", "reason": "already_published", "model_version": version}
     owner = uuid.uuid4().hex
     if not registry.start(owner, hashlib.sha256(raw).hexdigest(), force=force):
@@ -92,10 +105,13 @@ def execute_publish(
     try:
         version = publish_prepared(package, registry, owner, run_dir=run_dir)
         status = "published"
+    except OperationPaused as error:
+        status = "paused"
+        return skipped(error)
     finally:
         registry.finish(owner, status)
     if distribution is not None:
-        return sync_version(distribution, version)
+        return sync_version(distribution, version, policy_checked=True)
     return {
         "status": status,
         "s3_publication": status,
@@ -141,6 +157,7 @@ def distribution_from_environment(artifact_root: str, model_name: str) -> Distri
 
     from recommend.train.comm.redis_artifact_store import RedisArtifactStore
 
+    policy = policy_for(artifact_root)
     url = os.environ.get("DOKU_TRAIN_REDIS_URL")
     secret_id = os.environ.get("DOKU_TRAIN_REDIS_SECRET_ID")
     if url and secret_id:
@@ -154,10 +171,20 @@ def distribution_from_environment(artifact_root: str, model_name: str) -> Distri
         "TIMEOUT_SECONDS",
     ]
     if not url and not secret_id:
+        if policy is not None:
+            raise ValueError("cloud model operations require Redis bindings")
         if any("DOKU_TRAIN_REDIS_" + key in os.environ for key in keys):
             raise ValueError("incomplete Redis bindings")
         return None
-    values = {key: os.environ["DOKU_TRAIN_REDIS_" + key] for key in keys}
+    values = {key: os.environ["DOKU_TRAIN_REDIS_" + key] for key in keys[:2]}
+    if policy is not None and values["ENVIRONMENT"] != os.environ["DOKU_ENV"]:
+        raise ValueError("Redis environment does not match AppConfig environment")
+    for key in keys[2:]:
+        values[key] = (
+            str(policy["redis"][key.lower()])
+            if policy is not None
+            else os.environ["DOKU_TRAIN_REDIS_" + key]
+        )
     if values["CLUSTER"] not in {"true", "false"}:
         raise ValueError("Redis CLUSTER must be true or false")
     file_budget = int(values["MAX_FILE_BYTES"])

@@ -16,6 +16,7 @@ from recommend.train.comm.publication import Registry, encode
 from recommend.train.comm.redis_distribution import Distribution
 from recommend.train.comm.search import execute_search, expand_search
 from recommend.train.comm.training_pipeline import source_identity
+from recommend.train.runtime_policy import OperationPaused, check, skipped
 from recommend.train.train_rerank import execute_test_local, execute_train, execute_train_local
 
 
@@ -35,6 +36,10 @@ def daily_run(
     from recommend.train.publish_model import publish_prepared, sync_version
     from recommend.train.train_rerank import execute_train
 
+    try:
+        check(artifact_root, "training")
+    except OperationPaused as error:
+        return skipped(error)
     config = validate_config(config)
     if config["model_type"] != "rerank_tree" or "publication" not in config:
         raise ValueError("daily publication requires tree model and publication rules")
@@ -108,6 +113,9 @@ def daily_run(
         version = publish_prepared(package, registry, owner, run_dir=root)
         status = "published"
         result = {"status": status, "model_version": version, "run_dir": str(root)}
+    except OperationPaused as error:
+        status = "paused"
+        return {**skipped(error), "run_dir": str(root)}
     finally:
         try:
             if status != "published":
@@ -117,7 +125,7 @@ def daily_run(
             registry.finish(owner, status)
 
     if distribution is not None:
-        result.update(sync_version(distribution, version))
+        result.update(sync_version(distribution, version, policy_checked=True))
     return result
 
 
@@ -199,6 +207,11 @@ def daily(
     export_root: Annotated[Path, typer.Option("--export-root")],
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
+    try:
+        check(artifact_root, "training")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
 
     from recommend.train.publish_model import distribution_from_environment
 
@@ -224,6 +237,12 @@ def cleanup(
     run_root: Annotated[Path | None, typer.Option("--run-root")] = None,
     export_root: Annotated[Path | None, typer.Option("--export-root")] = None,
 ) -> None:
+    try:
+        check(artifact_root, "cleanup")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     from recommend.train.comm.artifact_store import ObjectStore
     from recommend.train.comm.publication import Registry, cleanup_local
 
@@ -245,6 +264,12 @@ def rollback(
     model_name: Annotated[str, typer.Option("--model-name")],
     version: Annotated[str, typer.Option("--version")],
 ) -> None:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     from recommend.train.comm.artifact_store import ObjectStore
     from recommend.train.comm.publication import Registry, verify_objects
     from recommend.train.publish_model import distribution_from_environment
@@ -294,6 +319,12 @@ def publish(
     run_dir: Annotated[Path | None, typer.Option("--run-dir")] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     from recommend.train.publish_model import distribution_from_environment, execute_publish
 
     name = json.loads((package / "manifest.json").read_bytes())["model_name"]
@@ -343,6 +374,12 @@ def redis_sync(
     version: Annotated[str, typer.Option("--version")],
     stage_only: Annotated[bool, typer.Option("--stage-only")] = False,
 ) -> None:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     from recommend.train.publish_model import sync_version
 
     distribution = require_distribution(artifact_root, model_name)
@@ -378,6 +415,12 @@ def redis_resume(
     rebuild_redis: Annotated[bool, typer.Option("--rebuild-redis")] = False,
     confirmed_stopped: Annotated[bool, typer.Option("--confirmed-stopped")] = False,
 ) -> None:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     typer.echo(
         json.dumps(
             require_distribution(artifact_root, model_name).resume(
@@ -393,6 +436,12 @@ def redis_rebuild(
     model_name: Annotated[str, typer.Option("--model-name")],
     confirmed_stopped: Annotated[bool, typer.Option("--confirmed-stopped")] = False,
 ) -> None:
+    try:
+        check(artifact_root, "publication")
+    except OperationPaused as error:
+        typer.echo(json.dumps(skipped(error)))
+        return
+
     typer.echo(
         json.dumps(
             require_distribution(artifact_root, model_name).rebuild(

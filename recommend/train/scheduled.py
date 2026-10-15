@@ -12,6 +12,7 @@ from typing import Any
 
 from recommend.train.comm.artifact_store import ObjectStore
 from recommend.train.comm.model_params_validator import load_config
+from recommend.train.runtime_policy import OperationPaused, check, skipped
 
 
 def read_config(uri: str, sha256: str, model_name: str) -> dict[str, Any]:
@@ -34,6 +35,13 @@ def execute() -> None:
     parser.add_argument("--cutoff")
     args = parser.parse_args()
     root = os.environ["DOKU_TRAIN_ARTIFACT_ROOT"]
+    try:
+        check(root, "training" if args.operation == "daily" else "cleanup")
+    except OperationPaused as error:
+        print(
+            json.dumps({"operation": args.operation, "status": "skipped", "result": skipped(error)})
+        )
+        return
     name = os.environ["DOKU_TRAIN_MODEL_NAME"]
     # Fail before any writes if the explicit lake encryption binding is missing.
     if not os.environ["DOKU_TRAIN_S3_KMS_KEY_ARN"]:
@@ -69,7 +77,10 @@ def execute() -> None:
             if distribution
             else Registry(ObjectStore(root), name).cleanup(apply=True)
         )
-    print(json.dumps({"operation": args.operation, "completed": True, "result": result}))
+    if result.get("status") == "skipped":
+        print(json.dumps({"operation": args.operation, "status": "skipped", "result": result}))
+    else:
+        print(json.dumps({"operation": args.operation, "completed": True, "result": result}))
 
 
 def main() -> None:
