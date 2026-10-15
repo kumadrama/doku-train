@@ -139,12 +139,14 @@ Source: Redis 官方 [Cluster 同槽限制与 hash tags](https://redis.io/docs/l
 固定如下上下文；未指定日期时使用该快照 current，指定日期不存在则明确失败：
 
 ```text
-model_name, model_version, manifest_sha256, feature_contract_sha256,
-encoded_features（按合同固定顺序/类型）, request_id
+model_name, model_version,
+items（每候选 item_key + 具名标量 features；按该版本合同编码）
 ```
 
+2026-10-15 用户确认：同一环境内 `(model_name, model_version)` 唯一绑定不可变产物。请求不传摘要，不传 current/latest 或日期作为 predictor 选版依据。两个消费者在加载时各自校验权威 registry、ready、descriptor、原始 manifest、feature-contract 和 fitted state/权重文件的摘要；已有发布冲突拒绝规则保持不变。摘要是加载完整性检查，不是调用方的选版参数。
+
 predictor 按精确版本查找不可变本地句柄，并校验名称、摘要、输入结构；不再读 current 选版本。
-响应回传实际名称/版本/摘要，组装方核对。重试同一已编码请求继续使用原版本。
+响应回传实际 model_name/model_version，组装方核对；RPC 不携带 manifest_sha256 或 feature_contract_sha256。重试同一已编码请求继续使用原版本。
 只有重新开始整个请求、重新编码才可以重新解析；禁止用旧特征配新模型。
 
 两服务不必同时更新全部实例。新版本先到特征服务、后到 predictor 的窗口，由 mono 的
