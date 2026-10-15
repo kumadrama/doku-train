@@ -111,3 +111,36 @@ def test_insufficient_days_and_rejection_do_not_publish(tmp_path):
     registry = Registry(ObjectStore(args["artifact_root"]), config["model_name"])
     assert registry.read()[0]["current"] is None
     assert json.loads((Path(result["run_dir"]) / "status.json").read_text())["status"] == "complete"
+
+
+@pytest.mark.parametrize("paused", ["publication", "redis"])
+def test_pause_after_training_archives_without_advancing_current(tmp_path, monkeypatch, paused):
+    from recommend.train import runtime_policy, train_rerank
+    from recommend.train.tests.unit.test_runtime_policy import document
+
+    config, daily = daily_fixture(tmp_path)
+    settings = document()
+    monkeypatch.setattr(runtime_policy, "policy_for", lambda root: settings)
+    original = train_rerank.execute_train
+
+    def train_then_pause(value):
+        result = original(value)
+        settings[paused]["enabled"] = False
+        return result
+
+    monkeypatch.setattr(train_rerank, "execute_train", train_then_pause)
+    artifact_root = (tmp_path / "artifacts").as_uri()
+    result = daily_run(
+        config,
+        daily_root=daily.root,
+        frozen_root=(tmp_path / "frozen").as_uri(),
+        cutoff="2026-10-08",
+        artifact_root=artifact_root,
+        export_root=tmp_path / "exports",
+    )
+    assert result["reason"] == f"{paused}_disabled"
+    state = Registry(ObjectStore(artifact_root), config["model_name"]).read()[0]
+    assert state["current"] is None
+    assert all(not v["published"] for v in state["versions"].values())
+    assert any(v.get("kind") == "diagnostic" for v in state["versions"].values())
+    assert (Path(result["run_dir"]) / "checkpoint.xgb.zip").exists()
