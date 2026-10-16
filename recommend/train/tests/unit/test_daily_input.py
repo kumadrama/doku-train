@@ -60,7 +60,7 @@ def fixture():
     return objects, options
 
 
-def test_freezes_exact_runs_and_rejects_projection_mix():
+def test_freezes_exact_runs_and_rejects_projection_mismatch():
     objects, options = fixture()
     days = [date(2026, 10, 1), date(2026, 10, 2)]
     m, _contracts = resolve_days(options, days, objects.__getitem__)
@@ -68,7 +68,10 @@ def test_freezes_exact_runs_and_rejects_projection_mix():
     objects[options["daily_prefix"] + "date=2026-10-01/_SUCCESS"] = b"changed"
     assert m["partitions"][0]["uri"].endswith("/run_id=abc/part.parquet")
     objects, options = fixture()
-    options["projection_sha256"] = "b" * 64
+    key = options["daily_prefix"] + "date=2026-10-01/_SUCCESS"
+    pointer = json.loads(objects[key])
+    pointer["projection_sha256"] = "b" * 64
+    objects[key] = json.dumps(pointer).encode()
     with pytest.raises(ValueError, match="projection"):
         resolve_days(options, days, objects.__getitem__)
 

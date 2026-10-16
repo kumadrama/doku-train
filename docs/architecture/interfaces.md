@@ -60,3 +60,17 @@ S3 发布与 Redis 分发分别记状态；完整 Redis 包校验后原子切换
 清理同时保护两侧 current、同步操作与双方持久 pins；先停止解析并排空，再删 Redis，最后删 S3。
 发布入口为 publish_model.py，日更统一由 run.py 编排，scheduled.py 只适配参数。
 registry v2、Redis catalog v1、恢复/取消及精确键清理协议详见 Spec 010；消费者行为尚待 mono 实施。
+
+## 跨日输入合同演进（Spec 012）
+
+Source: 2026-10-16 用户授权；[Spec 012](../../specs/012-daily-contract-evolution/design.md)。
+
+当前本地实现：每日输入独立验证源合同与投影摘要，标签版本集合合并；特征合同
+允许字段新增，已有同名定义和其余元数据保持一致。旧日期合同未声明的已选字段
+必须有 YAML 显式默认值，物理文件缺少已声明的必需列仍失败。冻结 Manifest 的
+`daily_contracts_version=doku-daily-contracts/v1` 标记逐日合同证据；`source_manifests`
+内保存原始合同与 Manifest 文本及摘要。`lineage.daily_sources` 记录日期、源地址、
+原特征/标签版本、投影/合同摘要和 `defaulted_features`；实际默认值由冻结配置保留。
+合并 Feature Schema 的版本由源合同摘要确定；不冒充任一源版本。
+
+部署状态：本地验证已完成；用户随后授权生产部署，实际执行证据单独记录。

@@ -166,6 +166,7 @@ def train(
                 "dataset_version": dataset.manifest["dataset_version"],
                 "feature_schema_version": dataset.manifest["feature_schema_version"],
                 "label_definition_version": dataset.manifest["label_definition_version"],
+                "daily_sources": dataset.source_records,
                 "maturity_status": dataset.maturity_status,
                 "split": config["split"],
                 "feature_state_sha256": digest(state),

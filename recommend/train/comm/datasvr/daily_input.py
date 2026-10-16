@@ -8,7 +8,12 @@ from collections.abc import Callable
 from datetime import date, timedelta
 from typing import Any
 
-from recommend.train.comm.datasvr.published_dataset import digest
+from recommend.train.comm.datasvr.daily_contracts import (
+    digest,
+    label_versions,
+    merge_contracts,
+    validate_contracts,
+)
 
 
 def resolve_days(
@@ -20,7 +25,7 @@ def resolve_days(
     pointers: dict[str, bytes] = {}
     manifests: list[dict[str, Any]] = []
     sources = []
-    contracts: dict[str, bytes] = {}
+    bundles: list[dict[str, Any]] = []
     for day in sorted(days):
         day_prefix = prefix + f"date={day}/"
         key = day_prefix + "_SUCCESS"
@@ -41,14 +46,8 @@ def resolve_days(
             {k: v for k, v in m.items() if k != "content_sha256"}
         ) != m.get("content_sha256"):
             raise ValueError("daily manifest digest mismatch")
-        if (
-            m.get("projection_sha256") != options["projection_sha256"]
-            or p["projection_sha256"] != options["projection_sha256"]
-        ):
-            raise ValueError("incompatible projection; backfill requested dates first")
-        for field in ["feature_schema_version", "label_definition_version"]:
-            if m[field] != options[field]:
-                raise ValueError("incompatible daily contract version")
+        if not m.get("projection_sha256") or p["projection_sha256"] != m["projection_sha256"]:
+            raise ValueError("daily pointer projection differs from manifest")
         if manifests and any(
             m[k] != manifests[0][k] for k in ["dataset_id", "label_config_version"]
         ):
@@ -66,15 +65,29 @@ def resolve_days(
                 raise ValueError("shard outside immutable daily run")
             if part["rows"] < 0 or len(part["sha256"]) != 64:
                 raise ValueError("invalid daily shard")
+        originals = {}
+        hashes = {}
+        bundle = {}
         for name in ["features", "labels"]:
             content = read(uri.rsplit("/", 1)[0] + f"/contracts/{name}.json")
-            if name in contracts and json.loads(content) != json.loads(contracts[name]):
-                raise ValueError("incompatible daily contracts")
-            if name == "features" and digest(json.loads(content)) != options["projection_sha256"]:
-                raise ValueError("projection contract digest mismatch")
-            contracts[name] = content
+            hashes[name] = hashlib.sha256(content).hexdigest()
+            if m.get("contract_sha256", {}).get(name, hashes[name]) != hashes[name]:
+                raise ValueError("daily contract checksum mismatch")
+            originals[name] = content.decode("utf-8")
+            bundle[name] = json.loads(content)
+        validate_contracts(m, bundle)
+        bundles.append(bundle)
         manifests.append(m)
-        sources.append({"uri": uri, "sha256": p["manifest_sha256"], "date": str(day)})
+        sources.append(
+            {
+                "uri": uri,
+                "sha256": p["manifest_sha256"],
+                "date": str(day),
+                "manifest": raw.decode("utf-8"),
+                "contracts": originals,
+                "contract_sha256": hashes,
+            }
+        )
     # No cross-day transaction exists in S3. Reject concurrent pointer switches
     # during resolution, then use only the pinned immutable URIs for this run.
     if any(read(uri) != body for uri, body in pointers.items()):
@@ -82,18 +95,18 @@ def resolve_days(
     parts = [p for m in manifests for p in m["partitions"]]
     if len({p["uri"] for p in parts}) != len(parts):
         raise ValueError("duplicate daily shards")
+    merged = merge_contracts(bundles)
+    contracts = {k: json.dumps(v, sort_keys=True).encode() for k, v in merged.items()}
     result = {
-        k: manifests[0][k]
-        for k in [
-            "manifest_version",
-            "dataset_id",
-            "feature_schema_version",
-            "label_definition_version",
-            "label_config_version",
-            "projection_sha256",
-        ]
+        k: manifests[0][k] for k in ["manifest_version", "dataset_id", "label_config_version"]
     }
     result.update(
+        daily_contracts_version="doku-daily-contracts/v1",
+        feature_schema_version=merged["features"]["feature_spec_version"],
+        label_definition_version=",".join(
+            sorted(set().union(*[label_versions(m["label_definition_version"]) for m in manifests]))
+        ),
+        projection_sha256=digest(merged["features"]),
         dataset_version="frozen-" + digest(sources),
         partitions=parts,
         as_of_ms=max(m["as_of_ms"] for m in manifests),
