@@ -59,3 +59,14 @@ R3/R4 的实际 RPC、Go 加载、实例路由及失联排空属于 mono；本�
 - `./build/build.sh`、`bash -n build/build.sh build/docker-build.sh`、`run redis-resume --help`：通过。
 - 8 个变更/新增文档相对链接检查、`git diff --check`：通过。
 - 仅本机 Redis 7.4.11 / file:// 测试，没有执行线上 Redis/S3 操作或更改部署/门禁。
+
+## PROD Secret 连接适配
+
+`DOKU_TRAIN_REDIS_SECRET_ID` 运行时读取平台 JSON，和 URL 二选一；强制 TLS、db=0、
+密码 URL 编码，错误不包含 Secret 内容。新增 doku-redis-model store 身份供 dkd setup。
+2026-10-14：带本地 Redis 的 `make check` **122 passed in 71.24s**，格式/lint/mypy/lock 全部通过。
+本次测试未读取生产凭据；云端资源、ACL 与任务绑定由 iac 后续接线验收。
+
+## 2026-10-15 请求合同简化
+
+用户确认 RPC 版本身份仅为 model_name/model_version。requirements R3 与 design 3.1 已同步；摘要校验仍在加载阶段，immutable 发布、pin、排空和删除协议不变。本次训练仓仅修改合同文档，不修改发布键或重新训练，不访问线上。mono 回归应覆盖缺版本拒绝、current 切换后原版本预测、摘要损坏、未就绪拒绝和在途版本 pin。

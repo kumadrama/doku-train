@@ -1,0 +1,26 @@
+family: "{{PSM_ENV}}"
+networkMode: awsvpc
+requiresCompatibilities: [FARGATE]
+runtimePlatform:
+  cpuArchitecture: X86_64
+  operatingSystemFamily: LINUX
+cpu: "1024"
+memory: "2048"
+ephemeralStorage:
+  sizeInGiB: 100
+executionRoleArn: "{{EXECUTION_ROLE}}"
+taskRoleArn: doku-dte-taskrole-model-publisher
+containerDefinitions:
+  - name: "{{PSM}}"
+    image: "{{IMAGE}}"
+    essential: true
+    command: ["python", "-m", "recommend.train.scheduled", "--help"]
+    environment:
+      - name: PYTHONUNBUFFERED
+        value: "1"
+    logConfiguration:
+      logDriver: awslogs
+      options:
+        awslogs-group: /ecs/doku-dte/doku-reco-train
+        awslogs-region: us-east-2
+        awslogs-stream-prefix: ecs
