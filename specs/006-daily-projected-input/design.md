@@ -29,3 +29,10 @@ Source: 用户确认单 Manifest 地址方案。dataset 只声明 manifest_uri�
 aws_profile、allowed_prefixes 和训练内 daily_prefix 说明被本规则取代。
 版本与摘要从 Manifest 读取并校验，AWS 身份由启动环境提供，无生产默认值。
 每次 Run 冻结 Manifest/合同原文及摘要，resume/test 使用原冻结记录；不重新解析日更指针。
+
+## 2026-10-16 跨日合同演进
+
+Source: 用户确认并授权 Spec 012。跨日标签版本和特征投影不再要求完全相同；
+按 [Spec 012](../012-daily-contract-evolution/design.md) 合并标签版本及新增特征，
+旧日期未声明的已选特征使用 YAML 显式默认值。同名特征定义冲突、合同声明后
+缺列、标签其他语义变化及校验和错误仍失败。逐日原合同和版本随输入冻结。

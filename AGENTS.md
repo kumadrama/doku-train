@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 012：跨日合同演进](specs/012-daily-contract-evolution/requirements.md)、[设计](specs/012-daily-contract-evolution/design.md)、[任务](specs/012-daily-contract-evolution/tasks.md)、[验证](specs/012-daily-contract-evolution/verification.md) — 标签版本合并、旧日期新增特征默认值与逐日证据冻结；生产恢复按本次明确授权执行。
+
 - [Spec 010：模型与特征产物 Redis 分发需求](specs/010-redis-model-distribution/requirements.md) 与
   [设计](specs/010-redis-model-distribution/design.md) — 保留 S3，新增 Redis 分发、跨服务版本一致性及统一清理；本仓已实现，云端/消费者待接入。
   [实施任务](specs/010-redis-model-distribution/tasks.md)、[验证](specs/010-redis-model-distribution/verification.md)。

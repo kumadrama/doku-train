@@ -16,15 +16,14 @@ from urllib.parse import unquote, urlsplit
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from recommend.train.comm.datasvr.daily_contracts import (
+    digest as digest,
+)
+from recommend.train.comm.datasvr.daily_contracts import (
+    validate_contracts,
+    verify_daily_evidence,
+)
 from recommend.train.comm.runtime_budget import check_memory
-
-
-def digest(value: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
-        ).encode()
-    ).hexdigest()
 
 
 class PublishedDataset:
@@ -111,14 +110,31 @@ class PublishedDataset:
             ):
                 raise ValueError("frozen contract checksum mismatch")
             contracts[name] = json.loads(raw)
-        if (
-            contracts["features"]["feature_spec_version"] != m["feature_schema_version"]
-            or m["label_definition_version"] not in contracts["labels"]["label_definition_versions"]
-        ):
-            raise ValueError("source contract versions differ")
+        validate_contracts(m, contracts)
         self.dtypes = {x["name"]: x["dtype"] for x in contracts["features"]["features"]}
         if not set(config["features"]) <= self.dtypes.keys():
             raise ValueError("feature is not in source contract")
+        self.daily_fields: dict[str, set[str]] = {}
+        self.source_records: list[dict[str, Any]] = []
+        if "daily_contracts_version" in m:
+            if m["daily_contracts_version"] != "doku-daily-contracts/v1":
+                raise ValueError("unsupported daily contracts version")
+            self.daily_fields, self.source_records = verify_daily_evidence(m, contracts)
+            selected = set(config["features"])
+            defaults = config["feature_default_values"]
+            for fields in self.daily_fields.values():
+                missing = selected - fields
+                if missing - defaults.keys():
+                    raise ValueError(
+                        f"missing explicit feature defaults: {sorted(missing - defaults.keys())}"
+                    )
+            for record in self.source_records:
+                fields = next(
+                    self.daily_fields[p["uri"]]
+                    for p in m["partitions"]
+                    if p["event_time_from"][:10] == record["date"]
+                )
+                record["defaulted_features"] = sorted(selected - fields)
         self.labels = set(contracts["labels"]["labels"])
         # The v1 contract has no maturity field; external audits are run evidence.
         # Dataset names must not act as an allowlist or imply validation.
@@ -271,7 +287,14 @@ class PublishedDataset:
         file = pq.ParquetFile(path)
         # Published v1 partitions are keyed by exposure time, not request time.
         time_column = "impression_time"
-        selected = sorted(columns | {time_column})
+        requested = columns | {time_column}
+        defaults = self.config["feature_default_values"]
+        absent = (
+            (requested & set(self.config["features"])) - self.daily_fields[p["uri"]]
+            if self.daily_fields
+            else set()
+        )
+        selected = sorted(requested - absent)
         if not set(selected) <= set(file.schema_arrow.names):
             raise ValueError(
                 f"missing required columns: {set(selected) - set(file.schema_arrow.names)}"
@@ -293,4 +316,5 @@ class PublishedDataset:
                 timestamp = value.timestamp() * 1000 if isinstance(value, datetime) else value
                 if timestamp is None or not start <= timestamp < end:
                     raise ValueError("row outside declared event partition")
+                row.update({name: copy.deepcopy(defaults[name]) for name in absent})
                 yield row

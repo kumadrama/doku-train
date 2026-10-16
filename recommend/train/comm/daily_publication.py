@@ -49,7 +49,6 @@ def prepare(
     cutoff_day = date.fromisoformat(cutoff)
     available: list[str] = []
     observed: dict[str, bytes] = {}
-    manifests: dict[str, Any] = {}
     for key in sorted(source.list(), reverse=True):
         elements = key.split("/")
         if len(elements) != 2 or elements[-1] != "_SUCCESS" or not elements[0].startswith("date="):
@@ -79,7 +78,6 @@ def prepare(
         ):
             raise ValueError("daily logical digest mismatch")
         observed[day] = body
-        manifests[day] = manifest
         if manifest["row_count"] > 0:
             available.append(day)
     split = choose_dates(available, window_days=window_days)
@@ -90,14 +88,7 @@ def prepare(
         for part in ["train", "validation", "test"]
         for d in split[f"{part}_dates"]
     ]
-    first = manifests[str(days[-1])]
-    options = {
-        "daily_prefix": daily_root,
-        **{
-            k: first[k]
-            for k in ["projection_sha256", "feature_schema_version", "label_definition_version"]
-        },
-    }
+    options = {"daily_prefix": daily_root}
     frozen, contracts = resolve_days(options, days, lambda uri: read_uri(uri, budget))
     for selected_day in days:
         if source.get(f"date={selected_day}/_SUCCESS")[0] != observed[str(selected_day)]:
