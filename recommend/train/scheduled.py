@@ -49,6 +49,7 @@ def execute() -> None:
     if args.operation == "daily":
         if not args.cutoff:
             parser.error("daily requires --cutoff")
+        from recommend.train.comm.auc_events import emit_events
         from recommend.train.run import daily_run
 
         config = read_config(
@@ -66,6 +67,7 @@ def execute() -> None:
             artifact_root=root,
             export_root=Path("/work/exports"),
             distribution=distribution_from_environment(root, name),
+            test_observer=emit_events,
         )
     else:
         from recommend.train.comm.publication import Registry

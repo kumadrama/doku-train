@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -30,6 +31,7 @@ def daily_run(
     export_root: Path,
     force: bool = False,
     distribution: Distribution | None = None,
+    test_observer: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> dict[str, Any]:
     from recommend.train.eval_rerank import execute_test
     from recommend.train.export_model import execute_export, gate
@@ -104,6 +106,23 @@ def daily_run(
         trained = execute_train(config)
         root = Path(trained["run_dir"])
         metrics = execute_test(root)
+        from recommend.train.comm.auc_events import record_events
+
+        try:
+            events = record_events(root, config, metrics)
+            if test_observer is not None:
+                test_observer(events)
+        except Exception as error:
+            # Observability must not change training or publication outcomes.
+            import sys
+
+            print(
+                json.dumps(
+                    {"event": "test_auc_reporting_failed", "error_type": type(error).__name__}
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
         decision = gate(config, metrics)
         (root / "publication-gate.json").write_bytes(encode(decision))
         if not decision["passed"]:

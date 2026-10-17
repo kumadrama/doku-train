@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 013：每日 test AUC 看板](specs/013-test-auc-dashboard/requirements.md)、[设计](specs/013-test-auc-dashboard/design.md)、[任务](specs/013-test-auc-dashboard/tasks.md)、[验证](specs/013-test-auc-dashboard/verification.md) — 训练评估日志与 monitoring 四任务多模型看板；仅本地实现，未部署。
+
 - [Spec 012：跨日合同演进](specs/012-daily-contract-evolution/requirements.md)、[设计](specs/012-daily-contract-evolution/design.md)、[任务](specs/012-daily-contract-evolution/tasks.md)、[验证](specs/012-daily-contract-evolution/verification.md) — 标签版本合并、旧日期新增特征默认值与逐日证据冻结；生产恢复按本次明确授权执行。
 
 - [Spec 011：AppConfig 运行开关](specs/011-appconfig-runtime-policy/requirements.md)、[设计](specs/011-appconfig-runtime-policy/design.md)、[任务](specs/011-appconfig-runtime-policy/tasks.md)、[验证](specs/011-appconfig-runtime-policy/verification.md) — 训练、发布、Redis 分发与清理的独立运行控制；禁止将独立训练 timer 打开。
@@ -78,6 +80,7 @@ doku-train/
 
 - [Spec 009：树模型每日训练与发布需求](specs/009-daily-tree-model-publication/requirements.md) 与
   [设计](specs/009-daily-tree-model-publication/design.md) — 已实现本仓入口；云端与消费者接入待验证。
+
 
 - [Spec 006：按日投影训练输入](specs/006-daily-projected-input/design.md) — 固定日期目录、投影兼容与训练输入冻结。
 
