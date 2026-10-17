@@ -72,14 +72,22 @@ def test_daily_export_publish_and_repeat(tmp_path):
         "artifact_root": (tmp_path / "artifacts").as_uri(),
         "export_root": tmp_path / "exports",
     }
-    result = daily_run(config, **kwargs)
+    observations = []
+    result = daily_run(config, test_observer=observations.extend, **kwargs)
     assert result["status"] == "published"
     registry = Registry(ObjectStore(kwargs["artifact_root"]), config["model_name"])
     state = registry.read()[0]
     assert state["current"] == result["model_version"]
     assert len(state["versions"][state["current"]]["objects"]) > 10
-    again = daily_run(config, **kwargs)
+    assert observations
+    assert any(
+        key.endswith("training/test-auc-events.json")
+        for key in state["versions"][state["current"]]["objects"]
+    )
+    count = len(observations)
+    again = daily_run(config, test_observer=observations.extend, **kwargs)
     assert again == {"status": "skipped", "reason": "duplicate_input"}
+    assert len(observations) == count
     from recommend.train.eval_rerank import execute_test
 
     root = Path(result["run_dir"])
@@ -102,15 +110,26 @@ def test_insufficient_days_and_rejection_do_not_publish(tmp_path):
         "artifact_root": (tmp_path / "artifacts").as_uri(),
         "export_root": tmp_path / "exports",
     }
-    assert daily_run(config, **args)["reason"] == "insufficient_days"
+    observations = []
+    assert (
+        daily_run(config, test_observer=observations.extend, **args)["reason"]
+        == "insufficient_days"
+    )
+    assert not observations
     for rule in config["publication"].values():
         rule["minimum"] = 1.0
     args["cutoff"] = "2026-10-08"
-    result = daily_run(config, **args)
+    result = daily_run(config, test_observer=observations.extend, **args)
     assert result["status"] == "rejected"
+    assert observations
     registry = Registry(ObjectStore(args["artifact_root"]), config["model_name"])
     assert registry.read()[0]["current"] is None
     assert json.loads((Path(result["run_dir"]) / "status.json").read_text())["status"] == "complete"
+    assert any(
+        key.endswith("training/test-auc-events.json")
+        for version in registry.read()[0]["versions"].values()
+        for key in version["objects"]
+    )
 
 
 @pytest.mark.parametrize("paused", ["publication", "redis"])

@@ -1,0 +1,86 @@
+[
+  {
+    "auc": 0.6,
+    "completed_at_ms": 1792198800000,
+    "day_start_ms": 1792166400000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792198800000|run1|{\"auc\": 0.6}",
+    "run_id": "run1",
+    "task": "click"
+  },
+  {
+    "auc": null,
+    "completed_at_ms": 1792202400000,
+    "day_start_ms": 1792166400000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792202400000|run2|{\"auc\": null}",
+    "run_id": "run2",
+    "task": "click"
+  },
+  {
+    "auc": 0.6,
+    "completed_at_ms": 1792198800000,
+    "day_start_ms": 1792166400000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792198800000|run1|{\"auc\": 0.6}",
+    "run_id": "run1",
+    "task": "click"
+  },
+  {
+    "auc": 0.8,
+    "completed_at_ms": 1792204200000,
+    "day_start_ms": 1792166400000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_b",
+    "observation": "00000001792204200000|run3|{\"auc\": 0.8}",
+    "run_id": "run3",
+    "task": "click"
+  },
+  {
+    "auc": 0.65,
+    "completed_at_ms": 1792206000000,
+    "day_start_ms": 1792166400000,
+    "format": "doku-test-auc/v1",
+    "kind": "regression_auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792206000000|run4|{\"auc\": 0.65}",
+    "run_id": "run4",
+    "task": "watch"
+  },
+  {
+    "auc": 0.75,
+    "completed_at_ms": 1792252800000,
+    "day_start_ms": 1792252800000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792252800000|run5|{\"auc\": 0.75}",
+    "run_id": "run5",
+    "task": "click"
+  },
+  {
+    "auc": 0.9,
+    "completed_at_ms": 1792458000000,
+    "day_start_ms": 1792425600000,
+    "format": "doku-test-auc/v1",
+    "kind": "auc",
+    "metric": "rank",
+    "model_name": "model_a",
+    "observation": "00000001792458000000|run6|{\"auc\": 0.9}",
+    "run_id": "run6",
+    "task": "click"
+  }
+]

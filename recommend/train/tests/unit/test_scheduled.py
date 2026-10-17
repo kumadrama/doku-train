@@ -114,6 +114,9 @@ def test_daily_passes_frozen_cutoff_and_never_forces_retry(tmp_path, monkeypatch
     monkeypatch.setattr(sys, "argv", ["scheduled", "daily", "--cutoff", "2026-10-12"])
     scheduled.main()
     assert received["cutoff"] == "2026-10-12" and "force" not in received
+    from recommend.train.comm.auc_events import emit_events
+
+    assert received["test_observer"] is emit_events
     assert json.loads(capsys.readouterr().out)["result"]["status"] == "rejected"
     monkeypatch.setenv("DOKU_TRAIN_CONFIG_SHA256", "0" * 64)
     with pytest.raises(ValueError, match="digest"):

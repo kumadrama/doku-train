@@ -74,3 +74,13 @@ Source: 2026-10-16 用户授权；[Spec 012](../../specs/012-daily-contract-evol
 合并 Feature Schema 的版本由源合同摘要确定；不冒充任一源版本。
 
 部署状态：本地验证已完成；用户随后授权生产部署，实际执行证据单独记录。
+
+## 每日 test AUC 监控事件
+
+Source: [Spec 013](../../specs/013-test-auc-dashboard/design.md)，2026-10-17 用户授权本地实施。
+
+当前状态：daily_run 在独立 test 成功后冻结 test-auc-events.json；scheduled 通过 stdout
+交付 doku-test-auc/v1 JSON-lines，由已有 awslogs 收集。事件同时随成功/未发布产物归档。
+日志投递失败仅输出不含敏感详情的 reporting_failed 事件，不改写训练状态或发布门禁。
+目标状态：monitoring 的 CloudWatch 看板按 model_name 四图分组展示；本次未部署，
+云端查询/权限/实际呈现尚待后续授权验收。协议和同日重跑/null 规则以 Spec 013 为准。
