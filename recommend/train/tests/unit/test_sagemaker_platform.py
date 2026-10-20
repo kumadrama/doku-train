@@ -212,3 +212,27 @@ def test_failed_evaluation_or_archive_never_marks_complete(tmp_path, monkeypatch
         )
     assert not (root / "model/artifact-manifest.json").exists()
     assert (root / "output/data/resources.json").is_file()
+
+
+def test_submission_metadata_can_reference_approved_data_only(tmp_path):
+    config, runtime, binding, s3, _ = fixture(tmp_path)
+    for name in ["manifest.json", "contracts/features.json", "contracts/labels.json"]:
+        s3.objects[("synthetic", "experiments/submissions/trial/dataset/" + name)] = s3.objects[
+            ("synthetic", "input/" + name)
+        ]
+    config["dataset"]["manifest_uri"] = (
+        "s3://synthetic/experiments/submissions/trial/dataset/manifest.json"
+    )
+    prepare(config, runtime, binding, "trial", s3, tmp_path / "prepared")
+    manifest = json.loads(
+        s3.objects[("synthetic", "experiments/submissions/trial/dataset/manifest.json")]
+    )
+    manifest["partitions"][0]["uri"] = (
+        "s3://synthetic/experiments/submissions/trial/private.parquet"
+    )
+    s3.objects[("synthetic", "experiments/submissions/trial/dataset/manifest.json")] = canonical(
+        manifest
+    )
+    with pytest.raises(ValueError, match="outside approved"):
+        prepare(config, runtime, binding, "bad", s3, tmp_path / "bad")
+    assert not s3.puts

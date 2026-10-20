@@ -45,7 +45,10 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
             raise ValueError(f"image {field} differs from submitted identity")
     config = copy.deepcopy(package["config"])
     validate_experiment(config, runtime)
-    allowed(config["dataset"]["manifest_uri"], binding.input_prefixes)
+    allowed(
+        config["dataset"]["manifest_uri"],
+        [*binding.input_prefixes, binding.experiment_uri + "submissions/"],
+    )
     frozen = root / "work" / "frozen-input"
     frozen.mkdir(parents=True, exist_ok=False)
     expected_names = {

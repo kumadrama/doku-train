@@ -207,3 +207,9 @@ Source: [存储授权与磁盘规划](storage-plan.md)，2026-10-20 只读证据
 提交包包含原始 YAML（CLI 提交时）、校验后的配置、运行配置、binding 和冻结合同原文。
 PROD 示例有明确占位值，不可直接使用。IaC 模块默认不启用，binding 由已授权部署输出生成。
 本地 step 网页已做 HTTP smoke，容器与生产资源验收状态以 verification.md 为准。
+
+## 跨日冻结元数据提交
+
+跨日合并 Manifest 与合同可 create-only 上传至已授权的实验 `submissions/<run_id>/dataset/` 前缀。
+提交入口允许该前缀的元数据；分片 URI 仍逐条限定于 binding.input_prefixes，不能借此读取实验区的任意分片。
+不修改生产数据或扩展 IAM，配置仍声明精确 manifest_uri。
