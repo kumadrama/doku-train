@@ -1,15 +1,16 @@
 # Spec 008：SageMaker CPU 实验训练设计
 
-状态：2026-10-20 用户确认需求与设计；实施计划见 tasks.md，尚未实现或部署。
+状态：2026-10-20 已实现并部署；单个真实 DNN train/test/归档与指标数据验收通过，视觉验收待浏览器控制开启。
 Source: 2026-10-19 会话确认、根 AGENTS.md、Spec 007，以及当前训练代码和只读 AWS 核查。
-以下模块划分与平台映射源自会话设计推导 [INFERRED]，已随本方案获用户确认；不代表现有能力。
+以下模块划分与平台映射源自会话设计推导 [INFERRED]，已获用户确认；当前实施证据见 verification.md。
 
 ## 1. 当前状态与目标状态
 
 当前状态：`run.py` 提供 train/test，`train_rerank.py` 装配模型，
 `comm/training_pipeline.py` 读取 Manifest、拟合与编码、训练并写出本地 Run。
-DNN 与 DeepFM 共用 rerank 实现。现有 build/Dockerfile 默认启动 scheduled，
-尚无 SageMaker 目录映射、提交或结果归档合同。
+DNN 与 DeepFM 共用 rerank 实现。现有 build/Dockerfile 默认启动 scheduled；
+SageMaker 使用独立 Dockerfile、目录映射、冻结提交包和结果归档合同。
+专用 IAM/网络已部署，真实 DNN 单任务已成功；DeepFM 仅有合成容器验收，未启动真实云训练。
 
 目标状态：新增薄平台适配层调用现有用例，保持本地入口和模型不变。
 平台适配依赖公共合同和用例入口；comm、models 不反向依赖 SageMaker。
