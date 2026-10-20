@@ -17,7 +17,7 @@ Source: Spec004 与本轮实现。当前入口已切换为声明式配置，不�
 
 不创建models/deepfm。神经与树运行时分进程加载，避免本机OpenMP冲突；两者之间不共享可训练参数。
 
-## SageMaker 平台适配（本地已实现，云端未部署）
+## SageMaker 平台适配（已部署，单个 DNN 云训练通过）
 
 Source: [Spec 008 需求](../../specs/008-sagemaker-dnn-training/requirements.md) 与
 [设计](../../specs/008-sagemaker-dnn-training/design.md)，2026-10-19 用户会话确认。
@@ -34,3 +34,5 @@ Source: 2026-10-19 用户后续确认：Spec008 首期不创建 Studio Domain，
 
 Source: 2026-10-20 Q20/Q21 确认：step 曲线使用本地 TensorBoard（S3 同步），
 AWS 控制台/CloudWatch 继续用于任务、日志与时间指标；SageMaker 服务时限显式设为 86400 秒。
+
+Source: 2026-10-20 用户授权单任务云端验收。当前状态：专用 IAM/网络已部署，真实 DNN train/test/归档及 33 条 step 指标数据验证通过；浏览器视觉验证受 Work 设置阻塞。DeepFM 仅验证原生合成容器，15 并发和每日自动训练未执行。详见 [Spec008 验证](../../specs/008-sagemaker-dnn-training/verification.md)。
