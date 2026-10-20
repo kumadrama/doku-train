@@ -79,7 +79,8 @@ def prepare(
     config = validate_config(copy.deepcopy(config))
     validate_experiment(config, runtime)
     uri = config["dataset"]["manifest_uri"]
-    allowed(uri, binding.input_prefixes)
+    metadata_prefixes = [*binding.input_prefixes, binding.experiment_uri + "submissions/"]
+    allowed(uri, metadata_prefixes)
     parent = uri.rsplit("/", 1)[0] + "/"
     raw = {}
     for name, source in [
@@ -87,7 +88,7 @@ def prepare(
         ("contracts/features.json", parent + "contracts/features.json"),
         ("contracts/labels.json", parent + "contracts/labels.json"),
     ]:
-        allowed(source, binding.input_prefixes)
+        allowed(source, metadata_prefixes)
         bucket, key = split_s3(source)
         raw[name] = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     manifest = json.loads(raw["manifest.json"])
