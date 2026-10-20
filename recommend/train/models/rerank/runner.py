@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from recommend.train.comm import metric_events
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
 from recommend.train.comm.runtime_budget import check_memory
 from recommend.train.comm.task_metrics import metric_values
@@ -102,6 +103,8 @@ class NeuralRunner:
             best_epoch = saved["best_epoch"]
             stale = saved["stale"]
             trace = saved["trace"]
+        step = int(resume.get("global_step", 0)) if resume else 0
+        best_step = int(resume.get("best_step", 0)) if resume else 0
         count = len(next(iter(train.values())))
         for epoch in range(start, self.config["max_epochs"]):
             self.model.train()
@@ -110,12 +113,14 @@ class NeuralRunner:
                 self.optimizer.zero_grad(set_to_none=True)
                 outputs = self.model(batch)
                 losses = []
+                batch_losses: dict[str, float | None] = {n: None for n in self.config["tasks"]}
                 for name, t in self.config["tasks"].items():
                     mask = batch["mask:" + name][:, 0].bool()
                     n = int(mask.sum())
                     if n:
                         per = task_loss(outputs[name][mask], batch["label:" + name][:, 0][mask], t)
                         losses.append((per * batch["weight:" + name][:, 0][mask]).mean())
+                        batch_losses[name] = float(per.detach().mean())
                         sums[name][0] += float(per.detach().sum())
                         sums[name][1] += n
                 if losses:
@@ -124,7 +129,10 @@ class NeuralRunner:
                         raise ValueError("non-finite training loss")
                     loss.backward()  # type: ignore[no-untyped-call]
                     self.optimizer.step()
+                    step += 1
+                    metric_events.training_step(step, epoch + 1, batch_losses)
             metrics = self.evaluate(validation)
+            metric_events.evaluation("validation", step, epoch + 1, metrics)
             terms = self.config["selection"]["task_losses"]
             score = (
                 sum(metrics[n]["loss"] * w for n, w in terms.items())
@@ -135,18 +143,22 @@ class NeuralRunner:
                 best = score
                 best_state = copy.deepcopy(self.model.state_dict())
                 best_epoch = epoch + 1
+                best_step = step
                 stale = 0
             elif score is not None:
                 stale += 1
             trace.append(
                 {
                     "epoch": epoch + 1,
+                    "global_step": step,
                     "selection_score": score,
                     "validation": metrics,
                     "train_loss": {n: x[0] / x[1] if x[1] else None for n, x in sums.items()},
                 }
             )
             state = {
+                "global_step": step,
+                "best_step": best_step,
                 "identity": identity,
                 "model": self.model.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
@@ -176,6 +188,7 @@ class NeuralRunner:
                 "feature_state": self.state,
                 "model": self.model.state_dict(),
                 "selected_epoch": best_epoch,
+                "global_step": best_step if best_state is not None else step,
             },
             buffer,
         )
@@ -184,6 +197,7 @@ class NeuralRunner:
             "selection": {
                 "status": "selected" if best_epoch else "unavailable",
                 "epoch": best_epoch,
+                "global_step": best_step if best_state is not None else step,
             },
             "validation": self.evaluate(validation),
             "history": trace,

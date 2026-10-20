@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 008：SageMaker CPU 实验训练需求](specs/008-sagemaker-dnn-training/requirements.md)、[设计](specs/008-sagemaker-dnn-training/design.md)、[验证](specs/008-sagemaker-dnn-training/verification.md)、[存储规划](specs/008-sagemaker-dnn-training/storage-plan.md)、[任务](specs/008-sagemaker-dnn-training/tasks.md) — 已整理会话确认需求；PROD 单机 CPU DNN/DeepFM 实验、15 并发规划；首期本地提交、AWS 网页看 AUC/loss、不用 Studio；需求设计已确认、实施任务已生成，未实现或部署。
+
 - [Spec 013：每日 test AUC 看板](specs/013-test-auc-dashboard/requirements.md)、[设计](specs/013-test-auc-dashboard/design.md)、[任务](specs/013-test-auc-dashboard/tasks.md)、[验证](specs/013-test-auc-dashboard/verification.md) — 训练评估日志与 monitoring 四任务多模型看板；仅本地实现，未部署。
 
 - [Spec 012：跨日合同演进](specs/012-daily-contract-evolution/requirements.md)、[设计](specs/012-daily-contract-evolution/design.md)、[任务](specs/012-daily-contract-evolution/tasks.md)、[验证](specs/012-daily-contract-evolution/verification.md) — 标签版本合并、旧日期新增特征默认值与逐日证据冻结；生产恢复按本次明确授权执行。
