@@ -49,7 +49,7 @@ dry-run 不调用任何写 API、不上传 S3、不提交任务。
 - [x] KMS 数据访问限定现有 key、S3 ViaService，兼容 Bucket Key 的桶级 context；
   不给 key 管理权限，不把该 S3 策略直接用于 EBS 加密。
 - [x] 专用 SG 只放行所需路径，复用现有 svc 子网与 S3 endpoint；不放开数据库/Redis。
-- [ ] 核查现有 SageMaker 日志组及保留期限；若影响其他任务，记录影响并在 apply 前审阅，
+- [x] 核查现有 SageMaker 日志组及保留期限；若影响其他任务，记录影响并在 apply 前审阅，
   目标为本项目日志 30 天，不暗改共享保留行为。
 - [x] 输出 T01 binding；caller policy 仅定义需要的权限，不擅自给人员 attach。
 - [x] 不创建 Studio、MLflow、NAT、桶、key、定时任务、预算提醒或清理任务。
@@ -79,7 +79,7 @@ dry-run 不调用任何写 API、不上传 S3、不提交任务。
 
 文件：平台 `entrypoint.py`、`artifacts.py`，`build/Dockerfile.sagemaker`，公共输入/报告窄接口。
 
-- [ ] CPU amd64 镜像按锁文件构建，专用 SageMaker train 入口；运行时不安装依赖。
+- [x] CPU amd64 镜像按锁文件构建，专用 SageMaker train 入口；运行时不安装依赖。
 - [x] 依次调用既有 train/test 公共 Python 用例，异常传递到入口非零退出；不拼 shell，路径映射不改变逻辑配置。
 - [x] 归档包含 checkpoint、指标、feature state、lineage、冻结输入、配置及 test 证据；
   排除原始分片、编码缓存和无用途的中间文件。
@@ -108,7 +108,7 @@ mock S3 验证加密参数、重复同步与完整事件读取；本地 TensorBo
 
 ## T06 — 本地集成与交付（两仓）
 
-- [ ] 组合合成 binding、实验 YAML、dry-run 请求、容器与事件输出做端到端本地验证。
+- [x] 组合合成 binding、实验 YAML、dry-run 请求、容器与事件输出做端到端本地验证。
 - [x] doku-train 执行 make check；doku-iac 执行 T02 校验与仓库相关测试；保存真实命令结果。
 - [x] 更新 README 的构建、提交、停止、查看、结果下载流程与成本说明。
 - [ ] 同步 Spec008/architecture 状态，分别形成 train 和 iac PR，标明依赖和未部署状态。
@@ -132,3 +132,5 @@ mock S3 验证加密参数、重复同步与完整事件读取；本地 TensorBo
 - iac 仅验证新增模块（mock provider）与 binding 脚本，未运行 PROD plan。PROD 模块开关为空，待明确 ECR repository ARN 后启用。
 - 日志组是否已存在、共享影响及 30 天保留仍为 C01 前置核查；模块不暗改共享日志组。
 - 未提交/推送或创建 PR；两仓原有未提交变更保留，混合工作区须分别整理审阅后交付 PR。
+
+2026-10-20 更新：原生 amd64 CI 容器构建及双模型 smoke 已通过，解除 QEMU 阻塞；独立 train PR #12 已创建。日志组只读核查为空，已补充 iac 30 天保留声明，未部署。

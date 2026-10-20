@@ -101,3 +101,10 @@ get-key-policy，实验候选前缀 list-objects-v2 和 17 个分片 head-object
 - 未运行 terraform apply、云端 plan、ECR push、S3 写入或 CreateTrainingJob。实际 KMS 服务上传、网络、日志组与 15 并发仍待后续授权验收。
 - 最后补充原始 YAML 冻结后，针对性重跑 `pytest recommend/train/tests/unit/test_sagemaker_platform.py -q`：8 passed（4.53 秒），ruff 通过。
 - 两仓 `git diff --check` 通过；本仓 README/AGENTS/components/Spec008 共 69 个本地链接均可解析。
+
+## 2026-10-20 原生 amd64 与独立 PR
+
+[doku-train PR #12](https://github.com/kumadrama/doku-train/pull/12) 从 origin/main 独立整理，未混入 Spec013 等工作区改动。
+[CI run 39392803434](https://github.com/kumadrama/doku-train/actions/runs/39392803434) 全部通过：make check、现有构建、amd64 镜像构建；容器在 `--network none` 下运行合成 DNN/DeepFM 的 train/test/归档/TensorBoard 事件验证。
+此证据取代之前 ARM/QEMU 的容器验证阻塞；不代表真实 AWS 网络/KMS/训练性能通过。
+只读 AWS 核查复用现有 `doku-train/doku-reco-train` ECR repository；TrainingJobs 日志组不存在，iac 新增 30 天保留声明。未上传镜像、apply 或启动训练。
