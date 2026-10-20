@@ -84,3 +84,12 @@ Source: [Spec 013](../../specs/013-test-auc-dashboard/design.md)，2026-10-17 �
 日志投递失败仅输出不含敏感详情的 reporting_failed 事件，不改写训练状态或发布门禁。
 目标状态：monitoring 的 CloudWatch 看板按 model_name 四图分组展示；本次未部署，
 云端查询/权限/实际呈现尚待后续授权验收。协议和同日重跑/null 规则以 Spec 013 为准。
+
+## 树模型派生规则交付
+
+Source: [Spec 009 派生规则修复](../../specs/009-daily-tree-model-publication/design.md#2026-10-20-派生规则交付修复)，2026-10-20 用户授权。
+
+当前状态：本地导出的 doku-tree-features/v1 在 encoding 中包含完整 history_scalars，
+空规则写空对象；历史发布包曾遗漏该段。既有 Go 消费者显式拒绝此字段，尚未部署适配。
+目标状态：消费者仅凭正式合同和 fitted state 生成模型输入，完整合同优先于历史归档
+补载。必须同步升级两个编译入口后再发布新制品版本；列顺序、类型、权重和 OOV 语义不变。

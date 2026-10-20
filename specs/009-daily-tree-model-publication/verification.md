@@ -113,3 +113,52 @@ AWS provider 的 mock 测试使用本机已有 provider（沙箱外本地进程�
 - iac 从最新 main 的独立工作树验证：mock Terraform **4 passed**；PROD/DTE validate、
   fmt、接线合同、上游合同、Scheduler 输入与 JSONata 2.0.6 表达式测试全部通过。
 - Docker 镜像构建、真实 IAM 调用、S3 上传、apply 和生产调度均未执行；上述为本地证据。
+
+## 2026-10-20 派生规则交付修复
+
+Source: 用户授权只读拉取指定包并验证，随后授权本仓修复与飞书文档同步。
+
+固定版本 `320d4acdadfb4da1b9226f721f3c7cae` 从 PROD S3 下载到本地临时目录。
+manifest 引用的 8 个文件摘要全部匹配；feature-contract SHA256 为
+`645638606a09ffd2f88942f20a8e742d6fa93947d10305f1a0f8eeb4e9e38ab9`，配置摘要为
+`db2e554c2437e60fcc8e160c742e2867305081c2addc7832f712d13aeb9e0060`，与归档及文档一致。
+已有六段配置一致，缺少的九条 history_scalars 对应输入第 76～84 列。
+
+临时下载 Go 特征库提交 `8f18d2b9a1a4`，实际原合同编译失败，补齐字段后两个旧入口
+均显式拒绝；直接使用现有底层编译器模拟更新后的入口，8 组人工构造输入 × 86 列
+与 Python 训练加工逐个 float32 相等、NaN 位置一致，归档补载路径亦通过。
+四任务训练 checkpoint 与发布模型的 raw margin 最大绝对差为 0（XGBoost 3.4.1）。
+这不是已部署 Go 修复或真实线上取数对账证据；没有读取 Redis 当前版本，没有云端写入。
+临时核验脚本和真实包只留本地 `/tmp/doku-contract-review-320d4/`，不提交到仓库。
+临时核验命令：`.venv/bin/python /tmp/doku-contract-review-320d4/verify.py`；在临时
+featurelib 目录执行 `GOCACHE=/tmp/doku-contract-review-320d4/go-cache go test -run '^TestReviewActualPackage$' -v .`，均通过。
+
+持久回归测试为 `recommend/train/tests/smoke/test_tree_feature_contract.py`，使用独立
+合成 fixture，不依赖真实包、Go 源码、网络或凭据。覆盖非空/空规则配置；从实际导出
+encoding/state 重建向量，对照训练加工和独立预期值；检查 manifest 合同摘要及列顺序。
+边界包括缺失列表/候选、重复 ID、101 条截断、零权重、top-weight 平分和不同原始 OOV ID。
+该测试复用 Python FeaturePlan，不冒称为独立 Go 实现验证。
+
+本次刚运行的验证结果：
+
+- 修复前：新增测试在 `encoding.history_scalars` 处 KeyError，1 failed，复现遗漏。
+- `UV_CACHE_DIR=/tmp/doku-train-uv-cache uv run --offline pytest recommend/train/tests/smoke/test_tree_feature_contract.py -q`：2 passed，5.41 秒。
+- `UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check`：exit 0；锁文件通过，
+  147 文件格式通过，Ruff 通过，mypy 57 源文件通过，179 passed、3 skipped，84.38 秒。
+- `git diff --check` 通过；本次涉及的 Spec/architecture 中 16 个本地文档链接存在性检查通过。
+
+工作区已有其他任务变更，完整检查针对当前工作区；本次新增实现仅为导出 history_scalars，
+并增加对应测试及文档。未部署、未上传或覆盖旧制品。原飞书文档写入返回 4030004（当前用户无编辑权限），原文未修改。
+服务端配合事项另存为[飞书补充说明](https://ncncf5rav55t.feishu.cn/docx/TZhzd0nxpoCXrvxfFgVcUYclnLf)，
+已创建并回读确认，包含原文链接、两个编译入口的适配、回归验收及切换顺序。
+
+### 独立 PR 分支验证
+
+2026-10-20 从最新 origin/main `9479f0a7d7efd884dfd03cf0c9fdd0aab70a221a` 创建
+`codex/export-history-scalars` 隔离工作树，仅迁入本次导出、测试、Spec 及接口文档段落，
+未迁入原工作区其他任务改动。使用独立虚拟环境执行：
+
+`UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_PROJECT_ENVIRONMENT=/tmp/doku-history-contract-venv make check`
+
+exit 0：锁文件、147 文件格式、Ruff、mypy 57 源文件通过；179 passed、3 skipped，114.40 秒。
+首次 offline 执行因缓存缺少锁定版本 pillow 而停止，随后正常下载锁定依赖后通过。
