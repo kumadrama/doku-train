@@ -208,3 +208,21 @@ PR #15 初始提交的 GitHub check、CodeQL 和容器 smoke 全部通过。
 边界：此次是制品重新发布，不是消费者或日更训练镜像升级。用户明确要求直接切换，
 但已核验旧特征库仍拒绝新字段，不能声称线上打分链路已完成验收；服务端仍需适配两个
 编译入口。PR 合并后还需部署新的导出器，否则后续日更任务仍可能重新发布遗漏规则的合同。
+
+### 同日后续：DTE 对齐 PROD 当前修复版
+
+Source: 用户要求 DTE 也使用 PROD 今天日更模型重新导出的版本，两边一致。
+
+2026-10-20 已将 PROD 当前修复包的 22 个对象通过 S3 CopyObject（目标 IfNoneMatch=*、
+源 CopySourceIfMatch=ETag、DTE KMS）同步至 DTE，不重新训练或重新生成不同版本包。
+DTE VPC 发布任务 `1376d17477f3491d92791ff50aa4c100` exit 0，S3/Redis current 均已改为
+`aa36b1f70ea449b193c66a4fb045401e-contract-20261020`，DTE Redis generation=3。
+两环境 manifest SHA256 均为
+`2e7838b4bc93c03cebdb49c3a9978444b696e29e1ec287960ef6ffcf6e95e88f`，合同摘要同上。
+PROD 发布清单与操作前完全相同，旧 DTE 修复版仍保留。此记录取代上一节表格的 DTE current。
+
+DTE AppConfig 部署 186（version 5）临时开启 publication/redis，部署 187（version 6）
+恢复原值；实时回读与执行前完全一致。`/tmp/doku-align-prod-20261020/verify.py` 断言
+两环境 current、manifest SHA、无 pending operation、PROD 未改动、DTE 旧版本保留和
+开关恢复均通过；`task_status.py dte` 读取任务 STOPPED/exit 0 及 Redis 实际合同摘要验证日志。
+本次只改变 DTE 模型引用，不包含后续日更自动同步或消费者部署。
