@@ -16,6 +16,7 @@ dependencies = [
   "xgboost-cpu>=3.0,<4; sys_platform != 'darwin'",
   "jsonschema>=4.23,<5",
   "redis>=7,<9",
+  "tensorboard>=2.20,<3",
 ]
 
 [dependency-groups]

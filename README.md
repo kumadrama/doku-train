@@ -187,3 +187,62 @@ RPC 携带精确版本/摘要、两服务独立 pin 与排空。先 stage-only�
 
 本地真实 Redis 验证使用 `DOKU_TEST_REDIS_URL=redis://127.0.0.1:<port>/0 make check`；
 CI 自带隔离 Redis 服务。未提供该变量时仅跳过两项真实 Redis 测试，其余故障注入测试照常运行。
+
+## SageMaker CPU 实验（Spec 008，尚未部署）
+
+本地实现入口为 `recommend.train.platforms.sagemaker`，部署与 IAM 归 `doku-iac`。
+首期不需要 Studio。AWS 控制台查看状态/日志和按时间聚合指标；**横轴为 step 的曲线在本地
+TensorBoard 网页查看**，由命令定期下载 S3 事件。网页运行在自己的电脑上。
+
+先由获授权的基础设施部署生成 binding，填写 `deploy/prod/sagemaker.yaml` 中的 binding 路径、
+不可变 ECR image digest、源码 revision/source hash/lock hash。示例中的占位值会被拒绝。
+提交配置显式指定环境、身份，不能直接用占位配置提交。
+
+本地构建（不上传）：
+
+```sh
+docker build --platform linux/amd64 -f build/Dockerfile.sagemaker \
+  --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" -t doku-train-sagemaker:local .
+docker run --rm --entrypoint python doku-train-sagemaker:local -c \
+  'import json; from recommend.train.comm.training_pipeline import source_identity; print(json.dumps(source_identity()))'
+```
+
+以镜像内输出填写 `source_revision`、`source_sha256`（`working_source_sha256`）、`lock_sha256`。
+镜像上传需单独授权，上传后取 ECR digest 填写 image_uri。修改 Python 或依赖必须重建；仅修改
+实验 YAML 可复用镜像。镜像包含源码摘要，未提交代码也有独立摘要，不会冒充已提交源码。
+
+以下为**后续获授权后的操作示例**；提交会上传配置并创建计费任务，stop 会停止任务：
+
+```sh
+# dry-run 只读取身份及 Manifest/合同，写本地冻结包，不上传或创建任务
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  submit --config /absolute/path/experiment.yaml --run-id experiment-001 \
+  --prepared /absolute/path/prepared-001 --dry-run
+# 使用已审阅的同一冻结包；重复调用通过同一 job 身份恢复，不换 run-id 盲目重试
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  submit --prepared /absolute/path/prepared-001
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  status --job-name doku-exp-experiment-001
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  tensorboard --run-ids experiment-001 --directory /absolute/path/events
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  compare --job-names doku-exp-experiment-001
+uv run python -m recommend.train.platforms.sagemaker \
+  --runtime-config deploy/prod/sagemaker.yaml --profile doku-prod-developer \
+  stop --job-name doku-exp-experiment-001
+```
+
+`compare` 下载临时归档并验证 checksum/完整性，再打印各任务 validation/test 指标及 lineage；
+不自动排名。永久保存原始模型归档可从 status 输出的 `ModelArtifacts` 对应 S3 地址下载。
+训练结果不自动发布。TensorBoard 默认 `http://127.0.0.1:6006`，每 30 秒同步；退出查看器不会
+停止云训练。loss 默认每 100 个优化 step，validation/test 仅在对应评估完成后出现。
+
+规划实例为 8 vCPU/32 GiB、100 GiB 磁盘，服务超时 24 小时。按已确认估算每任务小时约 $0.48，
+15 个任务各一小时约 $7.21；$250–300/月预算依赖每天约 15 个一小时任务，并非硬限额。
+云端尚未验证 15 并发性能、KMS 服务上传及真实数据磁盘峰值。部署前清单见
+[Spec 008 任务](specs/008-sagemaker-dnn-training/tasks.md)。

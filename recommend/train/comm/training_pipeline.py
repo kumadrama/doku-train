@@ -9,6 +9,8 @@ import random
 import subprocess
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -96,34 +98,55 @@ def arrays_for(
     )
 
 
+@contextmanager
+def stage(name: str, timings: dict[str, float]) -> Iterator[None]:
+    started = time.monotonic()
+    print(f"DOKU_STAGE {name} starting", flush=True)
+    try:
+        yield
+    finally:
+        timings[name] = time.monotonic() - started
+        print(f"DOKU_STAGE {name} seconds={timings[name]:.3f}", flush=True)
+
+
 def train(
     config: dict[str, Any],
     factory: Any,
     *,
     local_root: Path | None = None,
     resume: Path | None = None,
+    frozen_input: Path | None = None,
 ) -> dict[str, Any]:
+    if resume is not None and frozen_input is not None:
+        raise ValueError("resume and frozen_input are mutually exclusive")
     config = validate_config(config)
     setup(config)
     started = time.monotonic()
     root = Path(config["output"]["root"]) / config["output"]["run_id"]
     root.mkdir(parents=True, exist_ok=False)
     budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
+    timings: dict[str, float] = {}
     try:
         budget.start()
-        dataset = PublishedDataset(
-            config, local_root=local_root, frozen_input=resume.parent / "input" if resume else None
-        )
-        dataset.freeze(root / "input")
+        with stage("freeze_input", timings):
+            dataset = PublishedDataset(
+                config,
+                local_root=local_root,
+                frozen_input=resume.parent / "input" if resume else frozen_input,
+            )
+            dataset.freeze(root / "input")
         config = dataset.config
         write_json(root / "resolved-config.json", config)
         plan = FeaturePlan(config, dataset.dtypes)
-        plan.fit(dataset.rows("train", plan.columns))
+        with stage("fit_features", timings):
+            plan.fit(dataset.rows("train", plan.columns))
         state = plan.state()
         (root / "fitted-feature-state").mkdir()
         write_json(root / "fitted-feature-state/state.json", state)
-        train_data = arrays_for(dataset, plan, "train", root / "encoded-train")
-        valid_data = arrays_for(dataset, plan, "validation", root / "encoded-validation")
+        with stage("encode_train", timings):
+            train_data = arrays_for(dataset, plan, "train", root / "encoded-train")
+        with stage("encode_validation", timings):
+            valid_data = arrays_for(dataset, plan, "validation", root / "encoded-validation")
         source = source_identity()
         logical = {k: v for k, v in config.items() if k != "output"}
         identity = digest(
@@ -135,14 +158,16 @@ def train(
             }
         )
         runner = factory(config, state)
-        metrics = runner.fit(
-            train_data,
-            valid_data,
-            CheckpointAgent(root),
-            identity,
-            CheckpointAgent.read_resume(resume) if resume else None,
-        )
+        with stage("fit_model", timings):
+            metrics = runner.fit(
+                train_data,
+                valid_data,
+                CheckpointAgent(root),
+                identity,
+                CheckpointAgent.read_resume(resume) if resume else None,
+            )
         metrics["resources"] = {
+            "stage_seconds": timings,
             "wall_seconds": time.monotonic() - started,
             "rss_at_completion_bytes": psutil.Process().memory_info().rss,
             "sampled_peak_rss_bytes": budget.peak,

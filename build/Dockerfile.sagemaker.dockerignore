@@ -1,0 +1,6 @@
+**
+!pyproject.toml
+!uv.lock
+!recommend/
+!recommend/**
+recommend/**/__pycache__
