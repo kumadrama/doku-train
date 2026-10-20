@@ -162,3 +162,49 @@ encoding/state 重建向量，对照训练加工和独立预期值；检查 mani
 
 exit 0：锁文件、147 文件格式、Ruff、mypy 57 源文件通过；179 passed、3 skipped，114.40 秒。
 首次 offline 执行因缓存缺少锁定版本 pillow 而停止，随后正常下载锁定依赖后通过。
+
+### 2026-10-20 DTE/PROD 重新导出与当前引用切换
+
+Source: 用户明确授权“重新导出到 dte 和 prod”“可以直接切换当前模型”，并允许临时开启
+DTE publication/redis，完成后恢复。没有执行训练、覆盖旧版本或修改基础设施。
+
+使用独立修复提交 `ac6dd0bac2116af0a69a1b410b8771222636e8b6` 的导出器，分别从各环境
+当前版本的成功训练归档导出；没有把 PROD 回退到历史 10 月 14 日权重。除合同外，
+新旧包所有 manifest payload 的 SHA256 完全相同（四个模型、state、metrics、lineage）。
+新增合同 SHA256（两环境相同）：
+`dff80c60da96bd962408cdb6d41b7340293e24a2c7944c2d8b970e71b0e5938d`。
+
+| 环境 | 来源 run / 旧 current | 新 current | Redis generation |
+| --- | --- | --- | --- |
+| DTE | `320d4acdadfb4da1b9226f721f3c7cae` | `320d4acdadfb4da1b9226f721f3c7cae-contract-20261020` | 2 |
+| PROD | `aa36b1f70ea449b193c66a4fb045401e` | `aa36b1f70ea449b193c66a4fb045401e-contract-20261020` | 10 |
+
+新包 manifest SHA256：
+
+- DTE：`f5ba4c5bb2dacc89d38aa6261644474a2aaccc129dee0cc7995a5124f74ba2f1`
+- PROD：`2e7838b4bc93c03cebdb49c3a9978444b696e29e1ec287960ef6ffcf6e95e88f`
+
+本地 Redis TLS 连接失败，因此复用既有 ECS Fargate 任务定义及角色在 VPC 内运行发布；
+没有注册新任务定义、启动训练或部署镜像。新对象 create-only 写入各自湖桶的
+`ml/tree-models/v1/rerank_tree/<date>/<new-version>/`。任务先确认旧 current 未变化、无活动
+producer/pending operation、S3/Redis catalog 一致，再调用既有 `execute_publish`。
+
+- DTE ECS task：`f0e8309966914c4890ff1dbff8989c53`，发布进程 exit 0，任务 STOPPED。
+- PROD ECS task：`ea3fbcd124b64d7893cd2bfe8558f5c7`，发布进程 exit 0，任务 STOPPED。
+- CloudWatch：`/ecs/doku-<env>/doku-reco-train`，stream 为 `ecs/doku-reco-train/<task-id>`。
+  两任务均输出 `phase=publish`、`status=published`、`redis_distribution=committed` 及
+  `phase=verified`，验证 S3 current、Redis current、完整 catalog、无 pending operation、
+  Redis 中实际合同字节摘要与新 manifest 一致。
+- 本机分别独立回读 S3 publication.json：上述新 current 正确，旧版本仍保留。
+- DTE AppConfig `doku / dte / doku-train/tree`：部署 184（hosted version 3）仅开启
+  publication/redis；任务完成后部署 185（version 4）恢复。实时回读与执行前 JSON 完全
+  相等：training/publication/redis/cleanup 均 false。PROD 开关未修改。
+
+可执行记录保存在本地 `/tmp/doku-contract-review-320d4/`：`reexport.py`、
+`upload_launch.py dte`、`upload_launch_fast.py prod`、`task_status.py <env>`、
+`dte_policy.py enable/restore` 及前后清单、任务日志。这些临时脚本和模型文件未提交。
+PR #15 初始提交的 GitHub check、CodeQL 和容器 smoke 全部通过。
+
+边界：此次是制品重新发布，不是消费者或日更训练镜像升级。用户明确要求直接切换，
+但已核验旧特征库仍拒绝新字段，不能声称线上打分链路已完成验收；服务端仍需适配两个
+编译入口。PR 合并后还需部署新的导出器，否则后续日更任务仍可能重新发布遗漏规则的合同。
