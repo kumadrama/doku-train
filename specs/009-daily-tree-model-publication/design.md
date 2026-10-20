@@ -158,6 +158,32 @@ manifest 声明合同格式版本、model_type/name/version、test 日期、创�
 feature-contract 固定输入顺序、类型、缺失/OOV/类别编码与状态引用；fitted state 保证
 调用方不重建词表。合同变化允许自动发布，但必须记录变化，便于调用方排查。
 
+### 2026-10-20 派生规则交付修复
+
+Source: 用户确认补齐导出合同方案；指定版本
+`320d4acdadfb4da1b9226f721f3c7cae` 的 S3 只读核验与 Python/Go 对照，
+见 [验证](verification.md#2026-10-20-派生规则交付修复)。
+
+当前本地实现：`doku-tree-features/v1` 的 `encoding` 完整携带 `features`、
+`feature_default_values`、`feature_transformations`、`hist_options`、`history_scalars`、
+`input_features`、`tree_inputs`。`history_scalars` 原样取自同次冻结训练配置；
+没有派生规则时写空对象，不推断规则、不增加模型输入。列顺序、类型、权重和 fitted state
+语义不变，manifest 中合同摘要随内容重新生成。历史包遗漏该字段，不能据其 format 相同
+推断消费者已支持完整合同。本次保留 format 名称，部署必须协调消费者能力。
+
+目标消费状态：正式合同加 fitted state 足以重建输入，不依赖训练归档。服务端
+`CompileArtifact` 和 `ArtifactCompiler.Compile` 都需支持合同自带的规则；完整合同优先，
+旧包才允许按配置摘要及身份核验后补载归档，不得覆盖合同中的规则或自行补零。
+现有五种历史算子无需新增；必须继续验证依赖、输入列顺序与类型。
+
+常规切换顺序为先升级消费者，再用新制品版本发布；不覆盖任何旧版本文件。
+用户后续明确授权本次直接切换 DTE/PROD 当前模型，并临时开启 DTE 发布与 Redis 开关；
+本次制品操作及验证见 verification.md，不能将制品切换等同于消费者已适配或训练镜像已部署。
+切换及旧包回滚依赖解除后再删除 `training_config_files` 和文件。可从成功训练产物
+重新导出，不要求重训。回归测试使用独立合成 fixture，分别覆盖非空和空规则，
+从实际导出合同与 state 重建加工并比对训练向量和独立预期值；此 Python 测试不替代
+Go 集成验证。现有 `synthetic_encoded_cpu` parity 仍只证明模型序列化一致性。
+
 版本文件 create-only。发布前重新加载导出的原生模型，用合成/受控验证输入比较训练
 checkpoint 与导出模型最终输出，不仅比较 raw margin；不将真实敏感样本装进发布包。
 [INFERRED] parity 容差、模型格式兼容版本和具体合同 schema 在实施前固定并加入合同测试。

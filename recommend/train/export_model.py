@@ -140,6 +140,7 @@ def _export_model(run_dir: Path, output: Path, *, version: str | None = None) ->
                 "feature_default_values",
                 "feature_transformations",
                 "hist_options",
+                "history_scalars",
                 "input_features",
                 "tree_inputs",
             ]
