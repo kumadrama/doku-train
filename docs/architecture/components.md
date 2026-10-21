@@ -34,3 +34,9 @@ Source: 2026-10-19 用户后续确认：Spec008 首期不创建 Studio Domain，
 
 Source: 2026-10-20 Q20/Q21 确认：step 曲线使用本地 TensorBoard（S3 同步），
 AWS 控制台/CloudWatch 继续用于任务、日志与时间指标；SageMaker 服务时限显式设为 86400 秒。
+
+## NN 字段组合与历史聚合
+
+Source: [Spec 015](../../specs/015-parameter-free-attention/design.md)，2026-10-21 用户确认拆分语义。
+当前本地 rerank 先用 combiner（concat/sum/avg）组合字段，再用 history_pooling（mean/weighted_mean/attention/none）归约历史位置。多字段历史和标量 query 均先组合，attention 为固定尺度点积、masked softmax、加权和。DNN/DeepFM 共用，none 保留序列并拒绝直接送入 DNN/FM。
+公共 FeaturePlan 负责对齐检查与同步 tail 截断，模型负责组合、聚合和维度验证；不引入公共层反向模型依赖。旧 pooling 配置需要显式迁移，树模型不支持神经聚合。尚未部署新训练镜像。

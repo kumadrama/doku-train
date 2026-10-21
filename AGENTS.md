@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 015：NN 无参历史 Attention](specs/015-parameter-free-attention/requirements.md)、[设计](specs/015-parameter-free-attention/design.md)、[任务](specs/015-parameter-free-attention/tasks.md)、[验证](specs/015-parameter-free-attention/verification.md) — 本地实现与完整验证通过；尚未部署。
+
 - [Spec 014：SageMaker 树实验](specs/014-tree-sagemaker-experiments/requirements.md)、[设计](specs/014-tree-sagemaker-experiments/design.md)、[任务](specs/014-tree-sagemaker-experiments/tasks.md)、[验证](specs/014-tree-sagemaker-experiments/verification.md) — 本 PR 交付平台树模型与阶段支持；实验编排脚本和本地实验产物不包含在本 PR。
 
 - [Spec 008：SageMaker CPU 实验训练需求](specs/008-sagemaker-dnn-training/requirements.md)、[设计](specs/008-sagemaker-dnn-training/design.md)、[验证](specs/008-sagemaker-dnn-training/verification.md)、[存储规划](specs/008-sagemaker-dnn-training/storage-plan.md)、[任务](specs/008-sagemaker-dnn-training/tasks.md) — 已整理会话确认需求；PROD 单机 CPU DNN/DeepFM 实验、15 并发规划；首期本地提交、AWS 网页看 AUC/loss、不用 Studio；本地实现及原生 amd64 容器验证已通过，尚未云端部署；step 曲线使用本地 TensorBoard。

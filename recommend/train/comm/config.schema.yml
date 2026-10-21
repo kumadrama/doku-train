@@ -145,8 +145,8 @@ properties:
         combiner:
           enum:
           - concat
-          - mean
-          - weighted_mean
+          - sum
+          - avg
         weight_feature: *id001
       required:
       - features

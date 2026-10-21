@@ -79,14 +79,27 @@ CONFIGS: dict[str, Any] = {
         },
         "input_features": {
             "item_id": {"features": ["i_drama_id"], "combiner": "concat"},
-            "hist_drama_skip": {"features": ["u_skipped__drama_id"], "combiner": "mean"},
+            "hist_drama_skip": {
+                "features": ["u_skipped__drama_id"],
+                "combiner": "concat",
+                "history_pooling": "mean",
+            },
             "hist_drama_interest": {
                 "features": ["u_drama_interests__id"],
-                "combiner": "weighted_mean",
+                "combiner": "concat",
+                "history_pooling": "weighted_mean",
                 "weight_feature": "u_drama_interests__weight",
             },
-            "item_tag": {"features": ["i_genre_v2_ids"], "combiner": "mean"},
-            "user_profile": {"features": ["u_onboarding_genre_ids"], "combiner": "mean"},
+            "item_tag": {
+                "features": ["i_genre_v2_ids"],
+                "combiner": "concat",
+                "history_pooling": "mean",
+            },
+            "user_profile": {
+                "features": ["u_onboarding_genre_ids"],
+                "combiner": "concat",
+                "history_pooling": "mean",
+            },
             "context": {"features": ["ctx_platform"], "combiner": "concat"},
             "item_numeric": {"features": ["i_episode_dur_s_bucket"], "combiner": "concat"},
             "user_statistics": {
