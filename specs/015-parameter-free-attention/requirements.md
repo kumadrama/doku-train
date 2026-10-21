@@ -1,17 +1,13 @@
-# Spec 015：NN 无参历史 Attention 需求
+# Spec 015：字段组合与无参历史聚合
 
-状态：需求及点积/softmax/加权和方案已由用户于 2026-10-21 确认，授权配置驱动实施及 schema 同步。
-Source: 2026-10-21 用户要求参考 Finder rerank 增加无参 attention，后确认点积、固定 attn_scale、masked softmax、reweighted sum 方案。
+状态：2026-10-21 用户确认按 Finder 的设计职责拆分 combiner 与历史聚合，并授权 schema/实现同步修改。
+Source: 用户先确认点积/固定尺度/softmax/reweighted sum，后明确要求“把combiner和历史聚合拆开，不要只是对齐字段名”。本规则取代此前未发布的 attention 启用接口，以及 Spec004 将 mean/weighted_mean 放入 combiner 的描述。
 
-- R1：DNN/DeepFM 共用 rerank，通过 YAML 在历史组内声明 hist_attn_query/skip_hist_attn，在顶层声明固定 attn_scale；未配置的组保持现有 mean/weighted_mean 行为。
-- R2：score_i = dot(q, h_i) / attn_scale；有效历史位置 softmax，再对原始历史 embedding 加权求和。无投影、额外可训练参数或隐式 sqrt(dim) 缩放；既有 embedding 正常接收梯度。
-- R3：padding 不参与归一化；空历史输出零向量、无 NaN；OOV 使用既有 embedding，保留为有效位置。
-- R4：首版 query 为单个标量类别 embedding，历史为单个类别序列，维度相等；输出沿用历史组名，可用于既有 DNN/FM。
-- R5：schema 限定配置类型与正数尺度；模型校验引用、形状语义、维度及外部 weight_feature 冲突。attn_scale 缺省为 1.0。
-- R6：本地与 SageMaker 共用模型逻辑；checkpoint 保留配置、feature state 和模型参数，恢复及独立评估采用相同 attention。
-- R7：保持 CPU-first，不新增依赖，不复制 Finder 私有源码；不实现 Transformer、多头、cosine、外部权重混合或树模型 attention。
-- R8：本次仅本地实现及合成数据验证，不启动云训练或发布。
-
-验收：手算数值、padding/空历史/OOV、反向梯度、无新增参数、配置错误、既有 pooling 回归、DNN/DeepFM train/test 与 epoch resume 等价性，以及 make check。
-
-Source: 用户进一步指出 Finder 启用方式；采用其常规路径字段层级，去除未发布的自定义 hist_attn_configs 接口。旧配置无显式 query 时维持原 pooling，不隐式使用 item 组。
+- R1：combiner 仅组合组内字段：concat/sum/avg，沿字段维度，不减少历史位置维度。允许多个字段组成历史和 query。
+- R2：历史组必须显式选择 history_pooling：mean、weighted_mean、attention 或 none；标量组不能声明历史聚合。none 保留序列，不隐式回退 mean。
+- R3：attention 使用已组合的标量 query 和已组合的历史 embedding，执行 dot(q,h)/attn_scale、masked softmax、加权求和；不新增参数，embedding 正常训练。query 组及历史组组合后维度必须一致。
+- R4：padding 不参与归一化；空历史零输出、梯度有限；OOV 作为有效位置参与。输出复用组名，聚合后可进入 DNN/FM。
+- R5：多个历史字段必须按位置对齐，长度和 mask 一致。不能把不同历史列表自动拼成对应事件。sum/avg 要求字段宽度相同；concat 可组合不同宽度。
+- R6：weighted_mean 才能声明 weight_feature；attention 才能声明 hist_attn_query；顶层固定 attn_scale 缺省 1 且必须有限正数。schema 拒绝旧 combiner 值、skip_hist_attn 和之前未发布的 hist_attn_configs 接口，不提供静默兼容。
+- R7：本地/SageMaker 共用 PyTorch CPU 模型；无新依赖、私有代码复制、GPU、多头或参数化投影。树模型不增加神经聚合语义。
+- R8：迁移合成 fixture 及有效文档，验证数值、预处理、训练、测试和恢复。本次不启动云训练、不发布。

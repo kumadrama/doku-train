@@ -8,17 +8,29 @@ properties:
         hist_attn_query:
           type: string
           minLength: 1
-          description: Scalar embedding input group used as target query.
-        skip_hist_attn:
-          type: boolean
-          description: Explicitly bypass attention and use the group's existing pooling.
+          description: Scalar input group used as target query after field combination.
+        history_pooling:
+          enum: [mean, weighted_mean, attention, none]
+          description: Reduction over history positions after field combination; explicit for sequences.
       allOf:
       - if:
           properties:
-            skip_hist_attn: {const: false}
-          required: [skip_hist_attn]
+            history_pooling: {const: attention}
+          required: [history_pooling]
         then:
           required: [hist_attn_query]
+        else:
+          not:
+            required: [hist_attn_query]
+      - if:
+          properties:
+            history_pooling: {const: weighted_mean}
+          required: [history_pooling]
+        then:
+          required: [weight_feature]
+        else:
+          not:
+            required: [weight_feature]
   attn_scale:
     type: number
     exclusiveMinimum: 0

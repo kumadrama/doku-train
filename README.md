@@ -247,9 +247,9 @@ uv run python -m recommend.train.platforms.sagemaker \
 云端尚未验证 15 并发性能、KMS 服务上传及真实数据磁盘峰值。部署前清单见
 [Spec 008 任务](specs/008-sagemaker-dnn-training/tasks.md)。
 
-### NN 历史 Attention（配置片段）
+### NN：字段组合与历史聚合（配置片段）
 
-DNN/DeepFM 按 Finder 常规路径，在历史输入组内声明 query 和开关，顶层声明尺度：
+按 Finder 的职责划分，先用 combiner 组合组内字段，再用 history_pooling 聚合历史位置：
 
 ```yaml
 input_features:
@@ -258,12 +258,12 @@ input_features:
     combiner: concat
   hist_drama_skip:
     features: [u_skipped__drama_id]
-    combiner: mean
+    combiner: concat
+    history_pooling: attention
     hist_attn_query: item_id
-    skip_hist_attn: false
 attn_scale: 1.0
 ```
 
-hist_attn_query 是 input_features 中的组名；候选组为单个标量类别 embedding，历史组为单个类别序列 embedding，二者维度必须相等。计算为点积除以固定尺度、屏蔽 padding 后 softmax、对历史 embedding 加权求和；空历史输出零向量，OOV 正常参与。该组输出仍可供 dnn_inputs 和 fm_layers 使用。
+combiner 支持 concat/sum/avg，保留历史长度；history_pooling 支持 mean/weighted_mean/attention/none，历史组必须显式声明。attention 对组合后的 query/history 计算点积除以固定尺度、masked softmax、加权求和。多字段历史须按位置对齐，组合后的 query/history 维度相等。none 保留序列，不能直接进入 DNN/FM。
 
-声明 query 且 skip_hist_attn 不为 true 时启用；显式 skip=false 必须声明 query。两项都不声明或 skip=true 保持原 pooling；顶层 attn_scale 缺省 1.0，必须有限大于 0，所有历史 attention 共用。不能与启用组的 weight_feature/weighted_mean 混用。完整语义和共享 embedding 示例见 [Spec 015](specs/015-parameter-free-attention/design.md)。本地代码与 SageMaker 共用模型实现，但现有云端镜像需重新构建部署才支持新配置。
+旧 combiner: mean/weighted_mean 须迁移为 combiner: concat 加对应 history_pooling；上一版未发布的 skip_hist_attn 接口已移除。详细 schema、迁移表和数据边界见 [Spec 015](specs/015-parameter-free-attention/design.md)。本地与 SageMaker 共用模型代码，云端使用前仍需更新训练镜像。

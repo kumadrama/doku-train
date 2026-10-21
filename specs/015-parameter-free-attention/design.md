@@ -1,11 +1,12 @@
-# Spec 015：配置驱动的无参历史 Attention
+# Spec 015：字段组合与历史聚合设计
 
-Source: 2026-10-21 用户确认设计并授权实施；本仓 rerank 的共享 embedding/pooling/FM 结构。
-参考：finder-models/recommend/train/models/rerank/rerank_model.py 的 attention_layer 常规分支，以及 modules/attention.py 的历史 query/key/value 分离思路。Finder train 只作为训练入口参考。以下是本仓独立 PyTorch CPU 实现，不复制 TensorFlow/私有平台代码。
+Source: 2026-10-21 用户明确要求按 Finder 的职责拆分两层。参考 finder-models/recommend/train/models/rerank/rerank_model.py 的 embedded_features（字段组合）与 attention_layer（历史聚合），以及 modules/utils.py 的 avg_pool。独立 PyTorch CPU 实现，不复制 Finder 私有源码。
 
-## 当前行为与配置
+## 当前状态
 
-Source: 用户指出首版启用方式与 Finder 不一致，经重新核对 Finder schema 和常规 attention_layer，改用历史组内的 hist_attn_query/skip_hist_attn 与顶层 attn_scale。撤销未发布的 hist_attn_configs 按历史组映射接口，不提供兼容别名。
+本地实现两阶段计算；尚未构建或部署 attention 镜像。本设计取代本 Spec 之前仅对齐 hist_attn_query/skip_hist_attn 名称的未发布实现。原先 combiner=mean/weighted_mean 的历史配置必须显式迁移，不让同一个键同时表达字段组合和历史归约。
+
+## YAML
 
 ```yaml
 input_features:
@@ -14,52 +15,66 @@ input_features:
     combiner: concat
   hist_drama_skip:
     features: [u_skipped__drama_id]
-    combiner: mean
+    combiner: concat
+    history_pooling: attention
     hist_attn_query: item_id
-    skip_hist_attn: false
-embed_name:
-  i_drama_id: drama
-  u_skipped__drama_id: drama
-embed_dim:
-  drama: 8
+  hist_drama_interest:
+    features: [u_drama_interests__id]
+    combiner: concat
+    history_pooling: weighted_mean
+    weight_feature: u_drama_interests__weight
 attn_scale: 1.0
-# 其余既有 YAML 配置保持完整
 ```
 
-hist_attn_query 引用 input_features 组名，不是原始字段名。声明 query 且未显式 skip=true 时启用 attention；skip_hist_attn=true 跳过 attention，沿用该组既有 pooling；显式 skip_hist_attn=false 必须声明 query。未声明两项的旧配置不启用 attention，避免静默改变现有训练语义。这一点有意不沿用 Finder 的默认 query=item/skip=false：本仓不预设候选组名。
+这是片段，完整配置仍需声明 embed_name/embed_dim、hist_options、网络、任务及数据日期。
 
-query 组只能含一个标量类别 embedding，历史组只能含一个序列 embedding；不支持 attention 组作 query。允许多个历史组共享 query，且与 YAML 组声明顺序无关。组维度必须相等；同类 ID 推荐通过 embed_name 共享词表和 embedding，但不强制共表。
+- combiner 缺省 concat；concat 沿最后一维拼接字段，sum/avg 沿字段轴求和/平均。对 [B,L,D] 历史张量保持 B、L 不变；单字段三种组合等价。
+- history_pooling 对历史组必填：mean 按有效位置平均；weighted_mean 按外部权重归一化加权；attention 按目标相似度加权；none 保持 [B,L,D]，不能直接被 DNN/FM 或 attention query 消费。
+- 标量组只做字段组合，不能配置 history_pooling。允许由多个标量 embedding/数值字段组合 query；本期 query 不引用历史组，避免隐藏的聚合依赖链。
+- hist_attn_query 仅在 history_pooling=attention 时必填，引用组名，与组声明顺序无关。attn_scale 为所有 attention 共用的顶层固定正数，缺省 1.0，不做隐式 sqrt(dim) 缩放。
+- weight_feature 仅用于 weighted_mean；本期不混合 attention 和外部权重。
 
-顶层 attn_scale 缺省 1.0，所有启用的历史 attention 共用；必须有限且大于 0，固定不训练，不接受组内 attn_scale。本期仅支持字符串 hist_attn_query，不扩展 Finder 的多 query 求和或可配置多头/投影模块。
+## 多字段示意
 
-## Schema 装配
+两个位置对齐的历史字段各 [B,L,8]：concat 后 [B,L,16]；sum/avg 后 [B,L,8]。然后 attention 才消除 L，输出 [B,16] 或 [B,8]。query 也先按其 combiner 组合，最终宽度须相等。实际业务需由上游合同保证两个字段代表同一批事件；本仓检查长度/mask，不能凭长度相等证明业务对应关系。
 
-模型 schema 为 input_features 声明增量组属性（hist_attn_query、skip_hist_attn）及条件约束，并声明顶层 attn_scale。公共 schema 加载器只合并模型声明的额外组属性和 allOf，不引用模型 Python 实现或 attention 字段名；保留公共 features 必填、combiner 枚举、additionalProperties=false，禁止重定义同名公共字段。树模型 schema 不声明这些扩展，因此拒绝这些配置。
+## 算法与边界
 
-## 计算及边界
+先计算所有组的原始字段组合 raw_groups，再独立执行历史聚合。attention 读取 raw_groups[query] 与当前历史组的 raw tensor：
 
-模型从编码 batch 直接查 query/history embedding，保留历史序列，不先求 mean：
+1. score_i = dot(q,h_i)/attn_scale。
+2. padding 置 -inf；全空行在 softmax 前使用有限零 logits，softmax 后将 padding 权重清零。
+3. output = sum(weight_i * h_i)。全空行零输出，OOV=1 仍有效，padding=0 无梯度。
 
-1. q: [B,D]，h: [B,L,D]，valid = history_ids != 0。
-2. score: [B,L] = sum(q[:,None,:] * h, -1) / attn_scale。
-3. 无效位置置 -inf；全空行临时置零 logits；softmax 后显式将无效位置权重归零。
-4. output: [B,D] = sum(weights[:,:,None] * h, 1)。全空行输出零向量，反向梯度有限。
+mean/weighted_mean 同样只沿历史位置归约。无新可训练参数，不改变 embedding 初始化顺序。sum/avg 对字段维度相同的 tensor 计算；concat 尊重 features 声明顺序。拒绝组内混合标量和序列。
 
-OOV=1 是有效位置；padding=0 被排除。缺失标量 query 仍遵循当前编码的 OOV 规则，不新增缺失特征。历史截断和重复策略仍由现有 hist_options 决定。外部 weight_feature/weighted_mean 与 attention 不混用，配置时报错；保留原 weighted_mean 可继续使用兴趣权重。
+## 数据编码与截断
 
-无新 nn.Parameter、Linear、LayerNorm 或可训练温度。输出沿用历史组名；DNN 拼接和 FM 点积均读取此结果。
+FeaturePlan 不实现 attention。它保留各字段序列编码，校验多字段原始历史长度一致；tail 截断同步作用于组内所有字段和可选权重。编码后的有效位置 mask 再由模型核验一致。
 
-## 文件与校验边界
+top_weight 的按 ID 去重/排序只支持单历史字段，拒绝多字段 top_weight，以免按一个 ID 重排破坏事件对齐。同一源字段的 padding 容量统一分配，不受组声明顺序影响；若不同组为同一字段声明冲突截断策略则拒绝。本次不支持为同一源字段生成多份不同截断视图。
 
-- models/rerank/config.schema.yml：组内开关/query 扩展、全局尺度结构和范围，仅 rerank 可用，树模型拒绝此配置。
-- models/rerank/model_params.py：利用 Feature State 的 tables/dtypes 和 embed_dim 校验引用、标量/序列与维度，编译为 history/query 字段及尺度。
-- models/rerank/attention.py：无状态张量运算。
-- models/rerank/rerank_model.py：在普通 pooling 分支前接入；不修改训练流水线、数据生产或 SageMaker 专属入口。
+## Schema 和组件边界
 
-通用 validate 命令验证 schema；依赖 Feature State 的语义在模型构造时验证（训练 fit/encode 后、优化前），不会伪造成功产物。未来若需提前到数据读取前校验，应通过独立模型验证接口设计，不在 comm import rerank。
+- comm/config.schema.yml：combiner 枚举改为 concat/sum/avg，字段组合是公共描述。
+- models/rerank/config.schema.yml：声明 history_pooling/hist_attn_query 的组属性及条件、顶层 attn_scale；公共 schema 加载器仅通用合并属性和 allOf，不 import 模型实现。
+- models/rerank/model_params.py：通过 Feature State dtypes/tables 校验标量/序列、组合宽度、query 引用、聚合模式及 DNN/FM 消费形状。
+- models/rerank/rerank_model.py：先组合后聚合；attention.py 保持纯张量算法。
+- comm/feature_plan.py：对齐检查、同步 tail 截断；不选择神经网络聚合算法。
 
-## 可复现性
+通用 validate 校验结构和条件；需要合同 dtype 的检查在模型构造时执行（fit/encode 后、优化前）。数据/配置错误不会写成功训练状态。
 
-现有 resolved-config、checkpoint config、Feature State 与运行 identity 包含配置和源码摘要，无需新制品格式。无 attention 的模型保持参数名称和初始化顺序；attention checkpoint 独立评估按保存配置重建。恢复仍遵循冻结输入及 identity 校验，不跨配置/源码冒充兼容。
+## 迁移与产物
 
-状态：本地实现；不表示已部署包含 attention 的 SageMaker 镜像。上云前需另行授权构建/部署，旧镜像不会因本地 YAML 改动自动获得新能力。
+| 原配置 | 新配置 |
+| --- | --- |
+| combiner: mean | combiner: concat + history_pooling: mean |
+| combiner: weighted_mean | combiner: concat + history_pooling: weighted_mean，保留 weight_feature |
+| hist_attn_query + skip_hist_attn: false | combiner: concat + history_pooling: attention + hist_attn_query |
+| 需要保留历史序列 | history_pooling: none（不直接送 DNN/FM） |
+
+scalar 的 combiner: concat 保持含义。旧接口被 schema 拒绝，修改旧配置后生成新的 run，不改已有 checkpoint/config，也不声称旧配置在新代码下可直接恢复。resolved-config、checkpoint 与 lineage 继续冻结完整配置与源码；同一新配置的恢复仍验证 identity。
+
+## 验收
+
+手算验证三种字段 combiner × 四种 history_pooling；检查组合前后的维度与数值、顺序无关 query 读取、空历史/padding/OOV/梯度、无新增参数、对齐检查、尾部同步截断、schema 拒绝旧值和非法组合。合成 DNN/DeepFM 分别验证单字段和多字段 attention train/test，以及 dropout 下 epoch resume 等价。执行 make check，记录实际结果。

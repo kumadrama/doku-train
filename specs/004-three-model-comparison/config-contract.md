@@ -34,7 +34,7 @@ Source: 已确认的 Spec 004 设计、运行时 schema 与合成 fixture 验证
 | feature_default_values | 公共；features 中原始字段 → 转换前的缺失默认值 | 不声明则保留 NULL；不得改变标签资格 |
 | feature_transformations | 公共；expr 单赋值与 feature_list，[*] 逐项替换；本轮计数仅 log1p | 不使用时 []；feature_list 默认 []，保留声明顺序 |
 | hist_options | 公共；按 input_features 组名声明截断与重复 ID 策略 | 本轮两组显式；没有声明则不截断，不能隐式取最近 |
-| input_features | 公共；features、可选 weight_feature；神经模型要求 combiner | 必须能解析为已声明输入；不自动加入 DNN |
+| input_features | 公共字段组合 features/combiner（concat/sum/avg）、可选 weight_feature；神经模型另声明 history_pooling | 必须能解析为已声明输入；不自动加入 DNN |
 | embed_name / embed_dim | 神经插件；字段→表名、表名→维度（支持 '*'） | 示例显式；不手填拟合后基数 |
 | embed_initializer / args | 神经插件；初始化组件及参数 | 示例显式 |
 | dnn_inputs | 神经插件；有序组名列表 | 必填；顺序保存到 feature state |
@@ -125,7 +125,7 @@ ID 匹配先于词表/OOV 映射，不把不同未知 ID 当同一实体。
    联合字段，树从 categorical 输入推导类别字典。保留所有训练类别，按原始类型稳定编号；
    映射、OOV 和类型写入 feature state，不能误以为删除配置就是无需保存实际词表。
 4. **题材 pooling**：item_tag/user_profile 采用 mean、保留重复位置，不附额外状态标记；
-   该选择延续已确认 mean 组件，但题材具体 combiner 尚未单独讨论。FM只取8维 value。
+   该选择延续已确认 mean 组件，但题材历史聚合使用 history_pooling: mean，单字段 combiner: concat（Spec015 更新）。FM只取8维 value。
 5. **树选模**：独立 Booster 分别用验证 logloss（分类）/RMSE（时长）选择轮次；不把不同轮次
    的独立模型硬拼成统一 epoch。四主任务加权验证 loss 专用于共享训练的神经模型。
 6. **资源/初始化**：示例缓存20GiB，embedding uniform[-0.01,0.01]，其他训练超参沿用旧草案。

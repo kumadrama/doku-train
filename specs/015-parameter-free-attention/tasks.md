@@ -1,12 +1,11 @@
 # Spec 015：实施任务
 
-Source: 2026-10-21 已确认需求和设计。
+Source: 2026-10-21 用户确认真正拆分字段组合与历史聚合，取代仅对齐启用字段的先前实现。
 
-- [x] 阅读 Finder 常规 attention 路径及本仓 pooling/checkpoint 接口。
-- [x] 增加 rerank 专属 schema 与模型语义校验。
-- [x] 独立实现参数无关 masked softmax 加权和并接入 DNN/FM。
-- [x] 数值、空历史、padding、OOV、梯度、schema 和旧 pooling 单元测试。
-- [x] DNN/DeepFM CPU train/test 与 epoch resume 验证。
-- [x] make check、文档链接与 diff 检查；记录实际结果。
-
-- [x] 按用户纠正对齐 Finder 的组内 hist_attn_query/skip_hist_attn 和全局 attn_scale；移除未发布接口，同步 schema 合并与开关回归测试。
+- [x] 核对 Finder embedded_features/attention_layer 完整调用链及 avg_pool 轴。
+- [x] 将 combiner 限定为 concat/sum/avg，新增独立 history_pooling 和互斥条件；迁移 fixture。
+- [x] 实现先组合再聚合、多字段 query/history、mask/维度校验与 none 的显式保留语义。
+- [x] 同步多字段历史长度验证和 tail 截断；拒绝多字段 top_weight。
+- [x] 数值、梯度、schema、字段对齐与编码专项回归。
+- [x] 同步 README、architecture、Spec004/015 的有效配置语义。
+- [x] 多字段 DNN/DeepFM train/test、恢复和完整 make check 验证。

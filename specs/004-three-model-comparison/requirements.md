@@ -69,7 +69,7 @@ Source: `../doku-offline/fyp-rank-samples/src/fyp_rank_samples/dataset.py::build
   目标集合、label/filter/loss/metrics、输入编码、网络结构、日期与执行阶段均由
   schema 约束、YAML 选择；本 Spec 的具体实验值不是框架硬编码常量。
   Python 类型不得继续作为一套独立且可能冲突的权威验证定义。
-- R417：weighted_mean 为与 mean 同级的公共编码组件，通过 combiner 选择。
+- R417（2026-10-21 Spec015 更新）：weighted_mean 与 mean 为历史聚合方式，通过 history_pooling 选择；combiner 仅组合组内字段。
   仅 weighted_mean 接受并要求 weight_feature。校验 ID/weight 配对、有限非负权重；
   合并重复 ID 权重，padding/零权重不参与，OOV 保留权重；缺失、空列表、全零状态
   显式处理。采用稳定的逐样本归一化，不加 log/温度变换或 pooled 向量 L2 归一化。

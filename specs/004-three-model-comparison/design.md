@@ -25,14 +25,16 @@ Source: 本对话 Q6～Q27 及 weighted_mean 组件接口确认；本 Spec requi
 input_features:
   hist_drama_skip:
     features: [u_skipped__drama_id]
-    combiner: mean
+    combiner: concat
+    history_pooling: mean
   hist_drama_interest:
     features: [u_drama_interests__id]
-    combiner: weighted_mean
+    combiner: concat
+    history_pooling: weighted_mean
     weight_feature: u_drama_interests__weight
 ```
 
-组件位于 comm 的特征编码层；DNN/DeepFM 使用同一实现，模型不自行解释原始列表。
+Source: 2026-10-21 Spec015 用户确认拆分。comm 编码序列与权重；models/rerank 先组合字段，再按 history_pooling 聚合，DNN/DeepFM 共用。
 drama 词表由训练集候选与两类历史联合拟合。ID 仅查一次共享表；权重列不查 embedding。
 weighted_mean 计算 sum(w_i * e_i) / sum(w_i)。先验证并用 float64 合并重复 ID 权重，
 再除行最大值及总和，最后转换为模型 dtype；权重归一化不参与学习，embedding 保持梯度。

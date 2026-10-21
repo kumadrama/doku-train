@@ -10,15 +10,43 @@ from recommend.train.train_rerank import execute_test, execute_train
 
 @pytest.mark.parametrize(
     ("model", "attention"),
-    [("dnn", False), ("deepfm", False), ("xgboost", False), ("dnn", True), ("deepfm", True)],
+    [
+        ("dnn", False),
+        ("deepfm", False),
+        ("xgboost", False),
+        ("dnn", True),
+        ("deepfm", True),
+        ("dnn", "multi"),
+        ("deepfm", "multi"),
+    ],
 )
 def test_new_cpu_training(tmp_path, model, attention):
     config = make_experiment(tmp_path, model)
     if attention:
         config["input_features"]["hist_drama_skip"].update(
-            hist_attn_query="item_id", skip_hist_attn=False
+            hist_attn_query="item_id", history_pooling="attention"
         )
         config["attn_scale"] = 0.5
+    if attention == "multi":
+        # Fixture sequences both have two aligned synthetic positions; no production assumptions.
+        config["input_features"]["combined_history"] = {
+            "features": ["u_skipped__drama_id", "u_onboarding_genre_ids"],
+            "combiner": "concat",
+            "history_pooling": "attention",
+            "hist_attn_query": "combined_query",
+        }
+        config["input_features"]["combined_query"] = {
+            "features": ["i_drama_id", "ctx_platform"],
+            "combiner": "concat",
+        }
+        config["hist_options"]["combined_history"] = {
+            "max_hist_size": 100,
+            "truncate": "tail",
+            "duplicates": "preserve",
+        }
+        config["dnn_inputs"].append("combined_history")
+        if model == "deepfm":
+            config["fm_layers"][0]["features"].append(["combined_query", "combined_history"])
     result = execute_train(config)
     assert result["status"] == "complete"
     from pathlib import Path
@@ -46,7 +74,7 @@ def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probabil
     config = make_experiment(tmp_path, "dnn")
     if attention:
         config["input_features"]["hist_drama_skip"].update(
-            hist_attn_query="item_id", skip_hist_attn=False
+            hist_attn_query="item_id", history_pooling="attention"
         )
         config["attn_scale"] = 0.5
     config["output_layer"]["layer_dropout"] = keep_probability

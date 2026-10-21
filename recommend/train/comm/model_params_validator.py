@@ -66,8 +66,6 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     for group, options in config["input_features"].items():
         if not set(options["features"]) <= derived:
             raise ValueError(f"unknown input field in {group}")
-        if options.get("combiner") == "weighted_mean" and "weight_feature" not in options:
-            raise ValueError("weighted_mean requires weight_feature")
     if not set(config["hist_options"]) <= set(config["input_features"]):
         raise ValueError("history options reference unknown group")
     for task in config["tasks"].values():
