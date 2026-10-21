@@ -4,21 +4,30 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 REQUIRED = [
-    "checkpoint.pt",
     "metrics.json",
     "fitted-feature-state/state.json",
     "lineage.json",
     "resolved-config.json",
     "status.json",
-    "test-metrics.json",
-    "test-evidence.json",
     "input/record.json",
     "input/manifest.json",
     "input/contracts/features.json",
     "input/contracts/labels.json",
 ]
+
+
+def required_files(package: dict[str, Any]) -> list[str]:
+    model = package["config"]["model_type"]
+    checkpoint = {"rerank": "checkpoint.pt", "rerank_tree": "checkpoint.xgb.zip"}[model]
+    stages = package["runtime"].get("stages", ["train", "test"])
+    return [
+        *REQUIRED,
+        checkpoint,
+        *(["test-metrics.json", "test-evidence.json"] if "test" in stages else []),
+    ]
 
 
 def archive_run(run: Path, target: Path, submission: Path) -> None:
@@ -27,11 +36,11 @@ def archive_run(run: Path, target: Path, submission: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     if any(target.iterdir()):
         raise FileExistsError("archive destination is not empty")
-    for name in REQUIRED:
+    for name in required_files(json.loads(submission.read_text())):
         source = run / name
         if not source.is_file():
             raise ValueError(f"missing artifact {name}")
-    for name in REQUIRED:
+    for name in required_files(json.loads(submission.read_text())):
         dest = target / name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(run / name, dest)
@@ -56,7 +65,8 @@ def verify_archive(root: Path) -> None:
         or manifest.get("status") != "complete"
     ):
         raise ValueError("invalid artifact manifest")
-    if not set([*REQUIRED, "submission.json"]) <= set(manifest["files"]):
+    required = required_files(json.loads((root / "submission.json").read_text()))
+    if not set([*required, "submission.json"]) <= set(manifest["files"]):
         raise ValueError("incomplete artifact manifest")
     for name, sha in manifest["files"].items():
         path = (root / name).resolve()

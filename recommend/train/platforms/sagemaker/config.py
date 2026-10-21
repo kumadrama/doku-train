@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
@@ -52,11 +52,14 @@ class Runtime(BaseModel):
     instance_count: int = 1
     volume_size_gb: int = Field(default=100, ge=1)
     max_runtime_seconds: int = Field(default=86400, ge=1)
+    stages: list[Literal["train", "test"]] = ["train", "test"]
     loss_interval_steps: int = Field(default=100, ge=1)
     sync_interval_seconds: int = Field(default=30, ge=1)
 
     @model_validator(mode="after")
     def validate_runtime(self) -> Runtime:
+        if self.stages not in (["train"], ["train", "test"]):
+            raise ValueError("stages must be train or train followed by test")
         if self.version != "doku-sagemaker-runtime/v1":
             raise ValueError("unsupported runtime")
         if self.instance_type != "ml.m5.2xlarge" or self.instance_count != 1:
@@ -103,8 +106,8 @@ def load_runtime(path: Path) -> tuple[Runtime, Binding]:
 
 
 def validate_experiment(config: dict[str, Any], runtime: Runtime) -> None:
-    if config["model_type"] != "rerank":
-        raise ValueError("initial platform supports DNN/DeepFM only")
+    if config["model_type"] not in {"rerank", "rerank_tree"}:
+        raise ValueError("unsupported model type")
     execution = config["execution"]
     if execution["memory_limit_bytes"] > 30 * 1024**3:
         raise ValueError("memory budget must leave at least 2 GiB for system")

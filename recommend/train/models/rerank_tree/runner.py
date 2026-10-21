@@ -9,14 +9,30 @@ from typing import Any
 import numpy as np
 import xgboost as xgb
 
+from recommend.train.comm import metric_events
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
 from recommend.train.comm.runtime_budget import check_memory
 from recommend.train.comm.task_metrics import metric_values
 
 
 class BudgetCallback(xgb.callback.TrainingCallback):
+    def __init__(self, task: str) -> None:
+        self.task = task
+
     def after_iteration(self, model: xgb.Booster, epoch: int, evals_log: Any) -> bool:
         check_memory()
+        for split, values in evals_log.items():
+            for metric, history in values.items():
+                metric_events.emit(
+                    dict(
+                        split=split,
+                        task=self.task,
+                        metric=metric,
+                        step=epoch + 1,
+                        epoch=0,
+                        value=history[-1],
+                    )
+                )
         return False
 
 
@@ -88,19 +104,23 @@ class TreeRunner:
                 early_stopping_rounds=patience if evals else None,
                 evals_result=log,
                 verbose_eval=False,
-                callbacks=[BudgetCallback()],
+                callbacks=[BudgetCallback(name)],
             )
             selected[name] = booster.best_iteration + 1 if evals else None
             self.boosters[name] = booster[: selected[name]] if selected[name] else booster
             history[name] = log
             print(f"task={name} selected_rounds={selected[name]}", flush=True)
         checkpoint.save_bytes(self.checkpoint_name, self.serialize(identity, selected))
+        validation_metrics = self.evaluate(validation)
+        metric_events.evaluation(
+            "validation", max((v or 0 for v in selected.values()), default=0), 0, validation_metrics
+        )
         return {
             "selection": {
                 "status": "selected" if all(selected.values()) else "unavailable",
                 "rounds": selected,
             },
-            "validation": self.evaluate(validation),
+            "validation": validation_metrics,
             "history": history,
         }
 

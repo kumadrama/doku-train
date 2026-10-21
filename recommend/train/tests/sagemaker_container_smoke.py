@@ -38,14 +38,37 @@ class SyntheticS3:
 
 
 def main() -> None:
+    import argparse
     import platform
+    import subprocess
+    import sys
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=["dnn", "deepfm", "xgboost"])
+    args = parser.parse_args()
+    if args.model is None:
+        for model in ("dnn", "deepfm", "xgboost"):
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "recommend.train.tests.sagemaker_container_smoke",
+                    "--model",
+                    model,
+                ],
+                check=True,
+                timeout=300,
+            )
+        return
 
     assert platform.machine() == "x86_64", "Acceptance must run on amd64"
     source = source_identity()
     with tempfile.TemporaryDirectory() as directory:
-        for model in ("dnn", "deepfm"):
+        for model in (args.model,):
             root = Path(directory) / model
             config = make_experiment(root / "fixture", model)
+            if model == "xgboost":
+                config["execution"]["intra_op_threads"] = 1
             local = root / "fixture/dataset"
             manifest = json.loads((local / "manifest.json").read_text())
             s3 = SyntheticS3()
@@ -84,6 +107,7 @@ def main() -> None:
                 source_sha256=source["working_source_sha256"],
                 lock_sha256=source["lock_sha256"],
                 loss_interval_steps=1,
+                stages=["train"] if model == "xgboost" else ["train", "test"],
             )
             prepare(config, runtime, binding, model, s3, root / "prepared")
             package = root / "prepared/package.json"
@@ -103,8 +127,13 @@ def main() -> None:
             for file in files:
                 events = EventAccumulator(str(file)).Reload()
                 tags.update(events.Tags()["scalars"])
-            assert any(tag.startswith("train/") for tag in tags)
-            assert any(tag.startswith("test/") for tag in tags)
+            if model == "xgboost":
+                assert any(tag.startswith("validation/") for tag in tags)
+                assert not (root / "ml/model/test-metrics.json").exists()
+                assert (root / "ml/model/checkpoint.xgb.zip").exists()
+            else:
+                assert any(tag.startswith("train/") for tag in tags)
+                assert any(tag.startswith("test/") for tag in tags)
             print(f"CONTAINER_SMOKE_PASS model={model} machine={platform.machine()}", flush=True)
 
 
