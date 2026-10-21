@@ -86,14 +86,15 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
             result = train(config, model_factory(config["model_type"]), frozen_input=frozen)
             stage_times["train"] = time.monotonic() - start
             run_dir = Path(result["run_dir"])
-            print("DOKU_STAGE test starting", flush=True)
-            start = time.monotonic()
-            test = test_run(run_dir, model_factory(config["model_type"]))
-            selection = result["metrics"]["selection"]
-            metric_events.evaluation(
-                "test", selection["global_step"], selection["epoch"] or 0, test
-            )
-            stage_times["test"] = time.monotonic() - start
+            if "test" in runtime.stages:
+                print("DOKU_STAGE test starting", flush=True)
+                start = time.monotonic()
+                test = test_run(run_dir, model_factory(config["model_type"]))
+                selection = result["metrics"]["selection"]
+                metric_events.evaluation(
+                    "test", selection.get("global_step", 0), selection.get("epoch") or 0, test
+                )
+                stage_times["test"] = time.monotonic() - start
         sink.close()
         print("DOKU_STAGE archive starting", flush=True)
         archive_run(run_dir, root / "model", package_path)

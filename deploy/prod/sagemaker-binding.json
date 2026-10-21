@@ -1,0 +1,19 @@
+{
+  "account_id": "703844615824",
+  "environment": "prod",
+  "experiment_uri": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/",
+  "input_prefixes": [
+    "s3://prod-data-lake-20260901071345278900000001/ml/fyp-rank-train/daily/environment=prod/"
+  ],
+  "kms_key_arn": "arn:aws:kms:us-east-2:703844615824:key/bbf7f36f-8cd3-48f8-9539-839e8cbe7f38",
+  "region": "us-east-2",
+  "role_arn": "arn:aws:iam::703844615824:role/doku-prod-role-sagemaker-train",
+  "security_group_ids": [
+    "sg-0a8fb32a90187afbe"
+  ],
+  "subnet_ids": [
+    "subnet-0fd2382a637115ba9",
+    "subnet-00babcf56bbeeeef7"
+  ],
+  "version": "doku-sagemaker-binding/v1"
+}

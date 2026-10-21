@@ -35,8 +35,8 @@ class MemoryS3:
         self.objects[name] = kwargs["Body"]
 
 
-def fixture(tmp_path):
-    config = make_experiment(tmp_path / "fixture", "deepfm")
+def fixture(tmp_path, model="deepfm"):
+    config = make_experiment(tmp_path / "fixture", model)
     source = source_identity()
     binding = Binding(
         version="doku-sagemaker-binding/v1",
@@ -236,3 +236,44 @@ def test_submission_metadata_can_reference_approved_data_only(tmp_path):
     with pytest.raises(ValueError, match="outside approved"):
         prepare(config, runtime, binding, "bad", s3, tmp_path / "bad")
     assert not s3.puts
+
+
+@pytest.mark.parametrize("stages", [["train"], ["train", "test"]])
+def test_tree_package_stages_and_archive(tmp_path, monkeypatch, stages):
+    import os
+    import subprocess
+    import sys
+
+    if os.environ.get("DOKU_TREE_TEST_CHILD") != "1":
+        node = "stages0" if stages == ["train"] else "stages1"
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                f"{__file__}::test_tree_package_stages_and_archive[{node}]",
+                "-q",
+            ],
+            env={**os.environ, "DOKU_TREE_TEST_CHILD": "1"},
+            check=True,
+            timeout=120,
+        )
+        return
+    from recommend.train.comm.datasvr.published_dataset import PublishedDataset
+
+    config, runtime, binding, s3, shards = fixture(tmp_path, "xgboost")
+    config["execution"]["intra_op_threads"] = 1
+    runtime = runtime.model_copy(update={"stages": stages})
+    prepared = tmp_path / "prepared"
+    prepare(config, runtime, binding, "tree-trial", s3, prepared)
+    payload = prepared / "package.json"
+    monkeypatch.setattr(PublishedDataset, "_local_path", lambda self, uri: shards.get(uri))
+    root = tmp_path / "ml"
+    run_package(payload, root, s3, expected_sha=hashlib.sha256(payload.read_bytes()).hexdigest())
+    verify_archive(root / "model")
+    assert (root / "model/checkpoint.xgb.zip").is_file()
+    assert not (root / "model/checkpoint.pt").exists()
+    assert (root / "model/test-metrics.json").exists() == ("test" in stages)
+    assert (
+        not (root / "work/runs/tree-trial/encoded-test").exists() if "test" not in stages else True
+    )

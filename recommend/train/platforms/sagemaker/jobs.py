@@ -53,7 +53,11 @@ def fetch_result(sm: Any, s3: Any, name: str, binding: Binding) -> dict[str, Any
             "billable_seconds": job.get("BillableTimeInSeconds"),
             "lineage": json.loads((dest / "lineage.json").read_text()),
             "validation": json.loads((dest / "metrics.json").read_text())["validation"],
-            "test": json.loads((dest / "test-metrics.json").read_text()),
+            "test": (
+                json.loads((dest / "test-metrics.json").read_text())
+                if "test" in json.loads(package_bytes)["runtime"].get("stages", ["train", "test"])
+                else None
+            ),
         }
 
 
