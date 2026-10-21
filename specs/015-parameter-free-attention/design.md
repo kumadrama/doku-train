@@ -5,7 +5,7 @@ Source: 2026-10-21 用户确认设计并授权实施；本仓 rerank 的共享 e
 
 ## 当前行为与配置
 
-rerank 专属 schema 新增可选 hist_attn_configs，按已有历史 input group 名配置；不修改公共 input_features 的合同，不让 comm 反向 import 模型。
+Source: 用户指出首版启用方式与 Finder 不一致，经重新核对 Finder schema 和常规 attention_layer，改用历史组内的 hist_attn_query/skip_hist_attn 与顶层 attn_scale。撤销未发布的 hist_attn_configs 按历史组映射接口，不提供兼容别名。
 
 ```yaml
 input_features:
@@ -15,21 +15,26 @@ input_features:
   hist_drama_skip:
     features: [u_skipped__drama_id]
     combiner: mean
+    hist_attn_query: item_id
+    skip_hist_attn: false
 embed_name:
   i_drama_id: drama
   u_skipped__drama_id: drama
 embed_dim:
   drama: 8
-hist_attn_configs:
-  hist_drama_skip:
-    query: item_id
-    attn_scale: 1.0
+attn_scale: 1.0
 # 其余既有 YAML 配置保持完整
 ```
 
-hist_attn_configs 显式覆盖相应组的 mean/concat pooling。query 引用 input_features 组，不是原始字段名；每个 query 必须只含一个标量 embedding，不能引用 attention 组（不支持链式依赖）。历史组必须只含一个序列 embedding。允许多个历史组共享 query，且与 YAML 组声明顺序无关。组维度必须相等；同类 ID 推荐通过 embed_name 共享词表和 embedding，但不强制共表。
+hist_attn_query 引用 input_features 组名，不是原始字段名。声明 query 且未显式 skip=true 时启用 attention；skip_hist_attn=true 跳过 attention，沿用该组既有 pooling；显式 skip_hist_attn=false 必须声明 query。未声明两项的旧配置不启用 attention，避免静默改变现有训练语义。这一点有意不沿用 Finder 的默认 query=item/skip=false：本仓不预设候选组名。
 
-每组 attn_scale 缺省 1.0，必须有限且大于 0，固定不训练；不接受未知键。不配置 hist_attn_configs 或配置空对象保持既有输出和参数布局。
+query 组只能含一个标量类别 embedding，历史组只能含一个序列 embedding；不支持 attention 组作 query。允许多个历史组共享 query，且与 YAML 组声明顺序无关。组维度必须相等；同类 ID 推荐通过 embed_name 共享词表和 embedding，但不强制共表。
+
+顶层 attn_scale 缺省 1.0，所有启用的历史 attention 共用；必须有限且大于 0，固定不训练，不接受组内 attn_scale。本期仅支持字符串 hist_attn_query，不扩展 Finder 的多 query 求和或可配置多头/投影模块。
+
+## Schema 装配
+
+模型 schema 为 input_features 声明增量组属性（hist_attn_query、skip_hist_attn）及条件约束，并声明顶层 attn_scale。公共 schema 加载器只合并模型声明的额外组属性和 allOf，不引用模型 Python 实现或 attention 字段名；保留公共 features 必填、combiner 枚举、additionalProperties=false，禁止重定义同名公共字段。树模型 schema 不声明这些扩展，因此拒绝这些配置。
 
 ## 计算及边界
 
@@ -46,7 +51,7 @@ OOV=1 是有效位置；padding=0 被排除。缺失标量 query 仍遵循当前
 
 ## 文件与校验边界
 
-- models/rerank/config.schema.yml：参数结构和范围，仅 rerank 可用，树模型拒绝此配置。
+- models/rerank/config.schema.yml：组内开关/query 扩展、全局尺度结构和范围，仅 rerank 可用，树模型拒绝此配置。
 - models/rerank/model_params.py：利用 Feature State 的 tables/dtypes 和 embed_dim 校验引用、标量/序列与维度，编译为 history/query 字段及尺度。
 - models/rerank/attention.py：无状态张量运算。
 - models/rerank/rerank_model.py：在普通 pooling 分支前接入；不修改训练流水线、数据生产或 SageMaker 专属入口。

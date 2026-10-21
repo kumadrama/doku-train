@@ -15,7 +15,10 @@ from recommend.train.train_rerank import execute_test, execute_train
 def test_new_cpu_training(tmp_path, model, attention):
     config = make_experiment(tmp_path, model)
     if attention:
-        config["hist_attn_configs"] = {"hist_drama_skip": {"query": "item_id", "attn_scale": 0.5}}
+        config["input_features"]["hist_drama_skip"].update(
+            hist_attn_query="item_id", skip_hist_attn=False
+        )
+        config["attn_scale"] = 0.5
     result = execute_train(config)
     assert result["status"] == "complete"
     from pathlib import Path
@@ -42,7 +45,10 @@ def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probabil
 
     config = make_experiment(tmp_path, "dnn")
     if attention:
-        config["hist_attn_configs"] = {"hist_drama_skip": {"query": "item_id", "attn_scale": 0.5}}
+        config["input_features"]["hist_drama_skip"].update(
+            hist_attn_query="item_id", skip_hist_attn=False
+        )
+        config["attn_scale"] = 0.5
     config["output_layer"]["layer_dropout"] = keep_probability
     config["tasks"]["completion"]["layer_dropout"] = keep_probability
     original = NeuralRunner.evaluate

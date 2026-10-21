@@ -1,22 +1,29 @@
 type: object
 properties:
-  hist_attn_configs:
+  input_features:
     type: object
-    description: History group to parameter-free target attention; omitted means existing pooling.
     additionalProperties:
       type: object
       properties:
-        query:
+        hist_attn_query:
           type: string
           minLength: 1
-          description: Input group containing one scalar categorical embedding.
-        attn_scale:
-          type: number
-          exclusiveMinimum: 0
-          default: 1.0
-          description: Fixed divisor for dot-product logits; not trainable.
-      required: [query]
-      additionalProperties: false
+          description: Scalar embedding input group used as target query.
+        skip_hist_attn:
+          type: boolean
+          description: Explicitly bypass attention and use the group's existing pooling.
+      allOf:
+      - if:
+          properties:
+            skip_hist_attn: {const: false}
+          required: [skip_hist_attn]
+        then:
+          required: [hist_attn_query]
+  attn_scale:
+    type: number
+    exclusiveMinimum: 0
+    default: 1.0
+    description: Fixed global divisor for dot-product logits; not trainable.
   embed_name:
     type: object
     additionalProperties: &id002

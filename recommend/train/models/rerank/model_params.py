@@ -11,11 +11,16 @@ def attention_inputs(
 ) -> dict[str, tuple[str, str, float]]:
     result = {}
     groups = config["input_features"]
-    for name, options in config.get("hist_attn_configs", {}).items():
-        query = options["query"]
-        if name not in groups or query not in groups:
+    enabled = {
+        name: group
+        for name, group in groups.items()
+        if not group.get("skip_hist_attn", "hist_attn_query" not in group)
+    }
+    for name, options in enabled.items():
+        query = options.get("hist_attn_query")
+        if not isinstance(query, str) or query not in groups:
             raise ValueError("attention references unknown input group")
-        if name == query or query in config.get("hist_attn_configs", {}):
+        if name == query or query in enabled:
             raise ValueError("attention query must be a non-attention scalar group")
         fields = []
         dims = []
@@ -39,7 +44,7 @@ def attention_inputs(
             dims.append(dim)
         if dims[0] != dims[1]:
             raise ValueError("attention query and history dimensions differ")
-        scale = options.get("attn_scale", 1.0)
+        scale = config.get("attn_scale", 1.0)
         if isinstance(scale, bool) or not isinstance(scale, (int, float)):
             raise ValueError("attn_scale must be a finite positive number")
         if not math.isfinite(scale) or scale <= 0:

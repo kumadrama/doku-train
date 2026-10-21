@@ -8,3 +8,5 @@ Source: 2026-10-21 已确认需求和设计。
 - [x] 数值、空历史、padding、OOV、梯度、schema 和旧 pooling 单元测试。
 - [x] DNN/DeepFM CPU train/test 与 epoch resume 验证。
 - [x] make check、文档链接与 diff 检查；记录实际结果。
+
+- [x] 按用户纠正对齐 Finder 的组内 hist_attn_query/skip_hist_attn 和全局 attn_scale；移除未发布接口，同步 schema 合并与开关回归测试。

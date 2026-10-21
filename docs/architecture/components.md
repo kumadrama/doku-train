@@ -38,4 +38,4 @@ AWS 控制台/CloudWatch 继续用于任务、日志与时间指标；SageMaker 
 ## NN 历史 Attention
 
 Source: [Spec 015](../../specs/015-parameter-free-attention/design.md)，2026-10-21 用户确认。
-当前本地 rerank 支持由 hist_attn_configs 声明的无参目标 attention：点积除以固定 attn_scale、masked softmax、历史 embedding 加权和。DNN/DeepFM 共用，输出沿用历史组名；公共编码与树模型不变。模型专属 schema/校验/张量运算均位于 models/rerank，不引入公共层反向依赖。尚未部署 attention 训练镜像。
+当前本地 rerank 支持由历史 input_features 组的 hist_attn_query/skip_hist_attn 与顶层 attn_scale 声明的无参目标 attention：点积除以固定 attn_scale、masked softmax、历史 embedding 加权和。DNN/DeepFM 共用，输出沿用历史组名；公共编码与树模型不变。模型专属 schema/校验/张量运算均位于 models/rerank，不引入公共层反向依赖。尚未部署 attention 训练镜像。

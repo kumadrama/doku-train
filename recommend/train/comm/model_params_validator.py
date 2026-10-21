@@ -25,6 +25,15 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     plugin = yaml.safe_load((ROOT / "models" / name / "config.schema.yml").read_text())
     schema = copy.deepcopy(common)
     for key, value in plugin["properties"].items():
+        if key == "input_features":
+            # Model schemas may add group options without duplicating or weakening common fields.
+            group = schema["properties"][key]["additionalProperties"]
+            extension = value["additionalProperties"]
+            if group["properties"].keys() & extension["properties"].keys():
+                raise ValueError("input feature schema ownership conflict")
+            group["properties"].update(copy.deepcopy(extension["properties"]))
+            group.setdefault("allOf", []).extend(copy.deepcopy(extension.get("allOf", [])))
+            continue
         if key in schema["properties"] and key != "selection":
             raise ValueError("schema ownership conflict")
         schema["properties"][key] = value

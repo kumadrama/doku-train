@@ -18,3 +18,11 @@ Source: 2026-10-21 本地隔离分支验证；仅合成 fixture。
 - `git diff --check`、AGENTS/architecture/Spec015 的本地 Markdown 链接检查通过。
 - 完整测试包含 DNN/DeepFM attention CPU train/test、带 dropout 的 attention 恢复与不中断训练逐参数相等；合成数据，不代表模型效果提升。
 - 没有构建/部署云端镜像、启动 SageMaker 训练或发布模型。
+
+## Finder 启用接口纠正后的最终验证
+
+根据用户反馈，改用组内 hist_attn_query/skip_hist_attn 和顶层 attn_scale；不保留未发布的 hist_attn_configs 自定义接口。
+
+- 相同环境执行 `make check`：exit 0；锁文件、158 文件格式、Ruff、mypy 59 源文件通过；206 passed、3 skipped，98.40 秒。
+- 专项 `uv run pytest recommend/train/tests/unit/test_attention.py -q`：22 passed，0.88 秒。新增开关/缺省尺度、显式启用必须声明 query、公共 schema 必填及未知字段约束仍生效、旧自定义接口被拒绝的验证。
+- `git diff --check` 与文档本地链接检查通过；仍未推送或部署。

@@ -23,7 +23,8 @@ def attention_fixture():
     config["dnn_inputs"] = ["history"]
     config["output_layer"] = {"dims": [], "acts": [], "norms": []}
     config["tasks"] = {"score": {"dims": [], "acts": [], "num_outputs": 1}}
-    config["hist_attn_configs"] = {"history": {"query": "candidate", "attn_scale": 1.0}}
+    config["input_features"]["history"].update(hist_attn_query="candidate", skip_hist_attn=False)
+    config["attn_scale"] = 1.0
     state = {
         "vocabs": {"items": [10, 20]},
         "tables": {"q": "items", "h": "items"},
@@ -65,7 +66,7 @@ def test_attention_group_order_oov_fm_and_no_new_parameters():
     torch.manual_seed(7)
     model = ConfiguredRerank(config, state)
     no_attention = copy.deepcopy(config)
-    del no_attention["hist_attn_configs"]
+    no_attention["input_features"]["history"]["skip_hist_attn"] = True
     torch.manual_seed(7)
     baseline = ConfiguredRerank(no_attention, state)
     assert model.state_dict().keys() == baseline.state_dict().keys()
@@ -100,7 +101,8 @@ def test_attention_group_order_oov_fm_and_no_new_parameters():
 
 def test_absent_attention_preserves_mean_weighted_mean():
     config, state = attention_fixture()
-    del config["hist_attn_configs"]
+    del config["input_features"]["history"]["hist_attn_query"]
+    del config["input_features"]["history"]["skip_hist_attn"]
     for combiner in ["mean", "weighted_mean"]:
         config["input_features"]["history"]["combiner"] = combiner
         if combiner == "weighted_mean":
@@ -124,7 +126,8 @@ def test_absent_attention_preserves_mean_weighted_mean():
 @pytest.mark.parametrize("scale", [0, -1, True, "1", float("inf"), float("nan")])
 def test_schema_rejects_invalid_attention_scale(scale):
     config = synthetic_config("dnn")
-    config["hist_attn_configs"] = {"hist_drama_skip": {"query": "item_id", "attn_scale": scale}}
+    config["input_features"]["hist_drama_skip"]["hist_attn_query"] = "item_id"
+    config["attn_scale"] = scale
     with pytest.raises((ValidationError, ValueError)):
         validate_config(config)
 
@@ -132,13 +135,13 @@ def test_schema_rejects_invalid_attention_scale(scale):
 def test_schema_supports_nn_only_and_rejects_unknown_options():
     for model in ["dnn", "deepfm"]:
         config = synthetic_config(model)
-        config["hist_attn_configs"] = {"hist_drama_skip": {"query": "item_id"}}
+        config["input_features"]["hist_drama_skip"]["hist_attn_query"] = "item_id"
         validate_config(config)
-        config["hist_attn_configs"]["hist_drama_skip"]["projection"] = True
+        config["input_features"]["hist_drama_skip"]["projection"] = True
         with pytest.raises(ValidationError):
             validate_config(config)
     config = synthetic_config("xgboost")
-    config["hist_attn_configs"] = {}
+    config["input_features"]["hist_drama_skip"]["hist_attn_query"] = "item_id"
     with pytest.raises(ValidationError):
         validate_config(config)
 
@@ -146,7 +149,6 @@ def test_schema_supports_nn_only_and_rejects_unknown_options():
 @pytest.mark.parametrize(
     "problem",
     [
-        "unknown_history",
         "unknown_query",
         "self",
         "sequence_query",
@@ -159,13 +161,11 @@ def test_schema_supports_nn_only_and_rejects_unknown_options():
 )
 def test_invalid_attention_semantics(problem):
     config, state = attention_fixture()
-    spec = config["hist_attn_configs"]["history"]
-    if problem == "unknown_history":
-        config["hist_attn_configs"] = {"unknown": spec}
-    elif problem == "unknown_query":
-        spec["query"] = "unknown"
+    spec = config["input_features"]["history"]
+    if problem == "unknown_query":
+        spec["hist_attn_query"] = "unknown"
     elif problem == "self":
-        spec["query"] = "history"
+        spec["hist_attn_query"] = "history"
     elif problem == "sequence_query":
         state["dtypes"]["q"] = "list<int64>"
     elif problem == "scalar_history":
@@ -182,3 +182,29 @@ def test_invalid_attention_semantics(problem):
         config["input_features"]["history"]["features"].append("q")
     with pytest.raises(ValueError, match="attention"):
         ConfiguredRerank(config, state)
+
+
+def test_finder_switch_and_scale_defaults():
+    config, state = attention_fixture()
+    del config["attn_scale"]
+    del config["input_features"]["history"]["skip_hist_attn"]
+    enabled = ConfiguredRerank(config, state)
+    assert enabled.attention_inputs["history"] == ("h", "q", 1.0)
+    config["input_features"]["history"]["skip_hist_attn"] = True
+    assert ConfiguredRerank(config, state).attention_inputs == {}
+
+
+def test_schema_keeps_common_contract_and_requires_query_when_enabled():
+    config = synthetic_config("dnn")
+    config["input_features"]["hist_drama_skip"]["skip_hist_attn"] = False
+    with pytest.raises(ValidationError):
+        validate_config(config)
+    config["input_features"]["hist_drama_skip"]["hist_attn_query"] = "item_id"
+    validate_config(config)
+    del config["input_features"]["hist_drama_skip"]["features"]
+    with pytest.raises(ValidationError):
+        validate_config(config)
+    config = synthetic_config("dnn")
+    config["hist_attn_configs"] = {"hist_drama_skip": {"query": "item_id"}}
+    with pytest.raises(ValidationError):
+        validate_config(config)
