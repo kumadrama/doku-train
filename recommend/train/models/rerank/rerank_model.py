@@ -8,6 +8,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from recommend.train.models.rerank.attention import history_attention
+from recommend.train.models.rerank.model_params import attention_inputs
+
 
 def layers(width: int, cfg: dict[str, Any]) -> tuple[nn.Sequential, int]:
     modules: list[nn.Module] = []
@@ -27,6 +30,7 @@ class ConfiguredRerank(nn.Module):
         super().__init__()
         self.config = config
         self.state = state
+        self.attention_inputs = attention_inputs(config, state)
         self.table_names = sorted(state["vocabs"])
         self.embeddings = nn.ModuleList()
         widths = {}
@@ -76,7 +80,15 @@ class ConfiguredRerank(nn.Module):
                 v = batch[f].long()
                 emb = self.embeddings[self.table_names.index(table)](v)
                 valid = v != 0
-                if g.get("combiner") == "weighted_mean":
+                if name in self.attention_inputs:
+                    _, query_field, scale = self.attention_inputs[name]
+                    query_table = self.state["tables"][query_field]
+                    query_ids = batch[query_field].long()
+                    if query_ids.ndim != 2 or query_ids.shape[1] != 1:
+                        raise ValueError("attention query must have shape [batch, 1]")
+                    query = self.embeddings[self.table_names.index(query_table)](query_ids[:, 0])
+                    value = history_attention(query, emb, valid, scale)
+                elif g.get("combiner") == "weighted_mean":
                     weight = batch[g["weight_feature"]] * valid
                     denom = weight.sum(1, keepdim=True)
                     value = (emb * weight.unsqueeze(-1)).sum(1) / denom.clamp_min(

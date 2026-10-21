@@ -246,3 +246,18 @@ uv run python -m recommend.train.platforms.sagemaker \
 15 个任务各一小时约 $7.21；$250–300/月预算依赖每天约 15 个一小时任务，并非硬限额。
 云端尚未验证 15 并发性能、KMS 服务上传及真实数据磁盘峰值。部署前清单见
 [Spec 008 任务](specs/008-sagemaker-dnn-training/tasks.md)。
+
+### NN 历史 Attention（配置片段）
+
+DNN/DeepFM 可为既有历史输入组启用无参 attention：
+
+```yaml
+hist_attn_configs:
+  hist_drama_skip:
+    query: item_id
+    attn_scale: 1.0
+```
+
+query 是 input_features 中的组名；候选组为单个标量类别 embedding，历史组为单个类别序列 embedding，二者维度必须相等。计算为点积除以固定尺度、屏蔽 padding 后 softmax、对历史 embedding 加权求和；空历史输出零向量，OOV 正常参与。该组输出仍可供 dnn_inputs 和 fm_layers 使用。
+
+不配置此项时保持原 pooling；attn_scale 缺省 1.0 且必须有限大于 0。不能与该组的 weight_feature/weighted_mean 混用。完整语义和共享 embedding 示例见 [Spec 015](specs/015-parameter-free-attention/design.md)。本地代码与 SageMaker 共用模型实现，但现有云端镜像需重新构建部署才支持新配置。
