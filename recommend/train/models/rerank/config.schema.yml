@@ -131,24 +131,35 @@ properties:
     - weight_decay
     additionalProperties: false
   max_epochs: *id003
-  early_stopping_patience: *id003
+  early_stopping_patience:
+    anyOf:
+    - *id003
+    - type: "null"
   selection:
-    type: object
-    properties:
-      mode:
-        enum:
-        - min
-      aggregation:
-        enum:
-        - weighted_sum
-      task_losses:
-        type: object
-        additionalProperties: *id004
-    required:
-    - mode
-    - aggregation
-    - task_losses
-    additionalProperties: false
+    oneOf:
+    - type: object
+      properties:
+        mode:
+          enum: [min]
+        aggregation:
+          enum: [weighted_sum]
+        task_losses:
+          type: object
+          minProperties: 1
+          additionalProperties: *id004
+      required: [mode, aggregation, task_losses]
+      additionalProperties: false
+    - type: object
+      properties:
+        mode:
+          enum: [min, max]
+        task:
+          type: string
+        metric:
+          type: string
+      required: [mode, task, metric]
+      additionalProperties: false
+
 required:
 - embed_name
 - embed_dim
