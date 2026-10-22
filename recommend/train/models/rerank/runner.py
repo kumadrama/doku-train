@@ -133,20 +133,13 @@ class NeuralRunner:
                     metric_events.training_step(step, epoch + 1, batch_losses)
             metrics = self.evaluate(validation)
             metric_events.evaluation("validation", step, epoch + 1, metrics)
-            selection = self.config["selection"]
-            if "task_losses" in selection:
-                terms = selection["task_losses"]
-                score = (
-                    sum(metrics[n]["loss"] * w for n, w in terms.items())
-                    if all(metrics[n]["loss"] is not None for n in terms)
-                    else None
-                )
-            else:
-                score = metrics[selection["task"]]["metrics"][selection["metric"]]["value"]
-            improved = score is not None and (
-                best is None or (score > best if selection["mode"] == "max" else score < best)
+            terms = self.config["selection"]["task_losses"]
+            score = (
+                sum(metrics[n]["loss"] * w for n, w in terms.items())
+                if all(metrics[n]["loss"] is not None for n in terms)
+                else None
             )
-            if improved:
+            if score is not None and (best is None or score < best):
                 best = score
                 best_state = copy.deepcopy(self.model.state_dict())
                 best_epoch = epoch + 1
@@ -182,8 +175,7 @@ class NeuralRunner:
             }
             checkpoint.save_resume(state)
             print(f"epoch={epoch + 1} validation_selection={score}", flush=True)
-            patience = self.config["early_stopping_patience"]
-            if patience is not None and stale >= patience:
+            if stale >= self.config["early_stopping_patience"]:
                 break
         if best_state is not None:
             self.model.load_state_dict(best_state)

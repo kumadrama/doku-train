@@ -90,15 +90,8 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
                 or len(layer["dims"]) != len(layer["norms"])
             ):
                 raise ValueError("each layer requires aligned dims/acts/norms")
-        selection = config["selection"]
-        if "task_losses" in selection:
-            if not set(selection["task_losses"]) <= set(config["tasks"]):
-                raise ValueError("selection references unknown task")
-        elif (
-            selection["task"] not in config["tasks"]
-            or selection["metric"] not in config["tasks"][selection["task"]]["metrics"]
-        ):
-            raise ValueError("selection references unknown task or metric")
+        if not set(config["selection"]["task_losses"]) <= set(config["tasks"]):
+            raise ValueError("selection references unknown task")
     else:
         if not set(config["selection"]["per_task_metrics"]) == set(config["tasks"]):
             raise ValueError("tree selection must describe every task")
