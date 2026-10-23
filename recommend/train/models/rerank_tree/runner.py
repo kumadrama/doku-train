@@ -13,6 +13,7 @@ from recommend.train.comm import metric_events
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
 from recommend.train.comm.runtime_budget import check_memory
 from recommend.train.comm.task_metrics import metric_values
+from recommend.train.models.rerank_tree.loss_utils import logloss
 
 
 class BudgetCallback(xgb.callback.TrainingCallback):
@@ -150,7 +151,7 @@ class TreeRunner:
             # Explicit margins avoid applying sigmoid twice to binary:logistic probabilities.
             margin = self.boosters[name].predict(matrix, output_margin=True)
             pred = np.exp(-np.logaddexp(0, -margin)) if t["predict_fn"] == "sigmoid" else margin
-            metrics = metric_values(t, name, arrays, pred)
+            metrics = metric_values(t, name, arrays, pred, logits=margin, logloss_func=logloss)
             metric = "logloss" if t["objective"] == "binary:logistic" else "mse"
             out[name] = {"metrics": metrics, "loss": metrics.get(metric, {}).get("value")}
         return out

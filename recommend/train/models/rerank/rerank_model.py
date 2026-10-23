@@ -6,7 +6,6 @@ from typing import Any
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 from recommend.train.models.rerank.attention import history_attention
 from recommend.train.models.rerank.model_params import group_plans
@@ -124,20 +123,6 @@ class ConfiguredRerank(nn.Module):
                 dim=1,
             )
         return {n: layer(shared) for n, layer in zip(self.task_names, self.towers, strict=True)}
-
-
-def task_loss(logits: torch.Tensor, label: torch.Tensor, task: dict[str, Any]) -> torch.Tensor:
-    if task["loss_type"] == "logloss":
-        if not ((label == 0) | (label == 1)).all():
-            raise ValueError("binary labels must be zero or one")
-        return F.binary_cross_entropy_with_logits(logits[:, 0], label, reduction="none")
-    if task["loss_type"] == "mseloss":
-        return (logits[:, 0] - label).square()
-    soft = task["soft_label"]
-    bins = torch.arange(task["num_outputs"], device=label.device, dtype=label.dtype) * soft["scale"]
-    logp = -0.5 * ((bins[None, :] - label[:, None]) / soft["sigma"]).square()
-    target = torch.softmax(logp, dim=1)
-    return -(target * F.log_softmax(logits, dim=1)).sum(1)
 
 
 def predictions(logits: torch.Tensor, task: dict[str, Any]) -> torch.Tensor:

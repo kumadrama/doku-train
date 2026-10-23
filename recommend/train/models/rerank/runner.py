@@ -11,9 +11,10 @@ import torch
 
 from recommend.train.comm import metric_events
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
+from recommend.train.comm.nn_utils import get_loss
 from recommend.train.comm.runtime_budget import check_memory
 from recommend.train.comm.task_metrics import metric_values
-from recommend.train.models.rerank.rerank_model import ConfiguredRerank, predictions, task_loss
+from recommend.train.models.rerank.rerank_model import ConfiguredRerank, predictions
 
 
 def batches(
@@ -50,6 +51,7 @@ class NeuralRunner:
     def evaluate(self, arrays: dict[str, np.ndarray]) -> dict[str, Any]:
         self.model.eval()
         pred: dict[str, list[np.ndarray]] = {n: [] for n in self.config["tasks"]}
+        logits: dict[str, list[np.ndarray]] = {n: [] for n in pred}
         totals = {n: [0.0, 0] for n in pred}
         with torch.no_grad():
             for batch in batches(arrays, self.config["batch_size"]):
@@ -59,15 +61,21 @@ class NeuralRunner:
                     n = int(mask.sum())
                     if n:
                         totals[name][0] += float(
-                            task_loss(
-                                outputs[name][mask], batch["label:" + name][:, 0][mask], t
+                            get_loss(
+                                t,
+                                outputs[name][mask],
+                                batch["label:" + name][:, 0][mask],
+                                reduction="none",
                             ).sum()
                         )
                         totals[name][1] += n
+                    logits[name].append(outputs[name].numpy())
                     pred[name].append(predictions(outputs[name], t).numpy())
         return {
             name: {
-                "metrics": metric_values(t, name, arrays, np.concatenate(pred[name])),
+                "metrics": metric_values(
+                    t, name, arrays, np.concatenate(pred[name]), logits=np.concatenate(logits[name])
+                ),
                 "loss": totals[name][0] / totals[name][1] if totals[name][1] else None,
             }
             for name, t in self.config["tasks"].items()
@@ -118,8 +126,20 @@ class NeuralRunner:
                     mask = batch["mask:" + name][:, 0].bool()
                     n = int(mask.sum())
                     if n:
-                        per = task_loss(outputs[name][mask], batch["label:" + name][:, 0][mask], t)
-                        losses.append((per * batch["weight:" + name][:, 0][mask]).mean())
+                        per = get_loss(
+                            t,
+                            outputs[name][mask],
+                            batch["label:" + name][:, 0][mask],
+                            reduction="none",
+                        )
+                        losses.append(
+                            get_loss(
+                                t,
+                                outputs[name][mask],
+                                batch["label:" + name][:, 0][mask],
+                                loss_weight_data=batch["weight:" + name][:, 0][mask],
+                            )
+                        )
                         batch_losses[name] = float(per.detach().mean())
                         sums[name][0] += float(per.detach().sum())
                         sums[name][1] += n

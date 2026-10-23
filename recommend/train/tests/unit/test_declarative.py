@@ -96,7 +96,13 @@ def test_single_class_auc_keeps_logloss():
         "valid:t:auc": np.ones((3, 1), dtype=bool),
         "valid:t:logloss": np.ones((3, 1), dtype=bool),
     }
-    result = metric_values(task, "t", arrays, np.array([0.1, 0.2, 0.3]))
+    result = metric_values(
+        task,
+        "t",
+        arrays,
+        np.array([0.1, 0.2, 0.3]),
+        logits=np.log(np.array([0.1, 0.2, 0.3]) / np.array([0.9, 0.8, 0.7])),
+    )
     assert result["auc"]["value"] is None
     assert result["auc"]["reason"] == "single_class"
     assert result["logloss"]["value"] > 0

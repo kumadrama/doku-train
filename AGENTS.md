@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 016：Finder 结构公共 loss](specs/016-shared-nn-loss/requirements.md)、[设计](specs/016-shared-nn-loss/design.md) — 需求与设计已确认；公共 loss 已实施，验证见 [验证](specs/016-shared-nn-loss/verification.md)。
+
 - [Spec 015：NN 无参历史 Attention](specs/015-parameter-free-attention/requirements.md)、[设计](specs/015-parameter-free-attention/design.md)、[任务](specs/015-parameter-free-attention/tasks.md)、[验证](specs/015-parameter-free-attention/verification.md) — 本地实现与完整验证通过；尚未部署。
 
 - [Spec 014：SageMaker 树实验](specs/014-tree-sagemaker-experiments/requirements.md)、[设计](specs/014-tree-sagemaker-experiments/design.md)、[任务](specs/014-tree-sagemaker-experiments/tasks.md)、[验证](specs/014-tree-sagemaker-experiments/verification.md) — 本 PR 交付平台树模型与阶段支持；实验编排脚本和本地实验产物不包含在本 PR。
