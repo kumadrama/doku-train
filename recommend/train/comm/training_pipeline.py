@@ -116,6 +116,7 @@ def train(
     local_root: Path | None = None,
     resume: Path | None = None,
     frozen_input: Path | None = None,
+    feature_preparation: Any = None,
 ) -> dict[str, Any]:
     if resume is not None and frozen_input is not None:
         raise ValueError("resume and frozen_input are mutually exclusive")
@@ -137,7 +138,11 @@ def train(
             dataset.freeze(root / "input")
         config = dataset.config
         write_json(root / "resolved-config.json", config)
-        plan = FeaturePlan(config, dataset.dtypes)
+        tree_buckets = None
+        if feature_preparation is not None:
+            with stage("tree_pretraining", timings):
+                tree_buckets = feature_preparation(config, root, resume)
+        plan = FeaturePlan(config, dataset.dtypes, tree_buckets=tree_buckets)
         with stage("fit_features", timings):
             plan.fit(dataset.rows("train", plan.columns))
         state = plan.state()

@@ -5,9 +5,12 @@ from __future__ import annotations
 import ast
 import math
 import operator
+from bisect import bisect_right
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
+
+import numpy as np
 
 _BINARY = {
     ast.Add: operator.add,
@@ -79,19 +82,49 @@ def compile_expression(source: str) -> ast.expr:
     for node in ast.walk(root):
         if isinstance(node, ast.Call) and (
             not isinstance(node.func, ast.Name)
-            or node.func.id not in {*_FUNCTIONS, "where"}
+            or node.func.id not in {*_FUNCTIONS, "where", "tree"}
             or node.keywords
         ):
             raise ValueError("unsupported expression function")
+    for node in ast.walk(root):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "tree"
+            and (len(node.args) != 1 or not isinstance(node.args[0], ast.Name))
+        ):
+            raise ValueError("tree requires exactly one feature name")
     return root
 
 
 def dependencies(source: str) -> set[str]:
     root = compile_expression(source)
-    return {n.id for n in ast.walk(root) if isinstance(n, ast.Name)} - {*_FUNCTIONS, "where"}
+    return {n.id for n in ast.walk(root) if isinstance(n, ast.Name)} - {
+        *_FUNCTIONS,
+        "where",
+        "tree",
+    }
 
 
-def evaluate(source: str, row: dict[str, Any]) -> Any:
+def tree_feature(source: str) -> str | None:
+    root = compile_expression(source)
+    calls = [
+        n
+        for n in ast.walk(root)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "tree"
+    ]
+    if not calls:
+        return None
+    if len(calls) != 1 or calls[0] is not root:
+        raise ValueError("tree must be a standalone feature transformation")
+    arg = calls[0].args[0]
+    assert isinstance(arg, ast.Name)
+    return arg.id
+
+
+def evaluate(
+    source: str, row: dict[str, Any], *, tree_thresholds: dict[str, list[float]] | None = None
+) -> Any:
     def visit(n: ast.expr) -> Any:
         if isinstance(n, ast.Constant):
             return n.value
@@ -100,6 +133,18 @@ def evaluate(source: str, row: dict[str, Any]) -> Any:
         if isinstance(n, ast.Call):
             assert isinstance(n.func, ast.Name)
             name = n.func.id
+            if name == "tree":
+                arg = n.args[0]
+                assert isinstance(arg, ast.Name)
+                if tree_thresholds is None or arg.id not in tree_thresholds:
+                    raise ValueError(f"missing tree bucket feature: {arg.id}")
+                value = row[arg.id]
+                if value is None:
+                    return None
+                value = float(np.float32(value))
+                if not math.isfinite(value):
+                    raise ValueError("tree input must be finite after defaults")
+                return bisect_right(tree_thresholds[arg.id], value)
             if name == "where":
                 if len(n.args) != 3:
                     raise ValueError("where requires three arguments")

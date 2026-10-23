@@ -15,14 +15,31 @@ from recommend.train.comm.expressions import (
     dependencies,
     evaluate,
     transformations,
+    tree_feature,
 )
+from recommend.train.comm.tree_buckets import validate_buckets
 
 
 class FeaturePlan:
-    def __init__(self, config: dict[str, Any], dtypes: dict[str, str]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        dtypes: dict[str, str],
+        *,
+        tree_buckets: dict[str, Any] | None = None,
+    ) -> None:
         self.config = config
         self.dtypes = dict(dtypes)
         self.transforms = transformations(config)
+        self.tree_targets = {
+            target: field
+            for target, expr in self.transforms
+            if (field := tree_feature(expr)) is not None
+        }
+        self.tree_buckets: dict[str, Any] | None = None
+        self.tree_thresholds: dict[str, list[float]] | None = None
+        if tree_buckets is not None:
+            self.set_tree_buckets(tree_buckets)
         self.vocabs: dict[str, dict[Any, int]] = {}
         self.tables = config.get("embed_name", {}) or {
             f: f for f in config["tree_inputs"]["categorical"]
@@ -41,6 +58,8 @@ class FeaturePlan:
                 and node.args[1].value in {"int32", "int64", "float32", "float64", "bool"}
             ):
                 self.dtypes[target] = node.args[1].value
+            elif target in self.tree_targets:
+                self.dtypes[target] = "int64"
             elif isinstance(node, ast.Name) and node.id in self.dtypes:
                 self.dtypes[target] = self.dtypes[node.id]
         for field in self.tables:
@@ -68,6 +87,14 @@ class FeaturePlan:
                 for key in ["filter", "label"]:
                     if key in metric:
                         self.columns |= dependencies(metric[key]) - produced
+
+    def set_tree_buckets(self, artifact: dict[str, Any]) -> None:
+        thresholds = validate_buckets(artifact)
+        missing = set(self.tree_targets.values()) - set(thresholds)
+        if missing:
+            raise ValueError(f"missing tree bucket features: {sorted(missing)}")
+        self.tree_buckets = artifact
+        self.tree_thresholds = thresholds
 
     def row(self, source: dict[str, Any]) -> dict[str, Any] | None:
         row = dict(source)
@@ -137,7 +164,7 @@ class FeaturePlan:
                 row[field] = [i for i, _ in pairs]
                 row[weight_field] = [w / total if total else 0.0 for _, w in pairs]
         for target, expr in self.transforms:
-            row[target] = evaluate(expr, row)
+            row[target] = evaluate(expr, row, tree_thresholds=self.tree_thresholds)
         for field, op in self.config.get("history_scalars", {}).items():
             func = op["func"]
             if func == "unique_intersection_count":
@@ -171,6 +198,12 @@ class FeaturePlan:
 
     def fit(self, rows: Iterator[dict[str, Any]]) -> None:
         values: dict[str, set[Any]] = {table: set() for table in self.tables.values()}
+        if self.tree_targets and self.tree_thresholds is None:
+            raise ValueError("tree bucket artifact is required before fitting features")
+        for target, field in self.tree_targets.items():
+            if target in self.tables:
+                assert self.tree_thresholds is not None
+                values[self.tables[target]].update(range(len(self.tree_thresholds[field]) + 1))
         for source in rows:
             row = self.row(source)
             if row is None:
@@ -188,6 +221,7 @@ class FeaturePlan:
     def state(self) -> dict[str, Any]:
         return {
             "version": "feature-state/v2",
+            **({"tree_buckets": self.tree_buckets} if self.tree_buckets is not None else {}),
             "tables": self.tables,
             "vocabs": {k: list(v.keys()) for k, v in self.vocabs.items()},
             "lengths": self.lengths,
@@ -197,6 +231,10 @@ class FeaturePlan:
         }
 
     def restore(self, state: dict[str, Any]) -> None:
+        if self.tree_targets:
+            if "tree_buckets" not in state:
+                raise ValueError("checkpoint tree bucket artifact missing")
+            self.set_tree_buckets(state["tree_buckets"])
         if state["tables"] != self.tables:
             raise ValueError("checkpoint feature table mismatch")
         self.vocabs = {

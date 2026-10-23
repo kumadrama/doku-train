@@ -11,7 +11,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
-from recommend.train.comm.expressions import dependencies, transformations
+from recommend.train.comm.expressions import dependencies, transformations, tree_feature
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -62,6 +62,8 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     derived = features.copy()
     for target, expr in transformations(config):
         dependencies(expr)
+        if tree_feature(expr) is not None and not config.get("tree_binning", {}).get("enabled"):
+            raise ValueError("tree transformation requires enabled tree_binning")
         derived.add(target)
     for group, options in config["input_features"].items():
         if not set(options["features"]) <= derived:
@@ -111,4 +113,9 @@ def load_config(path: Path) -> dict[str, Any]:
     value = yaml.safe_load(path.read_text())
     if not isinstance(value, dict):
         raise ValueError("config must be a mapping")
-    return validate_config(value)
+    value = validate_config(value)
+    if value.get("tree_binning", {}).get("enabled"):
+        target = Path(value["tree_binning"]["config_path"])
+        if not target.is_absolute():
+            value["tree_binning"]["config_path"] = str((path.parent / target).resolve())
+    return value

@@ -1,5 +1,12 @@
 type: object
 properties:
+  tree_binning:
+    type: object
+    properties:
+      enabled: {type: boolean}
+      config_path: {type: string, minLength: 1}
+    required: [enabled, config_path]
+    additionalProperties: false
   input_features:
     type: object
     additionalProperties:
