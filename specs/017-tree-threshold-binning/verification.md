@@ -13,3 +13,9 @@ Source: 2026-10-23 本地执行证据及用户授权的四任务 SageMaker 重�
 集成中发现同进程加载 XGBoost 后初始化 PyTorch 会导致本机阻塞；最终实现将树训练和 checkpoint 阈值导出均放在独立子进程，参数数组执行并校验退出码。上述全套验证基于修复后实现。
 
 - 四任务 `doku-exp-tree-four-task-binning-20261023` 已 Completed；下载产物校验通过后正式导出。67 个统计特征共 **8,378 桶**、最多 **248 桶**（`u_expose_count_14d_fyp`、`u_completion_count_7d_all`）；全部 84 个数值特征共 **9,510 桶**、最多 **253 桶**（`i_quality_score`）。云训练使用已有镜像，验证的是实际 checkpoint 导出，不代表新的自动预训练流程已部署到云端。实验配置、模型及统计文件仅保留本地 `runs/tree-four-task-binning-20261023/`。
+
+## 合入最新 main 验证（2026-10-23）
+
+- 基于 `9cc46b9` 完成 rebase，保留公共 NN loss 改动；Spec 编号调整为 017。
+- `UV_PROJECT_ENVIRONMENT=/Users/yujiatang/doku/doku-train/.venv make check`：**237 passed, 3 skipped**，116.47 秒；格式、lint、mypy 通过。
+- 补充 SageMaker CLI 相对树 YAML 路径回归：`uv run pytest recommend/train/tests/unit/test_sagemaker_platform.py::test_submit_cli_resolves_teacher_relative_to_yaml -q`：**1 passed**。补充修复后 `ruff check .`、`ruff format --check .`、`mypy recommend`、`git diff --check` 全部通过。

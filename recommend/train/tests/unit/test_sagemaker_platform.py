@@ -314,3 +314,55 @@ def test_tree_yaml_is_frozen_in_submission_and_run(tmp_path, monkeypatch):
     assert artifact["source"]["config"]["model_params"] == package["tree_config"]["model_params"]
     state = json.loads((root / "model/fitted-feature-state/state.json").read_text())
     assert state["tree_buckets"] == artifact
+
+
+def test_submit_cli_resolves_teacher_relative_to_yaml(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    import yaml
+
+    from recommend.train.comm.tree_pretraining import load_tree_config
+    from recommend.train.platforms.sagemaker import __main__ as cli
+    from recommend.train.tests.tree_binning_fixture import make_tree_experiment
+
+    directory = tmp_path / "configs"
+    directory.mkdir()
+    config = make_tree_experiment(directory)
+    config["tree_binning"]["config_path"] = "teacher.yaml"
+    path = directory / "nn.yaml"
+    path.write_text(yaml.safe_dump(config))
+    monkeypatch.chdir(tmp_path)
+    binding = SimpleNamespace(region="us-east-2", account_id="123456789012")
+    monkeypatch.setattr(cli, "load_runtime", lambda _: (object(), binding))
+    client = SimpleNamespace(get_caller_identity=lambda: {"Account": binding.account_id})
+    monkeypatch.setattr(cli.boto3, "Session", lambda **_: SimpleNamespace(client=lambda _: client))
+    captured = []
+
+    def prepare_config(value, *args, **kwargs):
+        assert value["tree_binning"]["config_path"] == str(directory / "teacher.yaml")
+        captured.append(load_tree_config(value))
+        return {"TrainingJobName": "synthetic"}
+
+    monkeypatch.setattr(cli, "prepare", prepare_config)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sagemaker",
+            "--runtime-config",
+            "runtime.yaml",
+            "--profile",
+            "test",
+            "submit",
+            "--config",
+            str(path),
+            "--run-id",
+            "synthetic",
+            "--prepared",
+            str(tmp_path / "prepared"),
+            "--dry-run",
+        ],
+    )
+    cli.main()
+    assert captured[0]["model_type"] == "rerank_tree"

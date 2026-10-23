@@ -37,9 +37,9 @@ AWS 控制台/CloudWatch 继续用于任务、日志与时间指标；SageMaker 
 
 Source: 2026-10-20 用户授权单任务云端验收。当前状态：专用 IAM/网络已部署，真实 DNN train/test/归档及 33 条 step 指标数据验证通过；浏览器视觉验证受 Work 设置阻塞。DeepFM 仅验证原生合成容器，15 并发和每日自动训练未执行。详见 [Spec008 验证](../../specs/008-sagemaker-dnn-training/verification.md)。
 
-## 公共 loss（Spec 017，当前实现）
+## 公共 loss（Spec 016，当前实现）
 
-Source: 2026-10-23 用户确认的 [Spec 017](../../specs/016-shared-nn-loss/design.md)。
+Source: 2026-10-23 用户确认的 [Spec 016](../../specs/016-shared-nn-loss/design.md)。
 
 沿用 Finder comm/nn_utils.py:get_loss 的公共入口与按任务类型分派结构，
 使用 PyTorch CPU 实现。神经网络训练、验证和 logloss 指标共用该入口；
@@ -47,11 +47,11 @@ Source: 2026-10-23 用户确认的 [Spec 017](../../specs/016-shared-nn-loss/des
 标签、mask 与表达式由调用方解析，训练保留加权均值，验证保留无权均值；
 指标按自身标签与 mask 计算。极端预测直接按 logits 计算，不再概率截断。
 
-### Spec 017 公共 NN loss（当前状态）
+### Spec 016 公共 NN loss（当前状态）
 
 NN 训练、验证、测试的 loss 与 logloss 指标共用 `comm/nn_utils.py:get_loss`，按 Finder 的公共入口与任务分派结构组织。树的 logloss 位于 `models/rerank_tree/loss_utils.py`，由树 runner 注入指标层；comm 不反向依赖树，NN 不依赖该目录。底层运行时仍为 PyTorch CPU。
 
-Source: Spec 017；2026-10-23 用户确认及树实现独立保留的补充要求。
+Source: Spec 016；2026-10-23 用户确认及树实现独立保留的补充要求。
 
 ## NN 字段组合与历史聚合
 
