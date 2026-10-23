@@ -166,8 +166,11 @@ def train(
     config: Annotated[Path, typer.Option("--config")],
     local_root: Annotated[Path | None, typer.Option("--local-root")] = None,
     resume: Annotated[Path | None, typer.Option("--resume")] = None,
+    frozen_input: Annotated[Path | None, typer.Option("--frozen-input")] = None,
 ) -> None:
-    result = execute_train_local(load_config(config), local_root=local_root, resume=resume)
+    result = execute_train_local(
+        load_config(config), local_root=local_root, resume=resume, frozen_input=frozen_input
+    )
     typer.echo(json.dumps({"status": result["status"], "run_dir": result["run_dir"]}))
 
 

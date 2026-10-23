@@ -13,7 +13,7 @@ from typing import Any
 import boto3
 
 from recommend.train.comm import metric_events
-from recommend.train.comm.training_pipeline import source_identity, test_run, train
+from recommend.train.comm.training_pipeline import source_identity, test_run
 from recommend.train.platforms.sagemaker.artifacts import archive_run
 from recommend.train.platforms.sagemaker.config import (
     Binding,
@@ -23,7 +23,7 @@ from recommend.train.platforms.sagemaker.config import (
 )
 from recommend.train.platforms.sagemaker.events import EventSink
 from recommend.train.platforms.sagemaker.resources import ResourceSampler
-from recommend.train.train_rerank import model_factory
+from recommend.train.train_rerank import execute_train_local, model_factory
 
 
 def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -> None:
@@ -83,7 +83,11 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
         with metric_events.observe(sink, runtime.loss_interval_steps):
             print("DOKU_STAGE train starting", flush=True)
             start = time.monotonic()
-            result = train(config, model_factory(config["model_type"]), frozen_input=frozen)
+            if config.get("tree_binning", {}).get("enabled") and "tree_config" not in package:
+                raise ValueError("submission missing frozen tree YAML")
+            result = execute_train_local(
+                config, frozen_input=frozen, tree_config=package.get("tree_config")
+            )
             stage_times["train"] = time.monotonic() - start
             run_dir = Path(result["run_dir"])
             if "test" in runtime.stages:

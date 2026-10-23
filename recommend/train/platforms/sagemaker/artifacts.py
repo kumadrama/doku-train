@@ -26,6 +26,11 @@ def required_files(package: dict[str, Any]) -> list[str]:
     return [
         *REQUIRED,
         checkpoint,
+        *(
+            ["tree-buckets.json"]
+            if package["config"].get("tree_binning", {}).get("enabled")
+            else []
+        ),
         *(["test-metrics.json", "test-evidence.json"] if "test" in stages else []),
     ]
 

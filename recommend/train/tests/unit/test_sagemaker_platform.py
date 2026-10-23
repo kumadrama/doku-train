@@ -277,3 +277,92 @@ def test_tree_package_stages_and_archive(tmp_path, monkeypatch, stages):
     assert (
         not (root / "work/runs/tree-trial/encoded-test").exists() if "test" not in stages else True
     )
+
+
+def test_tree_yaml_is_frozen_in_submission_and_run(tmp_path, monkeypatch):
+    import shutil
+
+    from recommend.train import train_rerank
+    from recommend.train.comm.datasvr.published_dataset import PublishedDataset
+    from recommend.train.tests.tree_binning_fixture import configure_tree_binning
+
+    config, runtime, binding, s3, shards = fixture(tmp_path)
+    teacher_path = tmp_path / "teacher.yaml"
+    configure_tree_binning(config, teacher_path)
+    prepare(config, runtime, binding, "tree-bins", s3, tmp_path / "prepared")
+    payload = tmp_path / "prepared/package.json"
+    package = json.loads(payload.read_text())
+    assert package["tree_config"]["model_type"] == "rerank_tree"
+    teacher_path.unlink()  # Container must not access the submitter's YAML.
+    mirror = tmp_path / "mirror"
+    mirror.mkdir()
+    for uri, path in shards.items():
+        shutil.copyfile(path, mirror / uri.rsplit("/", 1)[1])
+    original = train_rerank.execute_train
+
+    def local_teacher(teacher, **kwargs):
+        kwargs["local_root"] = mirror
+        return original(teacher, **kwargs)
+
+    monkeypatch.setattr(train_rerank, "execute_train", local_teacher)
+    monkeypatch.setattr(PublishedDataset, "_local_path", lambda self, uri: shards.get(uri))
+    s3.objects[("synthetic", "input/manifest.json")] = b"changed after prepare"
+    root = tmp_path / "ml"
+    run_package(payload, root, s3, expected_sha=hashlib.sha256(payload.read_bytes()).hexdigest())
+    verify_archive(root / "model")
+    artifact = json.loads((root / "model/tree-buckets.json").read_text())
+    assert artifact["source"]["config"]["model_params"] == package["tree_config"]["model_params"]
+    state = json.loads((root / "model/fitted-feature-state/state.json").read_text())
+    assert state["tree_buckets"] == artifact
+
+
+def test_submit_cli_resolves_teacher_relative_to_yaml(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    import yaml
+
+    from recommend.train.comm.tree_pretraining import load_tree_config
+    from recommend.train.platforms.sagemaker import __main__ as cli
+    from recommend.train.tests.tree_binning_fixture import make_tree_experiment
+
+    directory = tmp_path / "configs"
+    directory.mkdir()
+    config = make_tree_experiment(directory)
+    config["tree_binning"]["config_path"] = "teacher.yaml"
+    path = directory / "nn.yaml"
+    path.write_text(yaml.safe_dump(config))
+    monkeypatch.chdir(tmp_path)
+    binding = SimpleNamespace(region="us-east-2", account_id="123456789012")
+    monkeypatch.setattr(cli, "load_runtime", lambda _: (object(), binding))
+    client = SimpleNamespace(get_caller_identity=lambda: {"Account": binding.account_id})
+    monkeypatch.setattr(cli.boto3, "Session", lambda **_: SimpleNamespace(client=lambda _: client))
+    captured = []
+
+    def prepare_config(value, *args, **kwargs):
+        assert value["tree_binning"]["config_path"] == str(directory / "teacher.yaml")
+        captured.append(load_tree_config(value))
+        return {"TrainingJobName": "synthetic"}
+
+    monkeypatch.setattr(cli, "prepare", prepare_config)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sagemaker",
+            "--runtime-config",
+            "runtime.yaml",
+            "--profile",
+            "test",
+            "submit",
+            "--config",
+            str(path),
+            "--run-id",
+            "synthetic",
+            "--prepared",
+            str(tmp_path / "prepared"),
+            "--dry-run",
+        ],
+    )
+    cli.main()
+    assert captured[0]["model_type"] == "rerank_tree"

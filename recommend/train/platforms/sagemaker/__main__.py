@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 import boto3
-import yaml
 
+from recommend.train.comm.model_params_validator import load_config
 from recommend.train.platforms.sagemaker.config import load_runtime
 from recommend.train.platforms.sagemaker.jobs import fetch_result, view_events
 from recommend.train.platforms.sagemaker.submit import prepare, submit
@@ -44,7 +44,7 @@ def main() -> None:
                 parser.error("--config requires --run-id")
             original_yaml = args.config.read_text()
             request = prepare(
-                yaml.safe_load(original_yaml),
+                load_config(args.config),
                 runtime,
                 binding,
                 args.run_id,

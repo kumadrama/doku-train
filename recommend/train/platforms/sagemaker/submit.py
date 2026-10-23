@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 
 from recommend.train.comm.datasvr.published_dataset import PublishedDataset
 from recommend.train.comm.model_params_validator import validate_config
+from recommend.train.comm.tree_pretraining import load_tree_config
 from recommend.train.platforms.sagemaker.config import (
     Binding,
     Runtime,
@@ -78,6 +79,9 @@ def prepare(
         raise ValueError("run ID must be 1..46 lowercase letters, digits or hyphens")
     config = validate_config(copy.deepcopy(config))
     validate_experiment(config, runtime)
+    tree_config = load_tree_config(config)
+    if tree_config is not None:
+        validate_experiment(tree_config, runtime)
     uri = config["dataset"]["manifest_uri"]
     metadata_prefixes = [*binding.input_prefixes, binding.experiment_uri + "submissions/"]
     allowed(uri, metadata_prefixes)
@@ -118,6 +122,7 @@ def prepare(
         "version": "doku-sagemaker-submission/v1",
         "run_id": run_id,
         "config": config,
+        **({"tree_config": tree_config} if tree_config is not None else {}),
         "original_yaml": original_yaml,
         "runtime": runtime.model_dump(),
         "binding": binding.model_dump(),

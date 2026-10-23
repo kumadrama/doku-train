@@ -58,3 +58,10 @@ Source: Spec 016；2026-10-23 用户确认及树实现独立保留的补充要�
 Source: [Spec 015](../../specs/015-parameter-free-attention/design.md)，2026-10-21 用户确认拆分语义。
 当前本地 rerank 先用 combiner（concat/sum/avg）组合字段，再用 history_pooling（mean/weighted_mean/attention/none）归约历史位置。多字段历史和标量 query 均先组合，attention 为固定尺度点积、masked softmax、加权和。DNN/DeepFM 共用，none 保留序列并拒绝直接送入 DNN/FM。
 公共 FeaturePlan 负责对齐检查与同步 tail 截断，模型负责组合、聚合和维度验证；不引入公共层反向模型依赖。旧 pooling 配置需要显式迁移，树模型不支持神经聚合。尚未部署新训练镜像。
+
+
+## 配置驱动的树阈值前置训练
+
+Source: [Spec 017](../../specs/017-tree-threshold-binning/design.md)，2026-10-23 用户确认。
+
+train_rerank composition root 装配公共前置编排与模型专属阈值导出；comm 保持不依赖具体模型。NN 特征拟合前加载 train-fitted 的冻结树阈值，全桶域编码进入 Feature State。目标和验证状态见 Spec 017。

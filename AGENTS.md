@@ -69,6 +69,7 @@ doku-train/
 ### 当前文档索引
 
 - [Spec 016：Finder 结构公共 loss](specs/016-shared-nn-loss/requirements.md)、[设计](specs/016-shared-nn-loss/design.md) — 需求与设计已确认；公共 loss 已实施，验证见 [验证](specs/016-shared-nn-loss/verification.md)。
+- [Spec 017：树阈值分桶](specs/017-tree-threshold-binning/requirements.md)、[设计](specs/017-tree-threshold-binning/design.md)、[任务](specs/017-tree-threshold-binning/tasks.md)、[验证](specs/017-tree-threshold-binning/verification.md) — 已实现并通过本地验证；四任务云训练及阈值导出已验证。
 
 - [Spec 015：NN 无参历史 Attention](specs/015-parameter-free-attention/requirements.md)、[设计](specs/015-parameter-free-attention/design.md)、[任务](specs/015-parameter-free-attention/tasks.md)、[验证](specs/015-parameter-free-attention/verification.md) — 本地实现与完整验证通过；尚未部署。
 
