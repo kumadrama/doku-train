@@ -70,9 +70,11 @@ doku-train/
 
 - [Spec 016：Finder 结构公共 loss](specs/016-shared-nn-loss/requirements.md)、[设计](specs/016-shared-nn-loss/design.md) — 需求与设计已确认；公共 loss 已实施，验证见 [验证](specs/016-shared-nn-loss/verification.md)。
 
-- [Spec 015：NN 无参历史 Attention](specs/015-parameter-free-attention/requirements.md) — 需求草案待确认；点积/余弦语义待定，尚未实施。
+- [Spec 015：NN 无参历史 Attention](specs/015-parameter-free-attention/requirements.md)、[设计](specs/015-parameter-free-attention/design.md)、[任务](specs/015-parameter-free-attention/tasks.md)、[验证](specs/015-parameter-free-attention/verification.md) — 本地实现与完整验证通过；尚未部署。
 
-- [Spec 014：SageMaker 树实验](specs/014-tree-sagemaker-experiments/requirements.md)、[设计](specs/014-tree-sagemaker-experiments/design.md)、[任务](specs/014-tree-sagemaker-experiments/tasks.md)、[验证](specs/014-tree-sagemaker-experiments/verification.md) — 用户授权首轮46–47个离线实验，实施中。
+- [Spec 014：SageMaker 树实验](specs/014-tree-sagemaker-experiments/requirements.md)、[设计](specs/014-tree-sagemaker-experiments/design.md)、[任务](specs/014-tree-sagemaker-experiments/tasks.md)、[验证](specs/014-tree-sagemaker-experiments/verification.md) — 本 PR 交付平台树模型与阶段支持；实验编排脚本和本地实验产物不包含在本 PR。
+
+- [Spec 008：SageMaker CPU 实验训练需求](specs/008-sagemaker-dnn-training/requirements.md)、[设计](specs/008-sagemaker-dnn-training/design.md)、[验证](specs/008-sagemaker-dnn-training/verification.md)、[存储规划](specs/008-sagemaker-dnn-training/storage-plan.md)、[任务](specs/008-sagemaker-dnn-training/tasks.md) — 已整理会话确认需求；PROD 单机 CPU DNN/DeepFM 实验、15 并发规划；首期本地提交、AWS 网页看 AUC/loss、不用 Studio；本地实现及原生 amd64 容器验证已通过，尚未云端部署；step 曲线使用本地 TensorBoard。
 
 - [Spec 013：每日 test AUC 看板](specs/013-test-auc-dashboard/requirements.md)、[设计](specs/013-test-auc-dashboard/design.md)、[任务](specs/013-test-auc-dashboard/tasks.md)、[验证](specs/013-test-auc-dashboard/verification.md) — 训练评估日志与 monitoring 四任务多模型看板；仅本地实现，未部署。
 
@@ -87,7 +89,6 @@ doku-train/
 - [Spec 009：树模型每日训练与发布需求](specs/009-daily-tree-model-publication/requirements.md) 与
   [设计](specs/009-daily-tree-model-publication/design.md) — 已实现本仓入口；云端与消费者接入待验证。
 
-- [Spec 008：SageMaker CPU 实验训练需求](specs/008-sagemaker-dnn-training/requirements.md)、[设计](specs/008-sagemaker-dnn-training/design.md)、[验证](specs/008-sagemaker-dnn-training/verification.md)、[存储规划](specs/008-sagemaker-dnn-training/storage-plan.md)、[任务](specs/008-sagemaker-dnn-training/tasks.md) — 已整理会话确认需求；PROD 单机 CPU DNN/DeepFM 实验、15 并发规划；首期本地提交、AWS 网页看 AUC/loss、不用 Studio；本地实现及原生 amd64 容器验证已通过，尚未云端部署；step 曲线使用本地 TensorBoard。
 
 - [Spec 006：按日投影训练输入](specs/006-daily-projected-input/design.md) — 固定日期目录、投影兼容与训练输入冻结。
 

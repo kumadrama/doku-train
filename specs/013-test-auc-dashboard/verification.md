@@ -78,3 +78,9 @@ item-feature 三张图使用 QUERY_WINDOW，告警固定窗口不变。未放宽
 50 项跳过均为未开启 DOKU_MONITORING_TEST_PROMTOOL 的可选测试；默认完整入口中实际执行的
 promtool 合同回放通过。通知/窗口/名单定向测试 36 项通过，git diff --check 通过。
 此结果取代前述历史失败状态；没有部署或触碰生产。
+
+## PR integration validation (2026-10-17)
+
+Based on origin/main 406f9b7. `UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/Users/yujiatang/doku/doku-train/.venv UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check` passed: format, lint, mypy (46 files), 168 tests passed, 3 skipped (73.58s). The existing locked environment was reused without dependency synchronization.
+
+Monitoring integration follows its current main policy: FYP modules already exist, its four notifications remain mention, and the three item-feature panels retain their explicitly tested fixed windows. Earlier local fixes against a stale checkout are not included in the PR.

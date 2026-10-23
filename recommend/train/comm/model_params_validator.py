@@ -25,6 +25,15 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     plugin = yaml.safe_load((ROOT / "models" / name / "config.schema.yml").read_text())
     schema = copy.deepcopy(common)
     for key, value in plugin["properties"].items():
+        if key == "input_features":
+            # Model schemas may add group options without duplicating or weakening common fields.
+            group = schema["properties"][key]["additionalProperties"]
+            extension = value["additionalProperties"]
+            if group["properties"].keys() & extension["properties"].keys():
+                raise ValueError("input feature schema ownership conflict")
+            group["properties"].update(copy.deepcopy(extension["properties"]))
+            group.setdefault("allOf", []).extend(copy.deepcopy(extension.get("allOf", [])))
+            continue
         if key in schema["properties"] and key != "selection":
             raise ValueError("schema ownership conflict")
         schema["properties"][key] = value
@@ -57,8 +66,6 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     for group, options in config["input_features"].items():
         if not set(options["features"]) <= derived:
             raise ValueError(f"unknown input field in {group}")
-        if options.get("combiner") == "weighted_mean" and "weight_feature" not in options:
-            raise ValueError("weighted_mean requires weight_feature")
     if not set(config["hist_options"]) <= set(config["input_features"]):
         raise ValueError("history options reference unknown group")
     for task in config["tasks"].values():

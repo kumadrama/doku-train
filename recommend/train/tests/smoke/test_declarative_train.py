@@ -8,9 +8,45 @@ from recommend.train.tests.experiment_fixture import make_experiment
 from recommend.train.train_rerank import execute_test, execute_train
 
 
-@pytest.mark.parametrize("model", ["dnn", "deepfm", "xgboost"])
-def test_new_cpu_training(tmp_path, model):
+@pytest.mark.parametrize(
+    ("model", "attention"),
+    [
+        ("dnn", False),
+        ("deepfm", False),
+        ("xgboost", False),
+        ("dnn", True),
+        ("deepfm", True),
+        ("dnn", "multi"),
+        ("deepfm", "multi"),
+    ],
+)
+def test_new_cpu_training(tmp_path, model, attention):
     config = make_experiment(tmp_path, model)
+    if attention:
+        config["input_features"]["hist_drama_skip"].update(
+            hist_attn_query="item_id", history_pooling="attention"
+        )
+        config["attn_scale"] = 0.5
+    if attention == "multi":
+        # Fixture sequences both have two aligned synthetic positions; no production assumptions.
+        config["input_features"]["combined_history"] = {
+            "features": ["u_skipped__drama_id", "u_onboarding_genre_ids"],
+            "combiner": "concat",
+            "history_pooling": "attention",
+            "hist_attn_query": "combined_query",
+        }
+        config["input_features"]["combined_query"] = {
+            "features": ["i_drama_id", "ctx_platform"],
+            "combiner": "concat",
+        }
+        config["hist_options"]["combined_history"] = {
+            "max_hist_size": 100,
+            "truncate": "tail",
+            "duplicates": "preserve",
+        }
+        config["dnn_inputs"].append("combined_history")
+        if model == "deepfm":
+            config["fm_layers"][0]["features"].append(["combined_query", "combined_history"])
     result = execute_train(config)
     assert result["status"] == "complete"
     from pathlib import Path
@@ -24,8 +60,10 @@ def test_new_cpu_training(tmp_path, model):
         execute_train(config)
 
 
-@pytest.mark.parametrize("keep_probability", [1.0, 0.9])
-def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probability):
+@pytest.mark.parametrize(
+    ("keep_probability", "attention"), [(1.0, False), (0.9, False), (0.9, True)]
+)
+def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probability, attention):
     from pathlib import Path
 
     import torch
@@ -34,6 +72,11 @@ def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probabil
     from recommend.train.train_rerank import execute_train_local
 
     config = make_experiment(tmp_path, "dnn")
+    if attention:
+        config["input_features"]["hist_drama_skip"].update(
+            hist_attn_query="item_id", history_pooling="attention"
+        )
+        config["attn_scale"] = 0.5
     config["output_layer"]["layer_dropout"] = keep_probability
     config["tasks"]["completion"]["layer_dropout"] = keep_probability
     original = NeuralRunner.evaluate

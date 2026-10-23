@@ -151,3 +151,78 @@ encoding/state 重建向量，对照训练加工和独立预期值；检查 mani
 并增加对应测试及文档。未部署、未上传或覆盖旧制品。原飞书文档写入返回 4030004（当前用户无编辑权限），原文未修改。
 服务端配合事项另存为[飞书补充说明](https://ncncf5rav55t.feishu.cn/docx/TZhzd0nxpoCXrvxfFgVcUYclnLf)，
 已创建并回读确认，包含原文链接、两个编译入口的适配、回归验收及切换顺序。
+
+### 独立 PR 分支验证
+
+2026-10-20 从最新 origin/main `9479f0a7d7efd884dfd03cf0c9fdd0aab70a221a` 创建
+`codex/export-history-scalars` 隔离工作树，仅迁入本次导出、测试、Spec 及接口文档段落，
+未迁入原工作区其他任务改动。使用独立虚拟环境执行：
+
+`UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_PROJECT_ENVIRONMENT=/tmp/doku-history-contract-venv make check`
+
+exit 0：锁文件、147 文件格式、Ruff、mypy 57 源文件通过；179 passed、3 skipped，114.40 秒。
+首次 offline 执行因缓存缺少锁定版本 pillow 而停止，随后正常下载锁定依赖后通过。
+
+### 2026-10-20 DTE/PROD 重新导出与当前引用切换
+
+Source: 用户明确授权“重新导出到 dte 和 prod”“可以直接切换当前模型”，并允许临时开启
+DTE publication/redis，完成后恢复。没有执行训练、覆盖旧版本或修改基础设施。
+
+使用独立修复提交 `ac6dd0bac2116af0a69a1b410b8771222636e8b6` 的导出器，分别从各环境
+当前版本的成功训练归档导出；没有把 PROD 回退到历史 10 月 14 日权重。除合同外，
+新旧包所有 manifest payload 的 SHA256 完全相同（四个模型、state、metrics、lineage）。
+新增合同 SHA256（两环境相同）：
+`dff80c60da96bd962408cdb6d41b7340293e24a2c7944c2d8b970e71b0e5938d`。
+
+| 环境 | 来源 run / 旧 current | 新 current | Redis generation |
+| --- | --- | --- | --- |
+| DTE | `320d4acdadfb4da1b9226f721f3c7cae` | `320d4acdadfb4da1b9226f721f3c7cae-contract-20261020` | 2 |
+| PROD | `aa36b1f70ea449b193c66a4fb045401e` | `aa36b1f70ea449b193c66a4fb045401e-contract-20261020` | 10 |
+
+新包 manifest SHA256：
+
+- DTE：`f5ba4c5bb2dacc89d38aa6261644474a2aaccc129dee0cc7995a5124f74ba2f1`
+- PROD：`2e7838b4bc93c03cebdb49c3a9978444b696e29e1ec287960ef6ffcf6e95e88f`
+
+本地 Redis TLS 连接失败，因此复用既有 ECS Fargate 任务定义及角色在 VPC 内运行发布；
+没有注册新任务定义、启动训练或部署镜像。新对象 create-only 写入各自湖桶的
+`ml/tree-models/v1/rerank_tree/<date>/<new-version>/`。任务先确认旧 current 未变化、无活动
+producer/pending operation、S3/Redis catalog 一致，再调用既有 `execute_publish`。
+
+- DTE ECS task：`f0e8309966914c4890ff1dbff8989c53`，发布进程 exit 0，任务 STOPPED。
+- PROD ECS task：`ea3fbcd124b64d7893cd2bfe8558f5c7`，发布进程 exit 0，任务 STOPPED。
+- CloudWatch：`/ecs/doku-<env>/doku-reco-train`，stream 为 `ecs/doku-reco-train/<task-id>`。
+  两任务均输出 `phase=publish`、`status=published`、`redis_distribution=committed` 及
+  `phase=verified`，验证 S3 current、Redis current、完整 catalog、无 pending operation、
+  Redis 中实际合同字节摘要与新 manifest 一致。
+- 本机分别独立回读 S3 publication.json：上述新 current 正确，旧版本仍保留。
+- DTE AppConfig `doku / dte / doku-train/tree`：部署 184（hosted version 3）仅开启
+  publication/redis；任务完成后部署 185（version 4）恢复。实时回读与执行前 JSON 完全
+  相等：training/publication/redis/cleanup 均 false。PROD 开关未修改。
+
+可执行记录保存在本地 `/tmp/doku-contract-review-320d4/`：`reexport.py`、
+`upload_launch.py dte`、`upload_launch_fast.py prod`、`task_status.py <env>`、
+`dte_policy.py enable/restore` 及前后清单、任务日志。这些临时脚本和模型文件未提交。
+PR #15 初始提交的 GitHub check、CodeQL 和容器 smoke 全部通过。
+
+边界：此次是制品重新发布，不是消费者或日更训练镜像升级。用户明确要求直接切换，
+但已核验旧特征库仍拒绝新字段，不能声称线上打分链路已完成验收；服务端仍需适配两个
+编译入口。PR 合并后还需部署新的导出器，否则后续日更任务仍可能重新发布遗漏规则的合同。
+
+### 同日后续：DTE 对齐 PROD 当前修复版
+
+Source: 用户要求 DTE 也使用 PROD 今天日更模型重新导出的版本，两边一致。
+
+2026-10-20 已将 PROD 当前修复包的 22 个对象通过 S3 CopyObject（目标 IfNoneMatch=*、
+源 CopySourceIfMatch=ETag、DTE KMS）同步至 DTE，不重新训练或重新生成不同版本包。
+DTE VPC 发布任务 `1376d17477f3491d92791ff50aa4c100` exit 0，S3/Redis current 均已改为
+`aa36b1f70ea449b193c66a4fb045401e-contract-20261020`，DTE Redis generation=3。
+两环境 manifest SHA256 均为
+`2e7838b4bc93c03cebdb49c3a9978444b696e29e1ec287960ef6ffcf6e95e88f`，合同摘要同上。
+PROD 发布清单与操作前完全相同，旧 DTE 修复版仍保留。此记录取代上一节表格的 DTE current。
+
+DTE AppConfig 部署 186（version 5）临时开启 publication/redis，部署 187（version 6）
+恢复原值；实时回读与执行前完全一致。`/tmp/doku-align-prod-20261020/verify.py` 断言
+两环境 current、manifest SHA、无 pending operation、PROD 未改动、DTE 旧版本保留和
+开关恢复均通过；`task_status.py dte` 读取任务 STOPPED/exit 0 及 Redis 实际合同摘要验证日志。
+本次只改变 DTE 模型引用，不包含后续日更自动同步或消费者部署。

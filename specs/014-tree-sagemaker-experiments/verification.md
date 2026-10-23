@@ -43,3 +43,11 @@ Source: 2026-10-20 本次执行记录。
 - 参数推荐按声明的验证logloss/RMSE：completion、fast_swipe、immersive_click、play10、play30选T04；play50选T05；watch_seconds选T02。特征取舍留用户，无自动组合/发布。
 - 产物和报告位于runs/tree-sagemaker-20261020/{artifacts,reports,report.md,group-validation.csv}，S3地址逐Run保存在cloud/state.json和artifacts/validation.csv。
 - 本轮平台完整检查此前make check为181 passed/3 skipped，原生amd64三模型smoke通过；后续仅实验控制器调整，ruff check与网络恢复异常注入验证通过；最终git diff --check通过。
+
+## 2026-10-21 第 2–6 项隔离交付验证
+
+基于 origin/main `2344c0a` 整理平台树模型、阶段选择、指标、测试、PROD binding 与 Spec008/014；不迁入 experiments 工具。Spec009/013 保留 main 全部记录，避免以旧工作区描述覆盖已发布证据。根 AGENTS 仅补充本 Spec 的交付索引。
+
+- `UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/Users/yujiatang/doku/doku-train/.venv UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check`：exit 0；69 包锁文件、151 文件格式、Ruff、mypy 57 源文件通过；181 passed、3 skipped，83.91 秒。
+- `git diff --check` 通过；AGENTS 与 Spec008/014 Markdown 本地链接检查通过。
+- 本轮未重新执行容器构建或云训练；前文云端记录为历史证据。

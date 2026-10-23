@@ -246,3 +246,24 @@ uv run python -m recommend.train.platforms.sagemaker \
 15 个任务各一小时约 $7.21；$250–300/月预算依赖每天约 15 个一小时任务，并非硬限额。
 云端尚未验证 15 并发性能、KMS 服务上传及真实数据磁盘峰值。部署前清单见
 [Spec 008 任务](specs/008-sagemaker-dnn-training/tasks.md)。
+
+### NN：字段组合与历史聚合（配置片段）
+
+按 Finder 的职责划分，先用 combiner 组合组内字段，再用 history_pooling 聚合历史位置：
+
+```yaml
+input_features:
+  item_id:
+    features: [i_drama_id]
+    combiner: concat
+  hist_drama_skip:
+    features: [u_skipped__drama_id]
+    combiner: concat
+    history_pooling: attention
+    hist_attn_query: item_id
+attn_scale: 1.0
+```
+
+combiner 支持 concat/sum/avg，保留历史长度；history_pooling 支持 mean/weighted_mean/attention/none，历史组必须显式声明。attention 对组合后的 query/history 计算点积除以固定尺度、masked softmax、加权求和。多字段历史须按位置对齐，组合后的 query/history 维度相等。none 保留序列，不能直接进入 DNN/FM。
+
+旧 combiner: mean/weighted_mean 须迁移为 combiner: concat 加对应 history_pooling；上一版未发布的 skip_hist_attn 接口已移除。详细 schema、迁移表和数据边界见 [Spec 015](specs/015-parameter-free-attention/design.md)。本地与 SageMaker 共用模型代码，云端使用前仍需更新训练镜像。

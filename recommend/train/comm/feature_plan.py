@@ -47,6 +47,14 @@ class FeaturePlan:
             if field not in self.dtypes:
                 raise ValueError(f"embedding field requires a declared cast type: {field}")
         self.lengths: dict[str, int] = {}
+        self.history_capacities: dict[str, int] = {}
+        policies: dict[str, dict[str, Any]] = {}
+        for name, options in config["hist_options"].items():
+            for field in config["input_features"][name]["features"]:
+                if field in policies and policies[field] != options:
+                    raise ValueError("shared history field has conflicting truncation policies")
+                policies[field] = options
+                self.history_capacities[field] = options["max_hist_size"]
         self.columns = set(config["features"]) | dependencies(config["item_filter"])
         produced: set[str] = set()
         for target, expr in self.transforms:
@@ -83,6 +91,12 @@ class FeaturePlan:
                 and any(x is None for x in v)
             ):
                 raise ValueError("NULL history elements are unsupported")
+        for group in self.config["input_features"].values():
+            fields = group["features"]
+            if len(fields) > 1 and all(self.dtypes.get(f, "").startswith("list") for f in fields):
+                lengths = [len(row[f]) if row[f] is not None else 0 for f in fields]
+                if len(set(lengths)) != 1:
+                    raise ValueError("history fields must have aligned lengths")
         for name, opts in self.config["hist_options"].items():
             group = self.config["input_features"][name]
             field = group["features"][0]
@@ -92,8 +106,19 @@ class FeaturePlan:
             if opts["truncate"] == "tail":
                 if opts["duplicates"] != "preserve":
                     raise ValueError("tail history requires preserve policy")
-                row[field] = ids[-opts["max_hist_size"] :]
+                for history_field in group["features"]:
+                    values = row[history_field]
+                    row[history_field] = (
+                        values[-opts["max_hist_size"] :] if values is not None else []
+                    )
+                if "weight_feature" in group:
+                    weights = row[group["weight_feature"]]
+                    row[group["weight_feature"]] = (
+                        weights[-opts["max_hist_size"] :] if weights is not None else []
+                    )
             else:
+                if len(group["features"]) != 1:
+                    raise ValueError("top_weight requires a single history field")
                 if (
                     opts["duplicates"] != "sum_weights"
                     or opts.get("tie_break") != "raw_id_ascending"
@@ -199,10 +224,8 @@ class FeaturePlan:
                         table = self.vocabs[self.tables[f]]
                         if self.dtypes[f].startswith("list"):
                             seq = [] if value is None else value
-                            cap = (
-                                self.config["hist_options"]
-                                .get(name, {})
-                                .get("max_hist_size", max(self.lengths.get(f, 1), len(seq)))
+                            cap = self.history_capacities.get(
+                                f, max(self.lengths.get(f, 1), len(seq))
                             )
                             if len(seq) > cap:
                                 raise ValueError("sequence exceeds configured capacity")

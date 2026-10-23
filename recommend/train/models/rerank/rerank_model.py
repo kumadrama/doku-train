@@ -7,6 +7,9 @@ from typing import Any
 import torch
 from torch import nn
 
+from recommend.train.models.rerank.attention import history_attention
+from recommend.train.models.rerank.model_params import group_plans
+
 
 def layers(width: int, cfg: dict[str, Any]) -> tuple[nn.Sequential, int]:
     modules: list[nn.Module] = []
@@ -26,9 +29,9 @@ class ConfiguredRerank(nn.Module):
         super().__init__()
         self.config = config
         self.state = state
+        self.group_plans = group_plans(config, state)
         self.table_names = sorted(state["vocabs"])
         self.embeddings = nn.ModuleList()
-        widths = {}
         for name in self.table_names:
             dim = config["embed_dim"].get(name, config["embed_dim"].get("*"))
             if dim is None:
@@ -39,17 +42,7 @@ class ConfiguredRerank(nn.Module):
             with torch.no_grad():
                 emb.weight[0].zero_()
             self.embeddings.append(emb)
-            widths[name] = dim
-        self.group_dims = {}
-        for name, g in config["input_features"].items():
-            dims = [
-                widths[state["tables"][f]] if f in state["tables"] else 1 for f in g["features"]
-            ]
-            if g.get("combiner") in {"mean", "weighted_mean"} and (
-                len(dims) != 1 or g["features"][0] not in state["tables"]
-            ):
-                raise ValueError("pooling requires one embedding sequence")
-            self.group_dims[name] = sum(dims)
+        self.group_dims = {name: plan.width for name, plan in self.group_plans.items()}
         self.pairs = [pair for layer in config["fm_layers"] for pair in layer["features"]]
         for a, b in self.pairs:
             if self.group_dims[a] != self.group_dims[b]:
@@ -64,31 +57,65 @@ class ConfiguredRerank(nn.Module):
             tower, size = layers(width + len(self.pairs), t)
             self.towers.append(nn.Sequential(tower, nn.Linear(size, t["num_outputs"])))
 
-    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        groups = {}
-        for name, g in self.config["input_features"].items():
+    def input_groups(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Combine fields without reducing positions, then aggregate each history group."""
+        raw = {}
+        masks: dict[str, torch.Tensor] = {}
+        for name, options in self.config["input_features"].items():
+            plan = self.group_plans[name]
             parts = []
-            for f in g["features"]:
-                if f not in self.state["tables"]:
-                    continue
-                table = self.state["tables"][f]
-                v = batch[f].long()
-                emb = self.embeddings[self.table_names.index(table)](v)
-                valid = v != 0
-                if g.get("combiner") == "weighted_mean":
-                    weight = batch[g["weight_feature"]] * valid
-                    denom = weight.sum(1, keepdim=True)
-                    value = (emb * weight.unsqueeze(-1)).sum(1) / denom.clamp_min(
-                        torch.finfo(emb.dtype).tiny
-                    )
+            numeric_index = 0
+            for field in options["features"]:
+                if field in self.state["tables"]:
+                    ids = batch[field].long()
+                    table = self.state["tables"][field]
+                    embedding = self.embeddings[self.table_names.index(table)](ids)
+                    if plan.history:
+                        valid = ids != 0
+                        if name in masks and not torch.equal(masks[name], valid):
+                            raise ValueError("history fields must have aligned positions and masks")
+                        masks[name] = valid
+                        parts.append(embedding)
+                    else:
+                        if ids.ndim != 2 or ids.shape[1] != 1:
+                            raise ValueError("scalar field must have shape [batch, 1]")
+                        parts.append(embedding[:, 0])
                 else:
-                    value = (emb * valid.unsqueeze(-1)).sum(1) / valid.sum(
-                        1, keepdim=True
-                    ).clamp_min(1)
-                parts.append(value)
-            if "numeric:" + name in batch:
-                parts.append(batch["numeric:" + name].float())
-            groups[name] = torch.cat(parts, dim=1)
+                    parts.append(
+                        batch["numeric:" + name][:, numeric_index : numeric_index + 1].float()
+                    )
+                    numeric_index += 1
+            combiner = options.get("combiner", "concat")
+            if combiner == "concat":
+                raw[name] = torch.cat(parts, dim=-1)
+            else:
+                fields = torch.stack(parts, dim=0)
+                raw[name] = fields.sum(0) if combiner == "sum" else fields.mean(0)
+        groups = {}
+        for name, plan in self.group_plans.items():
+            value = raw[name]
+            if not plan.history or plan.pooling == "none":
+                groups[name] = value
+                continue
+            valid = masks[name]
+            if plan.pooling == "attention":
+                assert plan.query is not None
+                groups[name] = history_attention(
+                    raw[plan.query], value, valid, self.config.get("attn_scale", 1.0)
+                )
+            elif plan.pooling == "weighted_mean":
+                weights = batch[self.config["input_features"][name]["weight_feature"]] * valid
+                groups[name] = (value * weights.unsqueeze(-1)).sum(1) / weights.sum(
+                    1, keepdim=True
+                ).clamp_min(torch.finfo(value.dtype).tiny)
+            else:
+                groups[name] = (value * valid.unsqueeze(-1)).sum(1) / valid.sum(
+                    1, keepdim=True
+                ).clamp_min(1)
+        return groups
+
+    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        groups = self.input_groups(batch)
         shared = self.shared(torch.cat([groups[n] for n in self.config["dnn_inputs"]], dim=1))
         if self.pairs:
             shared = torch.cat(

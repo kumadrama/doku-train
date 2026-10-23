@@ -1,28 +1,13 @@
-# Spec 015：NN 无参历史 Attention 需求（待确认）
+# Spec 015：字段组合与无参历史聚合
 
-Source: 2026-10-21 用户要求参考 Finder rerank，增加相似度、softmax、reweighted sum 的无参 attention。
-参考实现：finder-models/recommend/train/models/rerank/modules/attention.py 的 hist_attention_layer / attention_head；finder-train 为训练入口，模型实现位于相邻 finder-models。仅参考语义，使用本仓 PyTorch CPU 独立实现，不复制私有源码或引入 TensorFlow/GPU 依赖。
+状态：2026-10-21 用户确认按 Finder 的设计职责拆分 combiner 与历史聚合，并授权 schema/实现同步修改。
+Source: 用户先确认点积/固定尺度/softmax/reweighted sum，后明确要求“把combiner和历史聚合拆开，不要只是对齐字段名”。本规则取代此前未发布的 attention 启用接口，以及 Spec004 将 mean/weighted_mean 放入 combiner 的描述。
 
-## 已明确范围
-
-- DNN/DeepFM 共用 rerank 实现，新增由 YAML 显式启用的历史 attention；原 mean/weighted_mean 默认行为不变。
-- 计算流程为 query/key 相似度、沿历史有效位置 softmax、对 value 加权求和。
-- Attention 本身不新增可训练参数；既有 embedding 继续通过 query/key/value 路径接受梯度。
-- 保持训练、评估、checkpoint 恢复计算一致；本地与 SageMaker 共用模型实现。
-- 不启动云训练，不发布模型，不变更树模型语义。
-
-## 建议首版语义（待确认）
-
-[INFERRED] 候选标量类别 embedding 为 query，单个历史类别序列 embedding 同时作为 key/value；维度必须一致，推荐同类 ID 共享 embedding 表。
-[NEEDS CLARIFICATION: 相似度采用原始点积还是余弦？建议原始点积。] 首版建议 score_i = dot(q, h_i)，alpha = masked_softmax(score)，output = sum(alpha_i * h_i)，不隐式加入 sqrt(dim) 缩放或可训练温度。
-[INFERRED] Padding 不参与 softmax；空历史输出零向量且不得产生 NaN；OOV 继续使用既有 OOV embedding，不等同 padding。
-[INFERRED] attention 输出可供既有 DNN/FM 输入消费；历史截断与重复处理沿用显式配置，不与既有外部 weight_feature 混合，需保留兴趣权重时继续使用 weighted_mean。
-
-## 验收要求
-
-- 用手算向量验证 similarity、softmax、加权和；验证 padding 不改变结果、空历史零输出。
-- 验证 query/history 梯度可传播，attention 无新增参数。
-- 验证错误引用/维度/配置组合明确报错、既有 pooling 行为保持不变。
-- 验证 DNN/DeepFM CPU 训练与 checkpoint 恢复；运行 make check 并记录可执行证据。
-
-需求确认后再确认 design.md，随后生成 tasks.md 并实施。
+- R1：combiner 仅组合组内字段：concat/sum/avg，沿字段维度，不减少历史位置维度。允许多个字段组成历史和 query。
+- R2：历史组必须显式选择 history_pooling：mean、weighted_mean、attention 或 none；标量组不能声明历史聚合。none 保留序列，不隐式回退 mean。
+- R3：attention 使用已组合的标量 query 和已组合的历史 embedding，执行 dot(q,h)/attn_scale、masked softmax、加权求和；不新增参数，embedding 正常训练。query 组及历史组组合后维度必须一致。
+- R4：padding 不参与归一化；空历史零输出、梯度有限；OOV 作为有效位置参与。输出复用组名，聚合后可进入 DNN/FM。
+- R5：多个历史字段必须按位置对齐，长度和 mask 一致。不能把不同历史列表自动拼成对应事件。sum/avg 要求字段宽度相同；concat 可组合不同宽度。
+- R6：weighted_mean 才能声明 weight_feature；attention 才能声明 hist_attn_query；顶层固定 attn_scale 缺省 1 且必须有限正数。schema 拒绝旧 combiner 值、skip_hist_attn 和之前未发布的 hist_attn_configs 接口，不提供静默兼容。
+- R7：本地/SageMaker 共用 PyTorch CPU 模型；无新依赖、私有代码复制、GPU、多头或参数化投影。树模型不增加神经聚合语义。
+- R8：迁移合成 fixture 及有效文档，验证数值、预处理、训练、测试和恢复。本次不启动云训练、不发布。

@@ -52,3 +52,9 @@ Source: 2026-10-23 用户确认的 [Spec 016](../../specs/016-shared-nn-loss/des
 NN 训练、验证、测试的 loss 与 logloss 指标共用 `comm/nn_utils.py:get_loss`，按 Finder 的公共入口与任务分派结构组织。树的 logloss 位于 `models/rerank_tree/loss_utils.py`，由树 runner 注入指标层；comm 不反向依赖树，NN 不依赖该目录。底层运行时仍为 PyTorch CPU。
 
 Source: Spec 016；2026-10-23 用户确认及树实现独立保留的补充要求。
+
+## NN 字段组合与历史聚合
+
+Source: [Spec 015](../../specs/015-parameter-free-attention/design.md)，2026-10-21 用户确认拆分语义。
+当前本地 rerank 先用 combiner（concat/sum/avg）组合字段，再用 history_pooling（mean/weighted_mean/attention/none）归约历史位置。多字段历史和标量 query 均先组合，attention 为固定尺度点积、masked softmax、加权和。DNN/DeepFM 共用，none 保留序列并拒绝直接送入 DNN/FM。
+公共 FeaturePlan 负责对齐检查与同步 tail 截断，模型负责组合、聚合和维度验证；不引入公共层反向模型依赖。旧 pooling 配置需要显式迁移，树模型不支持神经聚合。尚未部署新训练镜像。
