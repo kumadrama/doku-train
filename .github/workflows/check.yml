@@ -27,3 +27,16 @@ jobs:
       - run: uv python install 3.12
       - run: make check
       - run: ./build/build.sh && bash -n build/build.sh build/docker-build.sh
+  sagemaker-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CPU amd64 image (no registry push)
+        run: >-
+          docker build --platform linux/amd64 -f build/Dockerfile.sagemaker
+          --build-arg SOURCE_REVISION="$GITHUB_SHA" -t sagemaker-smoke:local .
+      - name: Synthetic DNN and DeepFM train/test/archive/events
+        run: >-
+          docker run --rm --network none --entrypoint python sagemaker-smoke:local
+          -m recommend.train.tests.sagemaker_container_smoke

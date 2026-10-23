@@ -185,6 +185,7 @@ def publish_package(
                         "status.json",
                         "metrics.json",
                         "test-metrics.json",
+                        "test-auc-events.json",
                         "test-evidence.json",
                         "lineage.json",
                         "fitted-feature-state/state.json",

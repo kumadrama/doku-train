@@ -1,0 +1,15 @@
+# Deliberately unresolved until an authorized deployment emits a binding and image identity.
+# Copy to a local runtime file; supply all four image identity values before submission.
+version: doku-sagemaker-runtime/v1
+environment: prod
+binding: ./sagemaker-binding.json
+image_uri: REQUIRED_IMMUTABLE_ECR_DIGEST
+source_revision: REQUIRED_IMAGE_REVISION
+source_sha256: REQUIRED_IMAGE_SOURCE_SHA256
+lock_sha256: REQUIRED_IMAGE_LOCK_SHA256
+instance_type: ml.m5.2xlarge
+instance_count: 1
+volume_size_gb: 100
+max_runtime_seconds: 86400
+loss_interval_steps: 100
+sync_interval_seconds: 30

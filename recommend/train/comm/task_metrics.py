@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -11,7 +12,13 @@ from recommend.train.comm.runtime_budget import check_memory
 
 
 def metric_values(
-    task: dict[str, Any], name: str, arrays: dict[str, np.ndarray], prediction: np.ndarray
+    task: dict[str, Any],
+    name: str,
+    arrays: dict[str, np.ndarray],
+    prediction: np.ndarray,
+    *,
+    logits: np.ndarray | None = None,
+    logloss_func: Callable[[np.ndarray, np.ndarray], float] | None = None,
 ) -> dict[str, Any]:
     check_memory(prediction.size * 64)
     result: dict[str, Any] = {}
@@ -41,10 +48,26 @@ def metric_values(
             if value is None:
                 reason = "no_comparable_pairs"
         elif func == "logloss":
-            if not np.isin(y, [0, 1]).all():
-                raise ValueError("logloss requires binary labels")
-            q = np.clip(p.astype(np.float64), 1e-15, 1 - 1e-15)
-            value = float(-(y * np.log(q) + (1 - y) * np.log1p(-q)).mean())
+            if logits is None:
+                raise ValueError("logloss requires raw logits")
+            raw = logits[mask].reshape(n, -1)
+            if raw.shape[1] != 1 or not np.isfinite(raw).all():
+                raise ValueError("logloss requires finite binary logits")
+            if logloss_func is not None:
+                value = logloss_func(raw, y)
+            else:
+                # Keep the tree runtime independent of PyTorch/OpenMP.
+                import torch
+
+                from recommend.train.comm.nn_utils import get_loss
+
+                value = float(
+                    get_loss(
+                        {"loss_type": "logloss"},
+                        torch.as_tensor(raw, dtype=torch.float64),
+                        torch.as_tensor(y, dtype=torch.float64),
+                    )
+                )
         elif func == "mae":
             value = float(np.abs(y - p).mean())
         elif func == "mse":
