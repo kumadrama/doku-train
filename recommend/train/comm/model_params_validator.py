@@ -83,6 +83,9 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         elif "soft_label" in task:
             raise ValueError("soft_label requires softmax_soft")
     if name == "rerank":
+        overrides = config["optimizer"].get("weight_decay_overrides", {})
+        if not set(overrides.get("tasks", {})) <= set(config["tasks"]):
+            raise ValueError("weight_decay_overrides references unknown task")
         if not set(config["dnn_inputs"]) <= set(config["input_features"]):
             raise ValueError("unknown dnn input group")
         for layer in [config["output_layer"], *config["tasks"].values()]:

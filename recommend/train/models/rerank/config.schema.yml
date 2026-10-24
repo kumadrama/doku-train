@@ -132,6 +132,15 @@ properties:
       weight_decay: &id004
         type: number
         minimum: 0
+      weight_decay_overrides:
+        type: object
+        additionalProperties: false
+        properties:
+          embeddings: {type: number, minimum: 0}
+          shared: {type: number, minimum: 0}
+          tasks:
+            type: object
+            additionalProperties: {type: number, minimum: 0}
     required:
     - name
     - learning_rate

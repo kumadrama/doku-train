@@ -141,3 +141,14 @@ def test_published_identity_is_not_a_fixture_only_gate(tmp_path):
     result = execute_train(config)
     root = Path(result["run_dir"])
     assert execute_test(root)["watch_seconds"]["metrics"]["mse"]["value"] >= 0
+
+
+def test_weight_decay_overrides_cpu_training(tmp_path):
+    config = make_experiment(tmp_path, "deepfm")
+    config["optimizer"]["weight_decay_overrides"] = {
+        "embeddings": 0,
+        "shared": 0.001,
+        "tasks": {"immersive_click": 0.0001},
+    }
+    result = execute_train(config)
+    assert result["status"] == "complete"

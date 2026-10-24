@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 018：位置正则化](specs/018-weight-decay-overrides/requirements.md)、[设计](specs/018-weight-decay-overrides/design.md)、[任务](specs/018-weight-decay-overrides/tasks.md)、[验证](specs/018-weight-decay-overrides/verification.md)。
+
 - [Spec 016：Finder 结构公共 loss](specs/016-shared-nn-loss/requirements.md)、[设计](specs/016-shared-nn-loss/design.md) — 需求与设计已确认；公共 loss 已实施，验证见 [验证](specs/016-shared-nn-loss/verification.md)。
 - [Spec 017：树阈值分桶](specs/017-tree-threshold-binning/requirements.md)、[设计](specs/017-tree-threshold-binning/design.md)、[任务](specs/017-tree-threshold-binning/tasks.md)、[验证](specs/017-tree-threshold-binning/verification.md) — 已实现并通过本地验证；四任务云训练及阈值导出已验证。
 
