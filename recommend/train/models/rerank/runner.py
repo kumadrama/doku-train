@@ -17,6 +17,35 @@ from recommend.train.comm.task_metrics import metric_values
 from recommend.train.models.rerank.rerank_model import ConfiguredRerank, predictions
 
 
+def optimizer_parameters(model: ConfiguredRerank, opt: dict[str, Any]) -> list[Any]:
+    """Stable, exhaustive groups; biases inherit their owning module's decay."""
+    overrides = opt.get("weight_decay_overrides", {})
+    tasks = overrides.get("tasks", {})
+    if not set(tasks) <= set(model.task_names):
+        raise ValueError("weight_decay_overrides references unknown task")
+    if not overrides:
+        return list(model.parameters())
+    modules = [("embeddings", model.embeddings), ("shared", model.shared)]
+    groups = []
+    for name, module in modules:
+        params = list(module.parameters())
+        if params:
+            groups.append(
+                {"params": params, "weight_decay": overrides.get(name, opt["weight_decay"])}
+            )
+    for name, tower in zip(model.task_names, model.towers, strict=True):
+        groups.append(
+            {
+                "params": list(tower.parameters()),
+                "weight_decay": tasks.get(name, opt["weight_decay"]),
+            }
+        )
+    ids = [id(p) for group in groups for p in group["params"]]
+    if len(ids) != len(set(ids)) or set(ids) != {id(p) for p in model.parameters()}:
+        raise ValueError("optimizer groups must cover each parameter exactly once")
+    return groups
+
+
 def batches(
     arrays: dict[str, np.ndarray], size: int, order: np.ndarray | None = None
 ) -> Iterator[dict[str, torch.Tensor]]:
@@ -45,7 +74,9 @@ class NeuralRunner:
             opt["name"]
         ]
         self.optimizer = cls(
-            self.model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"]
+            optimizer_parameters(self.model, opt),
+            lr=opt["learning_rate"],
+            weight_decay=opt["weight_decay"],
         )
 
     def evaluate(self, arrays: dict[str, np.ndarray]) -> dict[str, Any]:
