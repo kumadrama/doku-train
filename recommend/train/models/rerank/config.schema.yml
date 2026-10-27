@@ -1,5 +1,11 @@
 type: object
 properties:
+  profiling:
+    type: object
+    additionalProperties: false
+    properties:
+      enabled: {type: boolean, default: false}
+      print_logs: {type: boolean, default: false}
   tree_binning:
     type: object
     properties:

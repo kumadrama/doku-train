@@ -8,6 +8,7 @@ import json
 from collections import deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from urllib.parse import unquote, urlsplit
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from recommend.train.comm import timing
 from recommend.train.comm.datasvr.daily_contracts import (
     digest as digest,
 )
@@ -37,6 +39,7 @@ class PublishedDataset:
         self.config = copy.deepcopy(config)
         self.options = self.config["dataset"]
         self.local_root = local_root.resolve() if local_root else None
+        self.timer = timing.current()
         self.cache = Path(config["execution"]["cache_dir"]).resolve()
         self.cache.mkdir(parents=True, exist_ok=True)
         self.client: Any = None
@@ -234,25 +237,27 @@ class PublishedDataset:
 
                     self.client = boto3.Session().client("s3")
                 u = urlsplit(p["uri"])
-                response = self.client.get_object(Bucket=u.netloc, Key=u.path[1:])
-                size = int(response["ContentLength"])
-                used = sum(x.stat().st_size for x in self.cache.glob("*") if x.is_file())
-                if used + size > self.config["execution"]["cache_limit_bytes"]:
-                    response["Body"].close()
-                    raise ValueError("cache disk budget exceeded")
-                temp = path.with_suffix(".partial")
-                try:
-                    with response["Body"] as stream, temp.open("xb") as out:
-                        while chunk := stream.read(1024 * 1024):
-                            out.write(chunk)
-                    temp.rename(path)
-                finally:
-                    temp.unlink(missing_ok=True)
-        with path.open("rb") as f:
+                with self.timer.span("shard_download", unit="shards"):
+                    response = self.client.get_object(Bucket=u.netloc, Key=u.path[1:])
+                    size = int(response["ContentLength"])
+                    used = sum(x.stat().st_size for x in self.cache.glob("*") if x.is_file())
+                    if used + size > self.config["execution"]["cache_limit_bytes"]:
+                        response["Body"].close()
+                        raise ValueError("cache disk budget exceeded")
+                    temp = path.with_suffix(".partial")
+                    try:
+                        with response["Body"] as stream, temp.open("xb") as out:
+                            while chunk := stream.read(1024 * 1024):
+                                out.write(chunk)
+                        temp.rename(path)
+                    finally:
+                        temp.unlink(missing_ok=True)
+        with self.timer.span("shard_checksum", unit="shards"), path.open("rb") as f:
             if hashlib.file_digest(f, "sha256").hexdigest() != p["sha256"]:
                 raise ValueError("shard checksum mismatch")
-        if pq.ParquetFile(path).metadata.num_rows != p["rows"]:
-            raise ValueError("shard row count mismatch")
+        with self.timer.span("shard_metadata", unit="shards"):
+            if pq.ParquetFile(path).metadata.num_rows != p["rows"]:
+                raise ValueError("shard row count mismatch")
         self._verified[p["uri"]] = path
         return path
 
@@ -272,13 +277,16 @@ class PublishedDataset:
             for _ in range(depth):
                 p = next(source, None)
                 if p is not None:
-                    pending.append((p, pool.submit(self._shard, p)))
+                    pending.append((p, pool.submit(copy_context().run, self._shard, p)))
             while pending:
                 p, future = pending.popleft()
-                path = future.result()
+                with self.timer.span("prefetch_wait"):
+                    path = future.result()
                 next_part = next(source, None)
                 if next_part is not None:
-                    pending.append((next_part, pool.submit(self._shard, next_part)))
+                    pending.append(
+                        (next_part, pool.submit(copy_context().run, self._shard, next_part))
+                    )
                 yield from self._rows_in_shard(p, path, columns)
 
     def _rows_in_shard(
@@ -303,18 +311,24 @@ class PublishedDataset:
             datetime.fromisoformat(p[f"event_time_{x}"].replace("Z", "+00:00")).timestamp() * 1000
             for x in ["from", "to"]
         ]
-        for batch in file.iter_batches(
-            batch_size=self.config["batch_size"],
-            columns=selected,
-            use_threads=self.config["execution"]["arrow_threads"] > 1,
+        for batch in self.timer.iterate(
+            "parquet_batch",
+            file.iter_batches(
+                batch_size=self.config["batch_size"],
+                columns=selected,
+                use_threads=self.config["execution"]["arrow_threads"] > 1,
+            ),
         ):
             check_memory(batch.nbytes * 3)
-            for row in batch.to_pylist():
-                value = row[time_column]
-                if isinstance(value, str):
-                    value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                timestamp = value.timestamp() * 1000 if isinstance(value, datetime) else value
-                if timestamp is None or not start <= timestamp < end:
-                    raise ValueError("row outside declared event partition")
-                row.update({name: copy.deepcopy(defaults[name]) for name in absent})
+            with self.timer.span("to_pylist", count=batch.num_rows, unit="rows"):
+                rows = batch.to_pylist()
+            for row in rows:
+                with self.timer.span("row_validate", unit="rows"):
+                    value = row[time_column]
+                    if isinstance(value, str):
+                        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    timestamp = value.timestamp() * 1000 if isinstance(value, datetime) else value
+                    if timestamp is None or not start <= timestamp < end:
+                        raise ValueError("row outside declared event partition")
+                    row.update({name: copy.deepcopy(defaults[name]) for name in absent})
                 yield row

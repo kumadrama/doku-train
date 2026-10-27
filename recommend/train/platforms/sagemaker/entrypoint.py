@@ -77,6 +77,7 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
         binding.kms_key_arn,
         runtime.sync_interval_seconds,
     )
+    run_dir = Path(config["output"]["root"]) / run_id
     stage_times = {}
     sampler = ResourceSampler(root)
     try:
@@ -103,17 +104,23 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
         print("DOKU_STAGE archive starting", flush=True)
         archive_run(run_dir, root / "model", package_path)
     finally:
-        report = {
-            **sampler.close(),
-            "stage_seconds": stage_times,
-            "disk_free_bytes": shutil.disk_usage(root).free,
-            "working_files_bytes": sum(
-                p.stat().st_size for p in (root / "work").rglob("*") if p.is_file()
-            ),
-        }
-        (diagnostic / "resources.json").write_text(json.dumps(report))
-        if sink.thread.is_alive():
-            sink.close()
+        try:
+            report = {
+                **sampler.close(),
+                "stage_seconds": stage_times,
+                "disk_free_bytes": shutil.disk_usage(root).free,
+                "working_files_bytes": sum(
+                    p.stat().st_size for p in (root / "work").rglob("*") if p.is_file()
+                ),
+            }
+            (diagnostic / "resources.json").write_text(json.dumps(report))
+        finally:
+            try:
+                if sink.thread.is_alive():
+                    sink.close()
+            finally:
+                if config.get("profiling", {}).get("enabled") and (run_dir / "timing").is_dir():
+                    shutil.copytree(run_dir / "timing", diagnostic / "timing", dirs_exist_ok=True)
 
 
 def main() -> None:

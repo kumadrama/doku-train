@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from recommend.train.comm.process_logs import run_captured
 from recommend.train.comm.training_pipeline import test_run
 
 
@@ -22,7 +22,8 @@ def execute_test(run_dir: Path, *, local_root: Path | None = None) -> dict[str, 
     args = [sys.executable, "-m", "recommend.train.run", "test", "--run-dir", str(run_dir)]
     if local_root:
         args += ["--local-root", str(local_root)]
-    completed = subprocess.run(args, text=True, capture_output=True, check=False)
+    config = json.loads((run_dir / "resolved-config.json").read_text())
+    completed = run_captured(args, config)
     if completed.returncode:
         raise RuntimeError(f"evaluation process failed: {completed.stderr[-2000:]}")
     result: dict[str, Any] = json.loads((run_dir / "test-metrics.json").read_text())
