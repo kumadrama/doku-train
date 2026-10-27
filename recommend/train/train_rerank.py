@@ -30,6 +30,13 @@ def model_factory(name: str) -> Any:
     raise ValueError("unknown model plugin")
 
 
+def feature_plan_factory(name: str) -> Any:
+    from recommend.train.comm.batch_feature_plan import BatchFeaturePlan
+    from recommend.train.comm.feature_plan import FeaturePlan
+
+    return BatchFeaturePlan if name == "rerank" else FeaturePlan
+
+
 def export_tree_buckets(run: Path) -> dict[str, Any]:
     output = run / "tree-buckets.json"
     subprocess.run(
@@ -80,6 +87,7 @@ def execute_train_local(
         resume=resume,
         frozen_input=frozen_input,
         feature_preparation=preparation,
+        plan_factory=feature_plan_factory(config["model_type"]),
     )
 
 

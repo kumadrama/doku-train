@@ -33,3 +33,13 @@ profiling 从逻辑配置摘要剔除；计时不进入 Feature State 或指标�
 ## 验证
 
 固定时钟验证累计/层级、关闭零时钟、周期输出、失败 summary、iterator 不计消费者时间；配置非法组合；DeepFM 开关前后模型参数/指标/identity 相同；重复 test 文件隔离；epoch/数据处理事件覆盖；归档校验与失败诊断；运行 make check。合成测试不等于生产性能证据。
+
+## Spec 022 批准备路径的计时口径
+
+Source: 2026-10-27 用户确认 [Spec 022](../022-batched-feature-preparation/design.md) 并授权本地实施。
+
+神经网络批准备路径以 column_decode / batch_transform / history_rows / batch_encode
+替代旧 to_pylist / row_transform / encode_row 热点，history_scalar_rows 和 expression_fallback
+记录保留的标量处理。训练拟合成功并复用完整宽度时不产生 train/encode_train/width_scan；
+validation/test 保留 width_scan。array_assign 按批有效行数累计，仍不是物理磁盘落盘耗时。
+独立树旧路径和计时开关不变；不同路径子项不能直接按同名总和推断端到端加速。

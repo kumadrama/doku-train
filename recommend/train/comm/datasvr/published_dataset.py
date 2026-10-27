@@ -262,11 +262,15 @@ class PublishedDataset:
         return path
 
     def rows(self, split: str, columns: set[str]) -> Iterator[dict[str, Any]]:
+        for part, path in self._paths(split):
+            yield from self._rows_in_shard(part, path, columns)
+
+    def _paths(self, split: str) -> Iterator[tuple[dict[str, Any], Path]]:
         workers = self.config["execution"]["reader_workers"]
         parts = self.partitions(split)
         if workers == 0:
             for part in parts:
-                yield from self._rows_in_shard(part, self._shard(part), columns)
+                yield part, self._shard(part)
             return
         with ThreadPoolExecutor(
             max_workers=max(1, min(workers, self.config["execution"]["s3_transfer_threads"]))
@@ -287,7 +291,7 @@ class PublishedDataset:
                     pending.append(
                         (next_part, pool.submit(copy_context().run, self._shard, next_part))
                     )
-                yield from self._rows_in_shard(p, path, columns)
+                yield p, path
 
     def _rows_in_shard(
         self, p: dict[str, Any], path: Path, columns: set[str]
@@ -332,3 +336,51 @@ class PublishedDataset:
                         raise ValueError("row outside declared event partition")
                     row.update({name: copy.deepcopy(defaults[name]) for name in absent})
                 yield row
+
+    def iter_batches(self, split: str, columns: set[str]) -> Iterator[dict[str, list[Any]]]:
+        for part, path in self._paths(split):
+            yield from self._columns_in_shard(part, path, columns)
+
+    def _columns_in_shard(
+        self, p: dict[str, Any], path: Path, columns: set[str]
+    ) -> Iterator[dict[str, list[Any]]]:
+        file = pq.ParquetFile(path)
+        # Published v1 partitions are keyed by exposure time, not request time.
+        time_column = "impression_time"
+        requested = columns | {time_column}
+        defaults = self.config["feature_default_values"]
+        absent = (
+            (requested & set(self.config["features"])) - self.daily_fields[p["uri"]]
+            if self.daily_fields
+            else set()
+        )
+        selected = sorted(requested - absent)
+        if not set(selected) <= set(file.schema_arrow.names):
+            raise ValueError(
+                f"missing required columns: {set(selected) - set(file.schema_arrow.names)}"
+            )
+        start, end = [
+            datetime.fromisoformat(p[f"event_time_{x}"].replace("Z", "+00:00")).timestamp() * 1000
+            for x in ["from", "to"]
+        ]
+        for batch in self.timer.iterate(
+            "parquet_batch",
+            file.iter_batches(
+                batch_size=self.config["batch_size"],
+                columns=selected,
+                use_threads=self.config["execution"]["arrow_threads"] > 1,
+            ),
+        ):
+            check_memory(batch.nbytes * 3)
+            with self.timer.span("column_decode", count=batch.num_rows, unit="rows"):
+                values = batch.to_pydict()
+            with self.timer.span("row_validate", count=batch.num_rows, unit="rows"):
+                for value in values[time_column]:
+                    if isinstance(value, str):
+                        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    timestamp = value.timestamp() * 1000 if isinstance(value, datetime) else value
+                    if timestamp is None or not start <= timestamp < end:
+                        raise ValueError("row outside declared event partition")
+                for name in absent:
+                    values[name] = [copy.deepcopy(defaults[name]) for _ in range(batch.num_rows)]
+            yield values

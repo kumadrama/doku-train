@@ -102,6 +102,13 @@ class FeaturePlan:
         row = dict(source)
         if not evaluate(self.config["item_filter"], row):
             return None
+        self.prepare_history(row)
+        for target, expr in self.transforms:
+            row[target] = evaluate(expr, row, tree_thresholds=self.tree_thresholds)
+        self.history_scalars(row)
+        return row
+
+    def prepare_history(self, row: dict[str, Any], *, history_only: bool = False) -> None:
         for group in self.config["input_features"].values():
             if "weight_feature" in group:
                 ids, weights = row[group["features"][0]], row[group["weight_feature"]]
@@ -110,9 +117,13 @@ class FeaturePlan:
                 ):
                     raise ValueError("history ID/weight mismatch")
         for field, default in self.config["feature_default_values"].items():
+            if history_only and field not in row:
+                continue
             if row[field] is None:
                 row[field] = default
         for field in self.config["features"]:
+            if history_only and field not in row:
+                continue
             v = row[field]
             if (
                 v is not None
@@ -165,8 +176,8 @@ class FeaturePlan:
                 total = sum(w for _, w in pairs)
                 row[field] = [i for i, _ in pairs]
                 row[weight_field] = [w / total if total else 0.0 for _, w in pairs]
-        for target, expr in self.transforms:
-            row[target] = evaluate(expr, row, tree_thresholds=self.tree_thresholds)
+
+    def history_scalars(self, row: dict[str, Any]) -> None:
         for field, op in self.config.get("history_scalars", {}).items():
             func = op["func"]
             if func == "unique_intersection_count":
@@ -196,7 +207,30 @@ class FeaturePlan:
                 )
             else:
                 raise ValueError("unknown history scalar")
-        return row
+
+    def fit_dataset(self, dataset: Any) -> None:
+        self.fit(dataset.rows("train", self.columns))
+
+    def prepare_dataset(self, dataset: Any, split: str, root: Path) -> dict[str, np.ndarray]:
+        count = sum(p["rows"] for p in dataset.partitions(split))
+        with timing.current().span("width_scan", report=True):
+            for source in dataset.rows(split, self.columns):
+                row = self.row(source)
+                if row:
+                    for field in self.tables:
+                        if isinstance(row[field], list):
+                            self.lengths[field] = max(self.lengths.get(field, 1), len(row[field]))
+        return prepare_arrays(
+            self,
+            dataset.rows(split, self.columns),
+            root,
+            count,
+            max(
+                0,
+                dataset.config["execution"]["cache_limit_bytes"]
+                - sum(p.stat().st_size for p in root.parent.rglob("*.npy")),
+            ),
+        )
 
     def fit(self, rows: Iterator[dict[str, Any]]) -> None:
         values: dict[str, set[Any]] = {table: set() for table in self.tables.values()}

@@ -76,3 +76,14 @@ rerank schema/validator 限制仅 DeepFM 可开启 profiling，默认关闭；tr
 独立 invocation。stdout 和 Run JSONL/summary 共用累计事件，普通失败保留诊断。
 profiling 不参与训练逻辑 identity，不改变模型、特征或选模；SageMaker 收录计时产物。
 目标状态：本地验证后可另行授权更新镜像和云端诊断；当前未部署，不声明生产性能收益。
+
+## 批量特征准备（Spec 022，当前本地实现）
+
+Source: [Spec 022 设计](../../specs/022-batched-feature-preparation/design.md)，2026-10-27 用户确认并授权本地实施。
+
+`train_rerank` / `eval_rerank` 在 composition root 为神经网络注入 BatchFeaturePlan；
+公共 pipeline 只依赖 fit_dataset / prepare_dataset 接口，独立树继续 FeaturePlan。
+批计划在初始化时构建，复用旧历史算法；批读取保持分片/时间校验，训练拟合携带完整宽度以省去
+重复扫描，validation/test 仍扫描。编码按块写 memmap，原词表编号与状态合同保持。
+通用表达式采用保留 Python 标量语义的列内核，对数桶提供受保护的 NumPy 快路径；
+不等同于所有表达式已成为原生算子。当前仅本地验证，不声明云端性能或已部署。
