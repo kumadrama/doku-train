@@ -12,10 +12,15 @@ from recommend.train.comm.training_pipeline import test_run
 
 
 def execute_test_local(run_dir: Path, *, local_root: Path | None = None) -> dict[str, Any]:
-    from recommend.train.train_rerank import model_factory
+    from recommend.train.train_rerank import feature_plan_factory, model_factory
 
     config = json.loads((run_dir / "resolved-config.json").read_text())
-    return test_run(run_dir, model_factory(config["model_type"]), local_root=local_root)
+    return test_run(
+        run_dir,
+        model_factory(config["model_type"]),
+        local_root=local_root,
+        plan_factory=feature_plan_factory(config["model_type"]),
+    )
 
 
 def execute_test(run_dir: Path, *, local_root: Path | None = None) -> dict[str, Any]:

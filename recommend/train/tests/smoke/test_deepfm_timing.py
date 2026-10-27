@@ -36,17 +36,18 @@ def test_timing_preserves_model_identity_metrics_and_repeated_test(tmp_path, cap
     assert "train/fit_features/shard_checksum" in summary["stages"]
     assert "train/encode_validation/width_scan/shard_checksum" in summary["stages"]
     assert "shard_checksum" not in summary["stages"]
+    assert "train/encode_train/width_scan" not in summary["stages"]
     names = {k.split("/")[-1] for k in summary["stages"]}
     assert {
         "freeze_input",
         "fit_features",
         "width_scan",
-        "encode_row",
+        "batch_encode",
         "array_assign",
         "parquet_batch",
-        "to_pylist",
+        "column_decode",
         "row_validate",
-        "row_transform",
+        "batch_transform",
         "vocab_collect",
         "vocab_finalize",
         "shard_checksum",

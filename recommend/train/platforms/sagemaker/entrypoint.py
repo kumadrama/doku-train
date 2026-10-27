@@ -23,7 +23,7 @@ from recommend.train.platforms.sagemaker.config import (
 )
 from recommend.train.platforms.sagemaker.events import EventSink
 from recommend.train.platforms.sagemaker.resources import ResourceSampler
-from recommend.train.train_rerank import execute_train_local, model_factory
+from recommend.train.train_rerank import execute_train_local, feature_plan_factory, model_factory
 
 
 def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -> None:
@@ -94,7 +94,11 @@ def run_package(package_path: Path, root: Path, s3: Any, *, expected_sha: str) -
             if "test" in runtime.stages:
                 print("DOKU_STAGE test starting", flush=True)
                 start = time.monotonic()
-                test = test_run(run_dir, model_factory(config["model_type"]))
+                test = test_run(
+                    run_dir,
+                    model_factory(config["model_type"]),
+                    plan_factory=feature_plan_factory(config["model_type"]),
+                )
                 selection = result["metrics"]["selection"]
                 metric_events.evaluation(
                     "test", selection.get("global_step", 0), selection.get("epoch") or 0, test

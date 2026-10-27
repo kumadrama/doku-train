@@ -20,7 +20,7 @@ import psutil
 from recommend.train.comm import timing
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
 from recommend.train.comm.datasvr.published_dataset import PublishedDataset, digest
-from recommend.train.comm.feature_plan import FeaturePlan, prepare_arrays
+from recommend.train.comm.feature_plan import FeaturePlan
 from recommend.train.comm.model_params_validator import ROOT, validate_config
 from recommend.train.comm.runtime_budget import MemoryBudget
 
@@ -78,26 +78,7 @@ def setup(config: dict[str, Any]) -> None:
 def arrays_for(
     dataset: PublishedDataset, plan: FeaturePlan, split: str, root: Path
 ) -> dict[str, np.ndarray]:
-    count = sum(p["rows"] for p in dataset.partitions(split))
-    # Sequence widths are allocation metadata, not fitted vocabulary. Inspect only this split.
-    with timing.current().span("width_scan", report=True):
-        for source in dataset.rows(split, plan.columns):
-            row = plan.row(source)
-            if row:
-                for field in plan.tables:
-                    if isinstance(row[field], list):
-                        plan.lengths[field] = max(plan.lengths.get(field, 1), len(row[field]))
-    return prepare_arrays(
-        plan,
-        dataset.rows(split, plan.columns),
-        root,
-        count,
-        max(
-            0,
-            dataset.config["execution"]["cache_limit_bytes"]
-            - sum(p.stat().st_size for p in root.parent.rglob("*.npy")),
-        ),
-    )
+    return plan.prepare_dataset(dataset, split, root)
 
 
 @contextmanager
@@ -120,6 +101,7 @@ def train(
     resume: Path | None = None,
     frozen_input: Path | None = None,
     feature_preparation: Any = None,
+    plan_factory: Any = FeaturePlan,
 ) -> dict[str, Any]:
     if resume is not None and frozen_input is not None:
         raise ValueError("resume and frozen_input are mutually exclusive")
@@ -146,9 +128,9 @@ def train(
             if feature_preparation is not None:
                 with stage("tree_pretraining", timings):
                     tree_buckets = feature_preparation(config, root, resume)
-            plan = FeaturePlan(config, dataset.dtypes, tree_buckets=tree_buckets)
+            plan = plan_factory(config, dataset.dtypes, tree_buckets=tree_buckets)
             with stage("fit_features", timings):
-                plan.fit(dataset.rows("train", plan.columns))
+                plan.fit_dataset(dataset)
             state = plan.state()
             (root / "fitted-feature-state").mkdir()
             write_json(root / "fitted-feature-state/state.json", state)
@@ -224,7 +206,12 @@ def train(
 
 
 def _test_run(
-    run_dir: Path, factory: Any, *, local_root: Path | None = None, encoding_dir: Path
+    run_dir: Path,
+    factory: Any,
+    *,
+    local_root: Path | None = None,
+    encoding_dir: Path,
+    plan_factory: Any = FeaturePlan,
 ) -> dict[str, Any]:
     status = json.loads((run_dir / "status.json").read_text())
     if status.get("status") != "complete":
@@ -234,7 +221,7 @@ def _test_run(
     with timing.current().span("restore_input", report=True):
         data = PublishedDataset(config, local_root=local_root, frozen_input=run_dir / "input")
         state = json.loads((run_dir / "fitted-feature-state/state.json").read_text())
-        plan = FeaturePlan(config, data.dtypes)
+        plan = plan_factory(config, data.dtypes)
         plan.restore(state)
     with timing.current().span("encode_test", report=True):
         arrays = arrays_for(data, plan, "test", encoding_dir)
@@ -270,7 +257,9 @@ def _test_run(
     return metrics
 
 
-def test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> dict[str, Any]:
+def test_run(
+    run_dir: Path, factory: Any, *, local_root: Path | None = None, plan_factory: Any = FeaturePlan
+) -> dict[str, Any]:
     config = json.loads((run_dir / "resolved-config.json").read_text())
     budget = MemoryBudget(config["execution"]["memory_limit_bytes"])
     try:
@@ -284,7 +273,11 @@ def test_run(run_dir: Path, factory: Any, *, local_root: Path | None = None) -> 
             tempfile.TemporaryDirectory(prefix="evaluation-", dir=run_dir) as tmp,
         ):
             return _test_run(
-                run_dir, factory, local_root=local_root, encoding_dir=Path(tmp) / "arrays"
+                run_dir,
+                factory,
+                local_root=local_root,
+                encoding_dir=Path(tmp) / "arrays",
+                plan_factory=plan_factory,
             )
     finally:
         budget.close()
