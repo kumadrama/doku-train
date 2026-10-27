@@ -40,6 +40,11 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     schema["required"] = list(set(schema["required"]) | set(plugin["required"]))
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(config)
+    profiling = config.get("profiling", {})
+    if profiling.get("print_logs", False) and not profiling.get("enabled", False):
+        raise ValueError("profiling.print_logs requires profiling.enabled")
+    if profiling.get("enabled", False) and not config.get("fm_layers"):
+        raise ValueError("profiling is supported only for DeepFM")
     split = config["split"]
     if split["timezone"] != "UTC":
         raise ValueError("source manifest uses UTC event partitions")

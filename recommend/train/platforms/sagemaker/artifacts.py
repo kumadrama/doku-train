@@ -6,6 +6,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from recommend.train.comm import timing
+
 REQUIRED = [
     "metrics.json",
     "fitted-feature-state/state.json",
@@ -35,7 +37,43 @@ def required_files(package: dict[str, Any]) -> list[str]:
     ]
 
 
-def archive_run(run: Path, target: Path, submission: Path) -> None:
+def validate_timing_files(
+    root: Path, package: dict[str, Any], names: set[str], *, archived: bool
+) -> None:
+    if not package["config"].get("profiling", {}).get("enabled"):
+        return
+    required_phases = {"train"}
+    if "test" in package["runtime"].get("stages", ["train", "test"]):
+        required_phases.add("test")
+    if archived:
+        required_phases.add("archive")
+    found = set()
+    for name in names:
+        if not name.startswith("timing/") or not name.endswith("-summary.json"):
+            continue
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 2:
+            raise ValueError("unsafe timing artifact")
+        path = root / relative
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("unsafe or missing timing summary")
+        summary = json.loads(path.read_text())
+        phase = summary.get("phase")
+        invocation = summary.get("invocation_id", "")
+        expected = f"timing/{phase}-{invocation}"
+        if (
+            summary.get("version") != "doku-timing/v1"
+            or name != expected + "-summary.json"
+            or expected + ".jsonl" not in names
+        ):
+            raise ValueError("incomplete timing invocation")
+        if summary.get("status") == "complete":
+            found.add(phase)
+    if not required_phases <= found:
+        raise ValueError("missing completed timing phases")
+
+
+def _archive_run(run: Path, target: Path, submission: Path) -> dict[str, str]:
     if json.loads((run / "status.json").read_text()).get("status") != "complete":
         raise ValueError("training incomplete")
     target.mkdir(parents=True, exist_ok=True)
@@ -50,17 +88,45 @@ def archive_run(run: Path, target: Path, submission: Path) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(run / name, dest)
     shutil.copyfile(submission, target / "submission.json")
-    files = {
+    return {
         str(p.relative_to(target)): hashlib.sha256(p.read_bytes()).hexdigest()
         for p in target.rglob("*")
-        if p.is_file()
+        if p.is_file() and p.name != "artifact-manifest.json"
     }
-    (target / "artifact-manifest.json").write_text(
+
+
+def write_manifest(target: Path, files: dict[str, str]) -> None:
+    partial = target / "artifact-manifest.partial"
+    partial.write_text(
         json.dumps(
             {"version": "doku-sagemaker-artifacts/v1", "status": "complete", "files": files},
             sort_keys=True,
         )
     )
+
+    partial.replace(target / "artifact-manifest.json")
+
+
+def archive_run(run: Path, target: Path, submission: Path) -> None:
+    package = json.loads(submission.read_text())
+    config = package["config"]
+    timing_names = {str(p.relative_to(run)) for p in (run / "timing").glob("*") if p.is_file()}
+    validate_timing_files(run, package, timing_names, archived=False)
+    with timing.session(config, run, "archive") as timer, timer.span("archive", report=True):
+        files = _archive_run(run, target, submission)
+    if timer.enabled:
+        # Publish only finalized diagnostics after archive timing is closed.
+        destination = target / "timing"
+        destination.mkdir(exist_ok=True)
+        for source in (run / "timing").iterdir():
+            if source.suffix in {".json", ".jsonl"}:
+                if source.is_symlink() or not source.is_file():
+                    raise ValueError("unsafe timing artifact")
+                dest = destination / source.name
+                shutil.copyfile(source, dest)
+                files[str(dest.relative_to(target))] = hashlib.sha256(dest.read_bytes()).hexdigest()
+    validate_timing_files(target, package, set(files), archived=True)
+    write_manifest(target, files)
 
 
 def verify_archive(root: Path) -> None:
@@ -79,3 +145,10 @@ def verify_archive(root: Path) -> None:
             raise ValueError("unsafe or missing artifact")
         if hashlib.sha256(path.read_bytes()).hexdigest() != sha:
             raise ValueError("artifact checksum mismatch")
+
+    validate_timing_files(
+        root,
+        json.loads((root / "submission.json").read_text()),
+        set(manifest["files"]),
+        archived=True,
+    )

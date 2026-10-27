@@ -166,10 +166,12 @@ def test_events_keep_step_and_do_not_emit_null_scalar(tmp_path):
     assert len(s3.puts) == 1
 
 
-def test_frozen_package_train_test_archive(tmp_path, monkeypatch):
+@pytest.mark.parametrize("profiling", [False, True])
+def test_frozen_package_train_test_archive(tmp_path, monkeypatch, profiling):
     from recommend.train.comm.datasvr.published_dataset import PublishedDataset
 
     config, runtime, binding, s3, shards = fixture(tmp_path)
+    config["profiling"] = {"enabled": profiling, "print_logs": False}
     prepared = tmp_path / "prepared"
     prepare(config, runtime, binding, "trial", s3, prepared)
     payload = prepared / "package.json"
@@ -179,6 +181,17 @@ def test_frozen_package_train_test_archive(tmp_path, monkeypatch):
     root = tmp_path / "ml"
     run_package(payload, root, s3, expected_sha=hashlib.sha256(payload.read_bytes()).hexdigest())
     verify_archive(root / "model")
+    if profiling:
+        records = [
+            json.loads(p.read_text()) for p in (root / "model/timing").glob("*-summary.json")
+        ]
+        assert {r["phase"] for r in records} == {"train", "test", "archive"}
+        assert all(r["status"] == "complete" for r in records)
+        assert len(list((root / "output/data/timing").glob("*-summary.json"))) == 3
+        manifest = json.loads((root / "model/artifact-manifest.json").read_text())
+        assert len([name for name in manifest["files"] if name.startswith("timing/")]) == 6
+    else:
+        assert not (root / "model/timing").exists()
     assert not list((root / "model").rglob("*.npy"))
     assert (root / "model/test-metrics.json").is_file()
     metrics = json.loads((root / "model/metrics.json").read_text())
@@ -366,3 +379,78 @@ def test_submit_cli_resolves_teacher_relative_to_yaml(tmp_path, monkeypatch):
     )
     cli.main()
     assert captured[0]["model_type"] == "rerank_tree"
+
+
+def test_failed_deepfm_exports_diagnostic_timing(tmp_path, monkeypatch):
+    from recommend.train.comm.datasvr.published_dataset import PublishedDataset
+    from recommend.train.models.rerank.runner import NeuralRunner
+
+    config, runtime, binding, s3, shards = fixture(tmp_path)
+    config["profiling"] = {"enabled": True}
+    prepared = tmp_path / "prepared"
+    prepare(config, runtime, binding, "trial", s3, prepared)
+    payload = prepared / "package.json"
+    monkeypatch.setattr(PublishedDataset, "_local_path", lambda self, uri: shards.get(uri))
+
+    def fail(self, arrays):
+        raise RuntimeError("synthetic model failure")
+
+    monkeypatch.setattr(NeuralRunner, "evaluate", fail)
+    root = tmp_path / "ml"
+    with pytest.raises(RuntimeError, match="synthetic model"):
+        run_package(
+            payload, root, s3, expected_sha=hashlib.sha256(payload.read_bytes()).hexdigest()
+        )
+    reports = list((root / "output/data/timing").glob("*-summary.json"))
+    assert len(reports) == 1
+    assert json.loads(reports[0].read_text())["status"] == "failed"
+    assert not (root / "model/artifact-manifest.json").exists()
+
+
+def test_event_upload_failure_still_exports_timings(tmp_path, monkeypatch):
+    from recommend.train.comm.datasvr.published_dataset import PublishedDataset
+
+    config, runtime, binding, s3, shards = fixture(tmp_path)
+    config["profiling"] = {"enabled": True}
+    prepared = tmp_path / "prepared"
+    prepare(config, runtime, binding, "trial", s3, prepared)
+    payload = prepared / "package.json"
+    monkeypatch.setattr(PublishedDataset, "_local_path", lambda self, uri: shards.get(uri))
+    original = EventSink.close
+
+    def fail_close(self):
+        original(self)
+        raise RuntimeError("synthetic event upload failure")
+
+    monkeypatch.setattr(EventSink, "close", fail_close)
+    root = tmp_path / "ml"
+    with pytest.raises(RuntimeError, match="event upload"):
+        run_package(
+            payload, root, s3, expected_sha=hashlib.sha256(payload.read_bytes()).hexdigest()
+        )
+    assert len(list((root / "output/data/timing").glob("*-summary.json"))) == 2
+    assert not (root / "model/artifact-manifest.json").exists()
+
+
+@pytest.mark.parametrize("missing", ["train", "test", "archive", "jsonl"])
+def test_timing_archive_requires_complete_invocations(tmp_path, missing):
+    from recommend.train.comm.timing import session
+    from recommend.train.platforms.sagemaker.artifacts import validate_timing_files
+
+    config = {"profiling": {"enabled": True}}
+    package = {"config": config, "runtime": {"stages": ["train", "test"]}}
+    for phase in ["train", "test", "archive"]:
+        with session(config, tmp_path, phase):
+            pass
+    names = {str(p.relative_to(tmp_path)) for p in (tmp_path / "timing").iterdir()}
+    validate_timing_files(tmp_path, package, names, archived=True)
+    if missing == "jsonl":
+        names = {
+            name
+            for name in names
+            if not name.startswith("timing/test-") or not name.endswith(".jsonl")
+        }
+    else:
+        names = {name for name in names if not name.startswith(f"timing/{missing}-")}
+    with pytest.raises(ValueError, match="timing"):
+        validate_timing_files(tmp_path, package, names, archived=True)

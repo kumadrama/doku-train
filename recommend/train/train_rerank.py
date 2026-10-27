@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from recommend.train.comm.process_logs import run_captured
 from recommend.train.comm.training_pipeline import train
 from recommend.train.comm.tree_pretraining import load_tree_config, prepare_tree_buckets
 from recommend.train.eval_rerank import execute_test as execute_test
@@ -109,7 +110,7 @@ def execute_train(
             args += ["--frozen-input", str(frozen_input)]
         if resume:
             args += ["--resume", str(resume)]
-        completed = subprocess.run(args, text=True, capture_output=True, check=False)
+        completed = run_captured(args, config)
         if completed.returncode:
             raise RuntimeError(
                 f"training process failed ({completed.returncode}): {completed.stderr[-2000:]}"

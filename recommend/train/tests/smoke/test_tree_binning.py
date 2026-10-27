@@ -11,8 +11,10 @@ from recommend.train.tests.tree_binning_fixture import FIELD, make_tree_experime
 from recommend.train.train_rerank import execute_test, execute_train, execute_train_local
 
 
-def test_tree_then_nn_and_test_without_yaml(tmp_path):
+@pytest.mark.parametrize("profiling", [False, True])
+def test_tree_then_nn_and_test_without_yaml(tmp_path, profiling, capsys):
     config = make_tree_experiment(tmp_path)
+    config["profiling"] = {"enabled": profiling, "print_logs": profiling}
     result = execute_train(config)
     root = Path(result["run_dir"])
     artifact = json.loads((root / "tree-buckets.json").read_text())
@@ -24,6 +26,15 @@ def test_tree_then_nn_and_test_without_yaml(tmp_path):
         teacher / "input/manifest.json"
     ).read_bytes()
     assert not (teacher / "test-metrics.json").exists()
+    assert not (teacher / "timing").exists()
+    if profiling:
+        summary = json.loads(next((root / "timing").glob("train-*-summary.json")).read_text())
+        assert "train/tree_pretraining" in summary["stages"]
+        assert not any(k.startswith("train/tree_pretraining/") for k in summary["stages"])
+        assert "DOKU_TIMING " in capsys.readouterr().out
+    else:
+        assert not (root / "timing").exists()
+        assert "DOKU_TIMING " not in capsys.readouterr().out
     state = json.loads((root / "fitted-feature-state/state.json").read_text())
     assert state["tree_buckets"] == artifact
     assert state["vocabs"][FIELD + "_tree"] == list(range(len(artifact["features"][FIELD]) + 1))

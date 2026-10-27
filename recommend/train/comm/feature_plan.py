@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 
+from recommend.train.comm import timing
 from recommend.train.comm.expressions import (
     compile_expression,
     dependencies,
@@ -96,6 +97,7 @@ class FeaturePlan:
         self.tree_buckets = artifact
         self.tree_thresholds = thresholds
 
+    @timing.measured("row_transform", unit="rows")
     def row(self, source: dict[str, Any]) -> dict[str, Any] | None:
         row = dict(source)
         if not evaluate(self.config["item_filter"], row):
@@ -208,15 +210,18 @@ class FeaturePlan:
             row = self.row(source)
             if row is None:
                 continue
-            for field, table in self.tables.items():
-                v = row[field]
-                seq = v if isinstance(v, list) else [] if v is None else [v]
-                values[table].update(seq)
-                if self.dtypes.get(field, "").startswith("list"):
-                    self.lengths[field] = max(self.lengths.get(field, 1), len(seq))
-        self.vocabs = {
-            table: {v: i + 2 for i, v in enumerate(sorted(vals))} for table, vals in values.items()
-        }
+            with timing.current().span("vocab_collect", unit="rows"):
+                for field, table in self.tables.items():
+                    v = row[field]
+                    seq = v if isinstance(v, list) else [] if v is None else [v]
+                    values[table].update(seq)
+                    if self.dtypes.get(field, "").startswith("list"):
+                        self.lengths[field] = max(self.lengths.get(field, 1), len(seq))
+        with timing.current().span("vocab_finalize"):
+            self.vocabs = {
+                table: {v: i + 2 for i, v in enumerate(sorted(vals))}
+                for table, vals in values.items()
+            }
 
     def state(self) -> dict[str, Any]:
         return {
@@ -242,6 +247,7 @@ class FeaturePlan:
         }
         self.lengths = state["lengths"]
 
+    @timing.measured("encode_row", unit="rows")
     def encode(self, row: dict[str, Any]) -> dict[str, np.ndarray]:
         out = {}
         if "tree_inputs" in self.config:
@@ -316,17 +322,19 @@ def prepare_arrays(
             continue
         encoded = plan.encode(row)
         if not arrays:
-            needed = sum(x.nbytes * capacity for x in encoded.values())
-            if needed > budget:
-                raise ValueError("encoded dataset exceeds disk budget")
-            for i, (key, v) in enumerate(encoded.items()):
-                arrays[key] = np.lib.format.open_memmap(
-                    root / f"{i}.npy", mode="w+", dtype=v.dtype, shape=(capacity, *v.shape)
-                )
-        for k, v in encoded.items():
-            if arrays[k].shape[1:] != v.shape:
-                raise ValueError("feature shape changed across rows")
-            arrays[k][count] = v
+            with timing.current().span("array_allocate"):
+                needed = sum(x.nbytes * capacity for x in encoded.values())
+                if needed > budget:
+                    raise ValueError("encoded dataset exceeds disk budget")
+                for i, (key, v) in enumerate(encoded.items()):
+                    arrays[key] = np.lib.format.open_memmap(
+                        root / f"{i}.npy", mode="w+", dtype=v.dtype, shape=(capacity, *v.shape)
+                    )
+        with timing.current().span("array_assign", unit="rows"):
+            for k, v in encoded.items():
+                if arrays[k].shape[1:] != v.shape:
+                    raise ValueError("feature shape changed across rows")
+                arrays[k][count] = v
         count += 1
     if not count:
         raise ValueError("split contains no samples after item_filter")

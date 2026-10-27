@@ -65,3 +65,14 @@ Source: [Spec 015](../../specs/015-parameter-free-attention/design.md)，2026-10
 Source: [Spec 017](../../specs/017-tree-threshold-binning/design.md)，2026-10-23 用户确认。
 
 train_rerank composition root 装配公共前置编排与模型专属阈值导出；comm 保持不依赖具体模型。NN 特征拟合前加载 train-fitted 的冻结树阈值，全桶域编码进入 Feature State。目标和验证状态见 Spec 017。
+
+
+## DeepFM 耗时观测（Spec 019）
+
+Source: [Spec 019](../../specs/019-deepfm-timing/design.md)，2026-10-27 用户确认。
+
+当前状态：公共 timing collector 以上下文 session 装配，公共数据组件不依赖具体模型。
+rerank schema/validator 限制仅 DeepFM 可开启 profiling，默认关闭；train/test/归档各有
+独立 invocation。stdout 和 Run JSONL/summary 共用累计事件，普通失败保留诊断。
+profiling 不参与训练逻辑 identity，不改变模型、特征或选模；SageMaker 收录计时产物。
+目标状态：本地验证后可另行授权更新镜像和云端诊断；当前未部署，不声明生产性能收益。

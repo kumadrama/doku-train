@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 019：DeepFM 耗时观测](specs/019-deepfm-timing/requirements.md)、[设计](specs/019-deepfm-timing/design.md)、[任务](specs/019-deepfm-timing/tasks.md)、[验证](specs/019-deepfm-timing/verification.md) — 本地实现及验证通过，未部署；默认关闭，不改变训练算法。
+
 - [Spec 018：位置正则化](specs/018-weight-decay-overrides/requirements.md)、[设计](specs/018-weight-decay-overrides/design.md)、[任务](specs/018-weight-decay-overrides/tasks.md)、[验证](specs/018-weight-decay-overrides/verification.md)。
 
 - [Spec 016：Finder 结构公共 loss](specs/016-shared-nn-loss/requirements.md)、[设计](specs/016-shared-nn-loss/design.md) — 需求与设计已确认；公共 loss 已实施，验证见 [验证](specs/016-shared-nn-loss/verification.md)。

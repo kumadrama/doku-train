@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from recommend.train.comm import metric_events
+from recommend.train.comm import metric_events, timing
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
 from recommend.train.comm.nn_utils import get_loss
 from recommend.train.comm.runtime_budget import check_memory
@@ -66,6 +66,7 @@ class NeuralRunner:
         if torch.get_num_interop_threads() != wanted:
             torch.set_num_interop_threads(wanted)
         torch.use_deterministic_algorithms(True)
+        self.timer = timing.current()
         self.config = config
         self.state = state
         self.model = ConfiguredRerank(config, state)
@@ -85,32 +86,41 @@ class NeuralRunner:
         logits: dict[str, list[np.ndarray]] = {n: [] for n in pred}
         totals = {n: [0.0, 0] for n in pred}
         with torch.no_grad():
-            for batch in batches(arrays, self.config["batch_size"]):
-                outputs = self.model(batch)
-                for name, t in self.config["tasks"].items():
-                    mask = batch["mask:" + name][:, 0].bool()
-                    n = int(mask.sum())
-                    if n:
-                        totals[name][0] += float(
-                            get_loss(
-                                t,
-                                outputs[name][mask],
-                                batch["label:" + name][:, 0][mask],
-                                reduction="none",
-                            ).sum()
-                        )
-                        totals[name][1] += n
-                    logits[name].append(outputs[name].numpy())
-                    pred[name].append(predictions(outputs[name], t).numpy())
-        return {
-            name: {
-                "metrics": metric_values(
-                    t, name, arrays, np.concatenate(pred[name]), logits=np.concatenate(logits[name])
-                ),
-                "loss": totals[name][0] / totals[name][1] if totals[name][1] else None,
+            for batch in self.timer.iterate(
+                "batch_fetch", batches(arrays, self.config["batch_size"])
+            ):
+                with self.timer.span("forward"):
+                    outputs = self.model(batch)
+                with self.timer.span("loss_predictions"):
+                    for name, t in self.config["tasks"].items():
+                        mask = batch["mask:" + name][:, 0].bool()
+                        n = int(mask.sum())
+                        if n:
+                            totals[name][0] += float(
+                                get_loss(
+                                    t,
+                                    outputs[name][mask],
+                                    batch["label:" + name][:, 0][mask],
+                                    reduction="none",
+                                ).sum()
+                            )
+                            totals[name][1] += n
+                        logits[name].append(outputs[name].numpy())
+                        pred[name].append(predictions(outputs[name], t).numpy())
+        with self.timer.span("metrics"):
+            return {
+                name: {
+                    "metrics": metric_values(
+                        t,
+                        name,
+                        arrays,
+                        np.concatenate(pred[name]),
+                        logits=np.concatenate(logits[name]),
+                    ),
+                    "loss": totals[name][0] / totals[name][1] if totals[name][1] else None,
+                }
+                for name, t in self.config["tasks"].items()
             }
-            for name, t in self.config["tasks"].items()
-        }
 
     def fit(
         self,
@@ -145,44 +155,56 @@ class NeuralRunner:
         step = int(resume.get("global_step", 0)) if resume else 0
         best_step = int(resume.get("best_step", 0)) if resume else 0
         count = len(next(iter(train.values())))
+        self.timer.epoch_previous = {k: v["elapsed_seconds"] for k, v in self.timer.totals.items()}
         for epoch in range(start, self.config["max_epochs"]):
             self.model.train()
             sums = {n: [0.0, 0] for n in self.config["tasks"]}
-            for batch in batches(train, self.config["batch_size"], rng.permutation(count)):
-                self.optimizer.zero_grad(set_to_none=True)
-                outputs = self.model(batch)
-                losses = []
-                batch_losses: dict[str, float | None] = {n: None for n in self.config["tasks"]}
-                for name, t in self.config["tasks"].items():
-                    mask = batch["mask:" + name][:, 0].bool()
-                    n = int(mask.sum())
-                    if n:
-                        per = get_loss(
-                            t,
-                            outputs[name][mask],
-                            batch["label:" + name][:, 0][mask],
-                            reduction="none",
-                        )
-                        losses.append(
-                            get_loss(
+            with self.timer.span("shuffle"):
+                order = rng.permutation(count)
+            for batch in self.timer.iterate(
+                "batch_fetch", batches(train, self.config["batch_size"], order)
+            ):
+                with self.timer.span("zero_grad"):
+                    self.optimizer.zero_grad(set_to_none=True)
+                with self.timer.span("forward"):
+                    outputs = self.model(batch)
+                with self.timer.span("loss"):
+                    losses = []
+                    batch_losses: dict[str, float | None] = {n: None for n in self.config["tasks"]}
+                    for name, t in self.config["tasks"].items():
+                        mask = batch["mask:" + name][:, 0].bool()
+                        n = int(mask.sum())
+                        if n:
+                            per = get_loss(
                                 t,
                                 outputs[name][mask],
                                 batch["label:" + name][:, 0][mask],
-                                loss_weight_data=batch["weight:" + name][:, 0][mask],
+                                reduction="none",
                             )
-                        )
-                        batch_losses[name] = float(per.detach().mean())
-                        sums[name][0] += float(per.detach().sum())
-                        sums[name][1] += n
+                            losses.append(
+                                get_loss(
+                                    t,
+                                    outputs[name][mask],
+                                    batch["label:" + name][:, 0][mask],
+                                    loss_weight_data=batch["weight:" + name][:, 0][mask],
+                                )
+                            )
+                            batch_losses[name] = float(per.detach().mean())
+                            sums[name][0] += float(per.detach().sum())
+                            sums[name][1] += n
                 if losses:
                     loss = torch.stack(losses).sum()
                     if not torch.isfinite(loss):
                         raise ValueError("non-finite training loss")
-                    loss.backward()  # type: ignore[no-untyped-call]
-                    self.optimizer.step()
+                    with self.timer.span("backward"):
+                        loss.backward()  # type: ignore[no-untyped-call]
+                    with self.timer.span("optimizer"):
+                        self.optimizer.step()
                     step += 1
-                    metric_events.training_step(step, epoch + 1, batch_losses)
-            metrics = self.evaluate(validation)
+                    with self.timer.span("metric_emit"):
+                        metric_events.training_step(step, epoch + 1, batch_losses)
+            with self.timer.span("validation_epoch", report=True):
+                metrics = self.evaluate(validation)
             metric_events.evaluation("validation", step, epoch + 1, metrics)
             terms = self.config["selection"]["task_losses"]
             score = (
@@ -192,7 +214,8 @@ class NeuralRunner:
             )
             if score is not None and (best is None or score < best):
                 best = score
-                best_state = copy.deepcopy(self.model.state_dict())
+                with self.timer.span("best_state_copy"):
+                    best_state = copy.deepcopy(self.model.state_dict())
                 best_epoch = epoch + 1
                 best_step = step
                 stale = 0
@@ -224,33 +247,39 @@ class NeuralRunner:
                 "trace": trace,
                 "feature_state": self.state,
             }
-            checkpoint.save_resume(state)
+            with self.timer.span("resume_save", report=True):
+                checkpoint.save_resume(state)
+            self.timer.epoch(epoch + 1)
             print(f"epoch={epoch + 1} validation_selection={score}", flush=True)
             if stale >= self.config["early_stopping_patience"]:
                 break
         if best_state is not None:
             self.model.load_state_dict(best_state)
         buffer = io.BytesIO()
-        torch.save(
-            {
-                "format": "rerank/v2",
-                "identity": identity,
-                "config": self.config,
-                "feature_state": self.state,
-                "model": self.model.state_dict(),
-                "selected_epoch": best_epoch,
-                "global_step": best_step if best_state is not None else step,
-            },
-            buffer,
-        )
-        checkpoint.save_bytes(self.checkpoint_name, buffer.getvalue())
+        with self.timer.span("checkpoint_serialize", report=True):
+            torch.save(
+                {
+                    "format": "rerank/v2",
+                    "identity": identity,
+                    "config": self.config,
+                    "feature_state": self.state,
+                    "model": self.model.state_dict(),
+                    "selected_epoch": best_epoch,
+                    "global_step": best_step if best_state is not None else step,
+                },
+                buffer,
+            )
+        with self.timer.span("checkpoint_write", report=True):
+            checkpoint.save_bytes(self.checkpoint_name, buffer.getvalue())
+        with self.timer.span("validation_selected", report=True):
+            selected_metrics = self.evaluate(validation)
         return {
             "selection": {
                 "status": "selected" if best_epoch else "unavailable",
                 "epoch": best_epoch,
                 "global_step": best_step if best_state is not None else step,
             },
-            "validation": self.evaluate(validation),
+            "validation": selected_metrics,
             "history": trace,
         }
 

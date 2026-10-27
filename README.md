@@ -267,3 +267,27 @@ attn_scale: 1.0
 combiner 支持 concat/sum/avg，保留历史长度；history_pooling 支持 mean/weighted_mean/attention/none，历史组必须显式声明。attention 对组合后的 query/history 计算点积除以固定尺度、masked softmax、加权求和。多字段历史须按位置对齐，组合后的 query/history 维度相等。none 保留序列，不能直接进入 DNN/FM。
 
 旧 combiner: mean/weighted_mean 须迁移为 combiner: concat 加对应 history_pooling；上一版未发布的 skip_hist_attn 接口已移除。详细 schema、迁移表和数据边界见 [Spec 015](specs/015-parameter-free-attention/design.md)。本地与 SageMaker 共用模型代码，云端使用前仍需更新训练镜像。
+
+
+### DeepFM 耗时观测（默认关闭）
+
+仅 DeepFM（`model_type: rerank` 且 `fm_layers` 非空）可开启：
+
+```yaml
+profiling:
+  enabled: true
+  print_logs: true
+```
+
+省略配置或两个值均为 false 时，不采集新增细分计时、不创建 timing 目录。
+`enabled: true, print_logs: false` 只保存统计文件；打印开启必须同时启用采集。
+原有普通训练日志与粗粒度 `DOKU_STAGE` 保留。新增 `DOKU_TIMING` 是 JSON 结构事件，
+本地 stdout 或 SageMaker CloudWatch 可查看。阶段开始/结束、每轮汇总及长阶段每 60 秒
+在下一处理边界输出进度，batch 细项只累计、不逐条打印。
+
+Run 下 `timing/<train|test|archive>-<invocation_id>.jsonl` 保存事件，
+`*-summary.json` 保存阶段累计秒数、次数/行数、吞吐与状态；重复 test 生成独立文件。
+失败也尽量保存已完成计时。SageMaker 成功归档含计时文件，失败诊断写入 output/data/timing。
+父阶段包含子阶段，不能重复相加；并行 worker 耗时可能重叠，不能直接当作壁钟时间。
+前置树分桶只记录总耗时，平台退出后的压缩上传不在容器内计时范围。
+详见 [Spec 019](specs/019-deepfm-timing/design.md)。本次不包含其他性能优化或云部署。
