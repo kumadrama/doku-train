@@ -62,8 +62,8 @@ class Runtime(BaseModel):
             raise ValueError("stages must be train or train followed by test")
         if self.version != "doku-sagemaker-runtime/v1":
             raise ValueError("unsupported runtime")
-        if self.instance_type != "ml.m5.2xlarge" or self.instance_count != 1:
-            raise ValueError("only single ml.m5.2xlarge supported")
+        if self.instance_type not in {"ml.m5.2xlarge", "ml.m5.4xlarge"} or self.instance_count != 1:
+            raise ValueError("only single ml.m5.2xlarge or ml.m5.4xlarge supported")
         for value, length in [
             (self.source_revision, 40),
             (self.source_sha256, 64),

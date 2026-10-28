@@ -454,3 +454,25 @@ def test_timing_archive_requires_complete_invocations(tmp_path, missing):
         names = {name for name in names if not name.startswith(f"timing/{missing}-")}
     with pytest.raises(ValueError, match="timing"):
         validate_timing_files(tmp_path, package, names, archived=True)
+
+
+@pytest.mark.parametrize("instance", ["ml.m5.2xlarge", "ml.m5.4xlarge"])
+def test_supported_instance_survives_package_validation(tmp_path, instance):
+    config, runtime, binding, s3, _ = fixture(tmp_path)
+    runtime = Runtime.model_validate({**runtime.model_dump(), "instance_type": instance})
+    request = prepare(config, runtime, binding, "instance-test", s3, tmp_path / "prepared")
+    package = json.loads((tmp_path / "prepared/package.json").read_text())
+    assert Runtime.model_validate(package["runtime"]).instance_type == instance
+    assert request["ResourceConfig"]["InstanceType"] == instance
+    assert request["ResourceConfig"]["InstanceCount"] == 1
+
+
+@pytest.mark.parametrize(
+    "instance,count", [("ml.m5.8xlarge", 1), ("ml.p3.2xlarge", 1), ("ml.m5.4xlarge", 2)]
+)
+def test_other_instances_and_multi_node_rejected(tmp_path, instance, count):
+    _, runtime, _, _, _ = fixture(tmp_path)
+    with pytest.raises(ValueError, match="only single"):
+        Runtime.model_validate(
+            {**runtime.model_dump(), "instance_type": instance, "instance_count": count}
+        )
