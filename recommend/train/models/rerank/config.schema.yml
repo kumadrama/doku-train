@@ -135,6 +135,23 @@ properties:
       learning_rate:
         type: number
         exclusiveMinimum: 0
+      learning_rate_schedule:
+        type: object
+        additionalProperties: false
+        required: [type, points]
+        properties:
+          type:
+            enum: [piecewise_linear, piecewise_constant]
+          points:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              additionalProperties: false
+              required: [epoch, learning_rate]
+              properties:
+                epoch: {type: integer, minimum: 1}
+                learning_rate: {type: number, exclusiveMinimum: 0}
       weight_decay: &id004
         type: number
         minimum: 0

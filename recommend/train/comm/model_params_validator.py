@@ -12,6 +12,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from recommend.train.comm.expressions import dependencies, transformations, tree_feature
+from recommend.train.comm.learning_rate import validate_schedule
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +89,7 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         elif "soft_label" in task:
             raise ValueError("soft_label requires softmax_soft")
     if name == "rerank":
+        validate_schedule(config["optimizer"], config["max_epochs"])
         overrides = config["optimizer"].get("weight_decay_overrides", {})
         if not set(overrides.get("tasks", {})) <= set(config["tasks"]):
             raise ValueError("weight_decay_overrides references unknown task")
