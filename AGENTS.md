@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 023：Epoch 学习率调度](specs/023-epoch-learning-rate/requirements.md)、[设计](specs/023-epoch-learning-rate/design.md)、[任务](specs/023-epoch-learning-rate/tasks.md)、[验证](specs/023-epoch-learning-rate/verification.md)。
+
 - [Spec 022：批量特征准备](specs/022-batched-feature-preparation/requirements.md)、[设计](specs/022-batched-feature-preparation/design.md)、[任务](specs/022-batched-feature-preparation/tasks.md)、[验证](specs/022-batched-feature-preparation/verification.md) — 需求与设计已确认，批量准备与训练扫描复用已本地实施；验证证据见记录，未执行云训练或部署。
 
 - [Spec 019：DeepFM 耗时观测](specs/019-deepfm-timing/requirements.md)、[设计](specs/019-deepfm-timing/design.md)、[任务](specs/019-deepfm-timing/tasks.md)、[验证](specs/019-deepfm-timing/verification.md) — 本地实现及验证通过，未部署；默认关闭，不改变训练算法。

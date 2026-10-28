@@ -63,7 +63,10 @@ def test_new_cpu_training(tmp_path, model, attention):
 @pytest.mark.parametrize(
     ("keep_probability", "attention"), [(1.0, False), (0.9, False), (0.9, True)]
 )
-def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probability, attention):
+@pytest.mark.parametrize("schedule_type", [None, "piecewise_linear", "piecewise_constant"])
+def test_epoch_resume_matches_uninterrupted(
+    tmp_path, monkeypatch, keep_probability, attention, schedule_type
+):
     from pathlib import Path
 
     import torch
@@ -79,6 +82,18 @@ def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probabil
         config["attn_scale"] = 0.5
     config["output_layer"]["layer_dropout"] = keep_probability
     config["tasks"]["completion"]["layer_dropout"] = keep_probability
+    if schedule_type:
+        config["max_epochs"] = 4
+        config["early_stopping_patience"] = 5
+        lr = config["optimizer"]["learning_rate"]
+        config["optimizer"]["learning_rate_schedule"] = {
+            "type": schedule_type,
+            "points": [
+                {"epoch": 1, "learning_rate": lr},
+                {"epoch": 3, "learning_rate": lr / 4},
+            ],
+        }
+        config["optimizer"]["weight_decay_overrides"] = {"shared": 0.0}
     original = NeuralRunner.evaluate
     calls = 0
 
@@ -101,6 +116,9 @@ def test_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch, keep_probabil
     uninterrupted = execute_train(config)
     a = torch.load(Path(resumed["run_dir"]) / "checkpoint.pt", weights_only=False)
     b = torch.load(Path(uninterrupted["run_dir"]) / "checkpoint.pt", weights_only=False)
+    resumed_metrics = json.loads((Path(resumed["run_dir"]) / "metrics.json").read_text())
+    full_metrics = json.loads((Path(uninterrupted["run_dir"]) / "metrics.json").read_text())
+    assert resumed_metrics["history"] == full_metrics["history"]
     for key in a["model"]:
         assert torch.equal(a["model"][key], b["model"][key]), key
 

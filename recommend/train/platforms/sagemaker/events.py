@@ -30,7 +30,7 @@ class EventSink:
         print("DOKU_METRIC " + json.dumps(event, allow_nan=False), flush=True)
         value = event.get("value")
         if value is not None and math.isfinite(float(value)):
-            name = f"{event['split']}/{event['task']}/{event['metric']}"
+            name = "/".join(str(event[k]) for k in ("split", "task", "metric") if event[k])
             print(f"SM_METRIC {name}={value}", flush=True)
             with self.lock:
                 self.pending.append(dict(event))
@@ -46,7 +46,13 @@ class EventSink:
         with SummaryWriter(str(directory)) as writer:
             for e in pending:
                 writer.add_scalar(
-                    f"{e['split']}/{e['task']}/{e['metric']}", float(e["value"]), int(e["step"])
+                    "/".join(str(e[k]) for k in ("split", "task", "metric") if e[k]),
+                    float(e["value"]),
+                    int(
+                        e["epoch"]
+                        if e["metric"] == "learning_rate" and not e["task"]
+                        else e["step"]
+                    ),
                 )
         for path in directory.iterdir():
             put_once(self.s3, self.uri + path.name, path.read_bytes(), self.key)

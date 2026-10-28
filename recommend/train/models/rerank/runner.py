@@ -11,6 +11,7 @@ import torch
 
 from recommend.train.comm import metric_events, timing
 from recommend.train.comm.checkpoint_agent import CheckpointAgent
+from recommend.train.comm.learning_rate import learning_rate_for_epoch
 from recommend.train.comm.nn_utils import get_loss
 from recommend.train.comm.runtime_budget import check_memory
 from recommend.train.comm.task_metrics import metric_values
@@ -157,6 +158,10 @@ class NeuralRunner:
         count = len(next(iter(train.values())))
         self.timer.epoch_previous = {k: v["elapsed_seconds"] for k, v in self.timer.totals.items()}
         for epoch in range(start, self.config["max_epochs"]):
+            lr = learning_rate_for_epoch(self.config["optimizer"], epoch + 1)
+            for group in self.optimizer.param_groups:
+                group["lr"] = lr
+            metric_events.learning_rate(step, epoch + 1, lr)
             self.model.train()
             sums = {n: [0.0, 0] for n in self.config["tasks"]}
             with self.timer.span("shuffle"):
@@ -226,6 +231,7 @@ class NeuralRunner:
                     "epoch": epoch + 1,
                     "global_step": step,
                     "selection_score": score,
+                    "learning_rate": lr,
                     "validation": metrics,
                     "train_loss": {n: x[0] / x[1] if x[1] else None for n, x in sums.items()},
                 }

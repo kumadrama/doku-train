@@ -46,3 +46,7 @@ def evaluation(split: str, step: int, epoch: int, results: dict[str, Any]) -> No
         for name, metric in result["metrics"].items():
             if isinstance(metric, dict):
                 emit(dict(split=split, task=task, metric=name, step=step, epoch=epoch, **metric))
+
+
+def learning_rate(step: int, epoch: int, value: float) -> None:
+    emit(dict(split="train", task="", metric="learning_rate", step=step, epoch=epoch, value=value))

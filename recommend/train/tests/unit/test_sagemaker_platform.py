@@ -152,6 +152,7 @@ def test_events_keep_step_and_do_not_emit_null_scalar(tmp_path):
     s3 = MemoryS3()
     sink = EventSink(tmp_path, s3, "s3://synthetic/events/", "key", 30)
     with metric_events.observe(sink, 2):
+        metric_events.learning_rate(123, 2, 0.002)
         metric_events.training_step(1, 1, {"task": 0.9})
         metric_events.training_step(2, 1, {"task": 0.4})
         metric_events.training_step(3, 2, {"task": 0.3})
@@ -163,6 +164,9 @@ def test_events_keep_step_and_do_not_emit_null_scalar(tmp_path):
     events = EventAccumulator(str(files[0])).Reload()
     assert [x.step for x in events.Scalars("train/task/loss")] == [2, 4]
     assert "validation/task/auc" not in events.Tags()["scalars"]
+    assert [(x.step, x.value) for x in events.Scalars("train/learning_rate")] == [
+        (2, pytest.approx(0.002))
+    ]
     assert len(s3.puts) == 1
 
 
