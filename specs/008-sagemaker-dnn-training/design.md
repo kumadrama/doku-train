@@ -214,3 +214,10 @@ PROD 示例有明确占位值，不可直接使用。IaC 模块默认不启用�
 跨日合并 Manifest 与合同可 create-only 上传至已授权的实验 `submissions/<run_id>/dataset/` 前缀。
 提交入口允许该前缀的元数据；分片 URI 仍逐条限定于 binding.input_prefixes，不能借此读取实验区的任意分片。
 不修改生产数据或扩展 IAM，配置仍声明精确 manifest_uri。
+
+
+## 2026-10-28：单机 16 vCPU 实验
+
+Source: 用户授权仅调整实例规格校验、补测试、重建镜像并运行 E1 40 轮。
+
+允许单机 `ml.m5.2xlarge` 和 `ml.m5.4xlarge`，默认仍为前者；拒绝其他规格与多机。仅扩展 Runtime 白名单，不修改模型算法、线程默认值或内存预算校验。此次实验显式设置 `intra_op_threads=16`，沿用冻结输入、其他训练参数和计时开关。

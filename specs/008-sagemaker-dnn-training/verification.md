@@ -157,3 +157,10 @@ Source: 用户授权“继续上传镜像，先跑一个训练任务，验证云
 本轮实际执行该命令 exit 0；另用 TensorBoard `/data/plugin/scalars/tags` 与
 `/data/plugin/scalars/scalars` API 对 33 条序列逐条断言，全部通过。
 未运行 15 并发、每日调度或模型发布。真实 DeepFM 和更长日期容量仍未验收。
+
+## 2026-10-28：单机 16 vCPU 校验扩展
+
+在从 main b625f61 创建的独立工作树验证；未带入原工作区其他改动。
+- `pytest recommend/train/tests/unit/test_sagemaker_platform.py -q`：25 passed，16.59 秒。
+- `ruff check .`：通过；`mypy recommend`：69 源文件通过；`git diff --check`：通过。
+- 新增两种允许实例的请求生成与包反序列化测试，以及其他实例/GPU/多机拒绝测试。
