@@ -1,0 +1,16 @@
+[project]
+name = "doku-train-finder-tf"
+version = "0.1.0"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+  "tensorflow-cpu==2.11.1; sys_platform == 'linux'",
+  "tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "numpy==1.23.5", "pyarrow==17.0.0", "PyYAML==6.0.2",
+  "boto3>=1.35,<2", "psutil>=6,<8",
+]
+[dependency-groups]
+dev = ["pytest>=8,<9"]
+[tool.pytest.ini_options]
+testpaths = ["train/tests"]
+pythonpath = [".."]
+addopts = ["-p", "no:cacheprovider"]

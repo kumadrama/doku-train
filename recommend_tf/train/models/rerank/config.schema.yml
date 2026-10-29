@@ -1,0 +1,22 @@
+# Current-path surface, with detailed validation in model_params.py.
+type: object
+required: [input_features, embed_name, embed_dim, dnn_inputs, output_layer, tasks]
+properties:
+  input_features:
+    type: object
+    additionalProperties:
+      type: object
+      required: [features]
+      properties:
+        input_type: {enum: [scalar, embed], default: embed}
+        combiner: {enum: [concat], default: concat}
+        history_pooling: {enum: [mean, weighted_mean, attention]}
+  optimizer: {enum: [adam, adamw], default: adam}
+  sparse_optimizer: {enum: ['', adam, adamw], default: ''}
+  dense_use_weight_decay: {type: boolean, default: false}
+  sparse_use_weight_decay: {type: boolean, default: false}
+  sparse_weight_decay: {type: number, minimum: 0, default: 0}
+  sparse_weight_decay_vars:
+    type: array
+    items: {type: string, minLength: 1}
+    default: []

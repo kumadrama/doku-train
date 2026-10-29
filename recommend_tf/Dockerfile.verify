@@ -1,0 +1,8 @@
+FROM public.ecr.aws/docker/library/python:3.10-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace \
+    TF_CPP_MIN_LOG_LEVEL=2 TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1
+WORKDIR /workspace
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt
+COPY recommend_tf /workspace/recommend_tf
+ENTRYPOINT ["python", "-m", "recommend_tf.train.cloud_verify"]

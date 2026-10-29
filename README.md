@@ -9,6 +9,8 @@ Doku 推荐精排的单机 CPU 训练仓库。运行时读取公共和模型 YAM
 默认值只作用于原始 features；转换表达式可声明 log 缩放、数值分桶和 embedding。不自动添加缺失标记。
 共享词表仅训练集拟合。没有固定四目标、27/1/28、refit 或旧格式兼容；训练不设质量门禁，发布门禁由 YAML 声明。
 
+独立 TensorFlow 路径位于 [`recommend_tf/train`](recommend_tf/README.md)，使用自己的 Python 3.10 / TF 2.11 CPU 环境与锁文件。其配置、Finder 优化器语义与 checkpoint 不和下述 PyTorch 路径混用；`make check` 同时运行两套测试。
+
 ## 本地使用
 
 ```sh

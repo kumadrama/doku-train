@@ -24,7 +24,7 @@ jobs:
         with:
           version: "0.11.18"
           enable-cache: true
-      - run: uv python install 3.12
+      - run: uv python install 3.12 3.10
       - run: make check
       - run: ./build/build.sh && bash -n build/build.sh build/docker-build.sh
   sagemaker-container:
