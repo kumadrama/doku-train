@@ -65,6 +65,7 @@ Source: 用户确认 opt15/prep15 一致，授权将当前 TF 迁移和两项耗
 - [x] 隔离合并分支，只纳入当前 `recommend_tf/train`、Spec 024、文档与验证入口；不带入旧 TF 原型或无关生产配置。
 - [x] 全量 15 轮 opt/prep 指标逐项一致，327 个 checkpoint 变量（含模型/优化器状态）每轮逐字节一致；冻结 Manifest/record/Feature State 一致。
 - [x] 当前 TF 代码测试 41 passed；格式/lint/mypy 与构建脚本检查通过。
-- [ ] 完整根测试及远端 PR CI 通过后合并、同步本地 main。
+- [x] 完整根 `make check`：318 passed / 3 skipped，TF 41 passed；远端 PR CI 作为合并前最后检查。
+- [ ] 经 PR CI 通过后合并并同步本地 main。
 
 原始实验配置、真实数据、checkpoint 与完整报告继续只保留在本地 runs/，不随源码提交。上述为本次合入状态，前文按时间记录的待验收项不覆盖该结论。

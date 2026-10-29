@@ -235,4 +235,4 @@ Source: 用户确认 opt15/prep15 一致并授权 TF 迁移、两项耗时优化
 - `ruff check . --no-cache`、`ruff format --check . --no-cache`：通过，265文件。
 - `uv run mypy recommend`：70个源文件通过。
 - `./build/build.sh`、`bash -n build/build.sh build/docker-build.sh`、`git diff --check`：通过。
-- 根 `make check` 的原有训练测试正在运行，远端CI与最终合并状态将补充。
+- `UV_NO_SYNC=1 UV_CACHE_DIR=/tmp/doku-tf-pr-uv make check`：完整通过；原有训练测试 318 passed / 3 skipped（176.40秒），TF 测试 41 passed（41.42秒），两份锁、格式、lint、mypy 均通过。3项跳过为未配置本地 Redis 服务的既有集成测试，远端 CI 提供 Redis。远端 PR CI 作为合并前最后检查。
