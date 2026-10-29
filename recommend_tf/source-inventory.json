@@ -1,0 +1,114 @@
+[
+  {
+    "source": "finder-train/recommend/train/comm/common_utils.py",
+    "function": "wrap_for_sparse",
+    "line": 210,
+    "sha256": "ec151849e7a7832c224bac7b50ea98aa25c411b60252830766ae88046017c314",
+    "source_revision": "cbd00cdc32f9e843204eda52d52480d71fde0105"
+  },
+  {
+    "source": "finder-train/recommend/train/comm/common_utils.py",
+    "function": "wrap_for_sparse2",
+    "line": 220,
+    "sha256": "348d07c0914432205c379e48f8b7f3791b894a539b48a64eb05a0d0ea753fcc4",
+    "source_revision": "cbd00cdc32f9e843204eda52d52480d71fde0105"
+  },
+  {
+    "source": "finder-train/recommend/train/comm/common_utils.py",
+    "function": "eval_expr",
+    "line": 1157,
+    "sha256": "2b944849a645013a9691e2953d1dd5136ff4cffda2b2d72a9fbdfc64a47dd69e",
+    "source_revision": "cbd00cdc32f9e843204eda52d52480d71fde0105"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank/modules/utils.py",
+    "function": "fm_layer",
+    "line": 3,
+    "sha256": "eb46d77fbbf13472f8915e5d3dafe16fb371c7f074771e6825dc2baf9302528a",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "finder-train/recommend/train/comm/weight_decay_optimizers.py",
+    "function": "whole file (license retained)",
+    "sha256": "8ac9d0109dc5961ccc7ccd1150ebe5e7dd71ad8d777df1d9fead461d4aa902e8",
+    "source_revision": "cbd00cdc32f9e843204eda52d52480d71fde0105"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank/rerank_model.py",
+    "function": "transform_features",
+    "line": 53,
+    "sha256": "eb7f8a8503af977a288887a5da20ba6460b5d1c5a3608290ce215edaf03a51d6",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank/rerank_model.py",
+    "function": "dnn_layer",
+    "line": 505,
+    "sha256": "cd553e06b82f4f0442612a4328f2e5fcf70640583eeb5da861bf6a5bc6aa82d8",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank/rerank_model.py",
+    "function": "target_layer",
+    "line": 571,
+    "sha256": "ca73896be24170167135570cc2229f8524a1e7c33912085cbf6a9a59ab0516e6",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank_prom/rerank_model.py",
+    "function": "scalar_features",
+    "line": 586,
+    "sha256": "7a77b07eac3c5fefd746e0877582a80b9bda856dc99c7112ec20fd54c2a3d502",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "recommend/train/comm/datasvr/published_dataset.py",
+    "sha256": "28e50530f2872e9c6ecbb5edc311d07dc32b9df4f43b4d131446d90932241097",
+    "adaptation": "Doku contract adapter, namespace only; no Torch feature preparation imported"
+  },
+  {
+    "source": "recommend/train/comm/datasvr/daily_contracts.py",
+    "sha256": "dc1dc026ac45d5c8f44e2cb98490ca6109830a5f21d74340b57b3b185d66903f",
+    "adaptation": "Doku contract adapter, namespace only; no Torch feature preparation imported"
+  },
+  {
+    "source": "recommend/train/comm/runtime_budget.py",
+    "sha256": "67c7c3a3de49187d9a05891060ffd749c4f8cb04eaaf55cda4c5a74dd788ed9b",
+    "adaptation": "Doku contract adapter, namespace only; no Torch feature preparation imported"
+  },
+  {
+    "source": "recommend/train/comm/timing.py",
+    "sha256": "2c731b4877897ef500bec819a37c4e93dbc1fc136936c520d145b96707dca492",
+    "adaptation": "Doku contract adapter, namespace only; no Torch feature preparation imported"
+  },
+  {
+    "adapted_functions": {
+      "embedded_features": "fixed local lookup; current concat groups only",
+      "attention_layer": "Finder dot/softmax subset plus approved weighted_mean/empty masking",
+      "rerank_core_model": "Finder shared DNN/FM/independent heads subset, scopes retained",
+      "model_fn": "Finder ordering and label semantics; local result protocol",
+      "get_loss": "Finder logloss/softmax_soft and exact denominator subset",
+      "optimize_loss": "local dense/sparse registration; source optimizer classes retained"
+    },
+    "operator_adaptations": {
+      "where": "Finder wrap_for_sparse2(tf.where_v2)",
+      "log2": "casts Doku numeric inputs to float32 before logarithm",
+      "clip": "Doku alias for tf.clip_by_value"
+    },
+    "Doku_reader_compat": "hashlib.file_digest replaced with streamed SHA256 for Python3.10",
+    "source_fixes": "No activation-loop bug: original loop already binds dim, act, norm."
+  },
+  {
+    "source": "finder-train/recommend/train/comm/layernorm.py",
+    "function": "LayerNorm affine path; unsupported branches rejected, dynamic dependency omitted",
+    "sha256": "bf6d99ca92e8d028b25d7784ac6a007a5571a1731a1ed5886c6f4bdebbe4d4c0",
+    "source_revision": "cbd00cdc32f9e843204eda52d52480d71fde0105"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank_reddot/rerank_model.py",
+    "function": "_get_norm ln branch (center=True, scale=True), other branches not migrated",
+    "line": 685,
+    "sha256": "d2473c7349f4716fb06df13987ee7a75681db650e7df55a182b654ad47534dcd",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  }
+]

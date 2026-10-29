@@ -32,3 +32,10 @@ Spec 009 在树模型日更范围内扩展。
 
 Source: 2026-10-13 用户确认 S3 方案并授权实施。消费者后台下载与加载，在线请求只用内存中
 已就绪的固定版本，不逐请求读 S3；发布成功不等于服务就绪，不引入 Redis 模型存储。
+
+
+## 独立 Finder TensorFlow CPU 路径（Spec 024）
+
+Source: [Spec 024 设计](../../specs/024-finder-strict-migration/design.md) 与 2026-10-29 用户验收及合入授权。
+
+当前实现位于 `recommend_tf/train`，使用独立 Python 3.10 / TF 2.11 锁文件；训练入口、图内表达式/lookup/loss、固定 train-only 词表、按 epoch 恢复、验证选模与独立 test 均与 `recommend` 解耦。保留 Finder AdamW 的实际衰减公式，不承诺 Torch 参数同名即等价。输入读取和准备/词表拟合两项性能优化随迁移代码交付，执行证据见 Spec 024 verification。旧 TF 原型不属于本实现，推理导出及自动发布仍不在本次范围内。

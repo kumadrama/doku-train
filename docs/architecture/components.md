@@ -87,3 +87,39 @@ Source: [Spec 022 设计](../../specs/022-batched-feature-preparation/design.md)
 重复扫描，validation/test 仍扫描。编码按块写 memmap，原词表编号与状态合同保持。
 通用表达式采用保留 Python 标量语义的列内核，对数桶提供受保护的 NumPy 快路径；
 不等同于所有表达式已成为原生算子。当前仅本地验证，不声明云端性能或已部署。
+
+
+## Spec 024：独立 Finder TF CPU 路径
+
+Source: [Spec 024 设计](../../specs/024-finder-strict-migration/design.md)，用户批准实施。
+
+当前状态：独立 `recommend_tf/train` 已建立本地迁移实现，依赖与 `recommend` 隔离；
+图表达式与主模型来自 Finder，Doku Manifest/合同读取适配到独立命名空间。
+训练前基础分片与固定词表、图内标签/loss_weight、本地优化器与epoch恢复均有合成测试。
+目标状态及完整边界以 Spec024 为准。原生 Linux amd64 完整合成链路已通过 SageMaker 验收；真实数据性能尚待验收，
+本地合成测试不代表云端部署或当前 e1 实验数值等价。
+
+### Spec 024 训练前批量准备（当前本地实现，2026-10-29）
+
+Source: [Spec 024 设计](../../specs/024-finder-strict-migration/design.md)。
+
+TF PublishedDataset 批量验证带时区的审计时间，train_rerank 保留列块，prepared 只对历史字段复用逐行整理；train-only 词表拟合直接读取列批并组装张量。模型图中的表达式、lookup 与训练 shuffle 不变。本地代码变化不代表正在运行的云任务已经更新，性能证据见 Spec 024 verification。
+
+### Finder affine LN（当前本地实现，2026-10-29）
+
+Source: [Spec 024搜参扩展](../../specs/024-finder-strict-migration/hyperparameter-experiments.md)。公共comm/layernorm.py迁移Finder LayerNorm affine路径；模型层在Dense与ReLU之间通过norms="ln"启用，gamma/beta参与训练并保存checkpoint。默认空norm不变，无动态Embedding依赖。仅本地验收，本轮搜参尚未提交。
+
+### TF Adam loss 正则（2026-10-29，本地实现）
+
+Source: Spec 024 regularization-design.md 与用户确认。comm/regularization.py 汇总配置层 Dense L2 与有效 lookup 位置的 Embedding L2；model_fn 将其加入 TRAIN 目标。输入、选模和验证 task 指标不变；关闭时不增加正则。原生 Linux 合成验收38项通过，用户授权新增五组实验；真实数据结果待完成，已有云任务保持原镜像。
+
+### TF 可复现性（2026-10-29，已修复待部署）
+
+Source: Spec024 consistency-investigation.md、design.md、verification.md及用户修复授权。每轮构图前固定Python/NumPy/TF随机状态，沿用seed+epoch；全部实际梯度计算完成后才允许任一优化器更新参数，消除本地Finder AdamW衰减的执行次序竞态。Finder衰减公式不变。本地及原生Linux各41项测试通过。已有训练任务仍使用原镜像，未部署本修复。
+
+
+### Spec 024 合入状态（2026-10-29）
+
+Source: 用户确认 opt15/prep15 逐 epoch 一致并授权 PR 合入；[合入验证](../../specs/024-finder-strict-migration/verification.md)。
+
+当前交付包含独立 Finder TF 路径、列投影/列数组行视图与 RSS 检查降频、列式基础输入准备与 train-only 词表拟合，以及统一随机状态/跨优化器梯度屏障。上述历史阶段中的“待验收”不代表当前状态。两项输入优化保持模型图、loss、shuffle 随机调用顺序和 batch 边界；RSS 检查降频改变超限检测时延。现有 PyTorch/XGBoost 路径不变；云端实验镜像不因源码合并自动更新。

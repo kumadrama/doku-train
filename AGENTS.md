@@ -68,6 +68,16 @@ doku-train/
 
 ### 当前文档索引
 
+Spec 024 在独立 `recommend_tf/train` 范围内采用 Python 3.10 / TensorFlow 2.11 CPU、Finder 标签与优化器语义，取代上文及下文仅限 PyTorch、禁止复用已授权 Finder 源码的对应限制。现有 `recommend` 行为不变，不兼容旧 TF 原型。
+Source: Spec 024 已确认需求与设计；2026-10-29 用户验收 opt15/prep15 并授权通过 PR 合入迁移及两项性能优化。
+
+- [Spec 024：opt40/prep40 一致性排查](specs/024-finder-strict-migration/consistency-investigation.md) — 历史代码隔离诊断，初始化与 AdamW 更新依赖问题；不修改在跑任务。
+
+- [Spec 024：Dense 与命中 Embedding 正则提案](specs/024-finder-strict-migration/regularization-design.md) — 重复 ID 按 lookup 出现次数计数；已确认并本地实施，验证见 Spec 024。
+
+- [Spec 024：Finder严格迁移需求](specs/024-finder-strict-migration/requirements.md)、[范围](specs/024-finder-strict-migration/migration-scope.md)、[设计](specs/024-finder-strict-migration/design.md)、[任务](specs/024-finder-strict-migration/tasks.md)、[验证](specs/024-finder-strict-migration/verification.md)、[搜参设计](specs/024-finder-strict-migration/hyperparameter-experiments.md) — 已实施独立 TF 迁移、训练输入及一次性准备/拟合优化；15 epoch 云端指标一致性通过，当前合入验收见验证记录。
+
+
 - [Spec 023：Epoch 学习率调度](specs/023-epoch-learning-rate/requirements.md)、[设计](specs/023-epoch-learning-rate/design.md)、[任务](specs/023-epoch-learning-rate/tasks.md)、[验证](specs/023-epoch-learning-rate/verification.md)。
 
 - [Spec 022：批量特征准备](specs/022-batched-feature-preparation/requirements.md)、[设计](specs/022-batched-feature-preparation/design.md)、[任务](specs/022-batched-feature-preparation/tasks.md)、[验证](specs/022-batched-feature-preparation/verification.md) — 需求与设计已确认，批量准备与训练扫描复用已本地实施；验证证据见记录，未执行云训练或部署。
