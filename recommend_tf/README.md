@@ -41,3 +41,11 @@ See Spec024 verification for host/platform limits; native Linux input/training a
 
 
 Manifest CLI now runs train → validation selection → selected-checkpoint test. Per-epoch JSON and TensorBoard are stored in training/epoch-metrics and training/tensorboard. cloud_train publishes completed epoch artifacts to an explicit run-scoped S3 URI; prepared input/cache are excluded. Dockerfile.train runs native acceptance with DOKU_MODE=verify before the first formal job.
+
+## 每日训练与 SageMaker 发布（Spec 027）
+
+日更入口 `python -m recommend_tf.train.daily_train_model` 使用 `online_config` 解析训练/验证窗口，与离线实验共用数据准备及训练循环，不执行 test。`export_model` 独立导出选定 checkpoint 与配套状态，提供四任务、无标签 SavedModel 签名。
+
+`python -m recommend_tf.platforms.sagemaker.daily_pipeline` 供上游成功触发的一次性 ECS 调用，支持训练跟踪、导出、不可变 S3 发布、固定 Endpoint 一次性切换与回滚。必须提供明确环境绑定、受信任 ready 证据和独立 serving 仓库镜像。本仓没有 serving 实现，未部署真实 Endpoint。
+
+命令、历史实验导出与跨仓合同见 [运行说明](../specs/027-tf-daily-serving/operations.md)，本地验证与尚待外部联调的边界见 [验证记录](../specs/027-tf-daily-serving/verification.md)。

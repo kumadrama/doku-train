@@ -20,7 +20,16 @@ class ArtifactUpload:
             files.extend(p for p in (root / name).rglob("*") if p.is_file())
         files.extend(p for p in root.glob("*.json") if p.is_file())
         # Publish the terminal status last; no remote success marker before artifacts.
-        files.sort(key=lambda p: (p.name == "experiment-status.json", str(p)))
+        files.sort(
+            key=lambda p: (
+                2
+                if p.name == "COMMITTED.json"
+                else 1
+                if p.name in {"experiment-status.json", "daily-status.json"}
+                else 0,
+                str(p),
+            )
+        )
         for path in files:
             if path.suffix in (".sqlite", ".tmp"):
                 continue

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from .comm.artifact_integrity import seal_run
 from .comm.training_pipeline import evaluate_checkpoint
 from .train_rerank import train
 
@@ -12,6 +13,12 @@ def execute(config, root, publish=None, local_root=None):
     if root.exists():
         raise FileExistsError(root)
 
+    owned = False
+
+    def created():
+        nonlocal owned
+        owned = True
+
     def sync(record=None):
         config_path = root / "experiment-config.json"
         if not config_path.exists():
@@ -20,7 +27,7 @@ def execute(config, root, publish=None, local_root=None):
             publish(root)
 
     try:
-        train(config, root, local_root=local_root, on_epoch=sync)
+        train(config, root, local_root=local_root, on_epoch=sync, on_created=created)
         selection = json.loads((root / "training/selection.json").read_text())
         if "checkpoint" not in selection:
             status = {
@@ -43,10 +50,13 @@ def execute(config, root, publish=None, local_root=None):
         if early_status.exists():
             status["early_stop"] = json.loads(early_status.read_text())
         (root / "experiment-status.json").write_text(json.dumps(status, indent=2))
+        (root / "experiment-config.json").write_text(json.dumps(config, sort_keys=True))
+        seal_run(root, "experiment-status.json")
         sync()
         return status
     except Exception as error:
-        if root.exists():
+        if owned:
+            (root / "COMMITTED.json").unlink(missing_ok=True)
             (root / "experiment-status.json").write_text(
                 json.dumps({"status": "failed", "error_type": type(error).__name__})
             )
