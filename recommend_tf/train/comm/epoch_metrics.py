@@ -27,6 +27,9 @@ def save_epoch(output, record):
         scalars["timing/" + stage] = value
     for name, value in record.get("train_objective_batch_mean", {}).items():
         scalars["train/objective_batch_mean/" + name] = value
+    for key in ("learning_rate", "sparse_learning_rate"):
+        if key in record:
+            scalars["train/" + key] = record[key]
     # One closed event file per epoch: upload never races a live event writer.
     writer = tf.summary.FileWriter(
         str(output / "tensorboard"), filename_suffix=f".epoch-{epoch:04d}"

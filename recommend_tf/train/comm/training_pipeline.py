@@ -24,6 +24,7 @@ from .datasvr.prepared import (
     tensor_columns,
 )
 from .eval.metrics import Metrics
+from .learning_rate import learning_rate_for_epoch, validate_schedules
 
 
 def seed_graph(seed):
@@ -113,6 +114,7 @@ def fit_vocabulary(prepared, identity, params, dtypes, batch_size):
 
 
 def run(config, prepared_root, output, resume=None, on_epoch=None):
+    validate_schedules(config["model"], config["max_epochs"])
     tf.disable_eager_execution()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -145,6 +147,8 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
         start_epoch = record["epoch"]
         best = record.get("best")
     for epoch in range(start_epoch, config["max_epochs"]):
+        params.learning_rate = learning_rate_for_epoch(config["model"], epoch + 1)
+        params.sparse_learning_rate = learning_rate_for_epoch(config["model"], epoch + 1, "sparse_")
         epoch_start = time.monotonic()
         # Rebuild each epoch so Finder stateful dropout has reproducible epoch-local RNG.
         # Trainable weights and optimizer slots are restored from the preceding checkpoint.
@@ -253,6 +257,9 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                         "validation_with_input": time.monotonic() - validation_start,
                     },
                 }
+                record["learning_rate"] = params.learning_rate
+                if params.sparse_optimizer:
+                    record["sparse_learning_rate"] = params.sparse_learning_rate
                 metrics.append(record)
                 target = output / f"epoch-{epoch + 1:04d}"
                 target.mkdir()

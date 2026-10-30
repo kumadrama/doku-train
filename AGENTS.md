@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 025：TF 按 epoch 调学习率](specs/025-tf-epoch-learning-rate/requirements.md)、[设计](specs/025-tf-epoch-learning-rate/design.md)、[任务](specs/025-tf-epoch-learning-rate/tasks.md)、[验证](specs/025-tf-epoch-learning-rate/verification.md)。
+
 Spec 024 在独立 `recommend_tf/train` 范围内采用 Python 3.10 / TensorFlow 2.11 CPU、Finder 标签与优化器语义，取代上文及下文仅限 PyTorch、禁止复用已授权 Finder 源码的对应限制。现有 `recommend` 行为不变，不兼容旧 TF 原型。
 Source: Spec 024 已确认需求与设计；2026-10-29 用户验收 opt15/prep15 并授权通过 PR 合入迁移及两项性能优化。
 
