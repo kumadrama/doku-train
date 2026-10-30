@@ -95,3 +95,12 @@ Source: [Spec 009 派生规则修复](../../specs/009-daily-tree-model-publicati
 补载。常规发布需同步升级两个编译入口；列顺序、类型、权重和 OOV 语义不变。
 用户后续授权本次直接切换 DTE/PROD 的新制品引用，操作证据见 Spec 009 verification；
 这不代表消费者适配或训练镜像已部署，日更持续生效仍需部署修复后的导出器。
+
+
+## Spec 027：TF 推理产物与发布合同（目标）
+
+Source: 2026-10-30 用户确认的每日发布与独立 serving 边界；[Spec 027 设计](../../specs/027-tf-daily-serving/design.md)。
+
+当前状态：本仓已实现导出/发布适配及合同校验，外部 ready/serving 适配和云端联调尚未完成，详见 [运行合同](../../specs/027-tf-daily-serving/operations.md)。目标状态：成功 run/选定 checkpoint 导出 SavedModel、特征状态/配置、signature、lineage 与完整性清单；由外部 serving 镜像加载。具体包目录和 wire schema 须与外部仓库确认，不把训练 checkpoint 当稳定在线合同。
+
+日更输入按 `online_config.training_date/validation_date` 从上游截止日解析并冻结；普通离线入口不应用滚动窗口。响应为四主任务结果及实际模型版本，模型相关编码随制品版本配套。S3 上传完成与 Endpoint 部署完成分别记录；本仓负责后者的更新与确认，外部仓库负责服务实现。本次不修改原树模型或其 Redis 分发合同。

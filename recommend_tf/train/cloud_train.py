@@ -42,7 +42,20 @@ def main():
         boto3.client("s3"), os.environ["DOKU_ARTIFACT_URI"], os.environ["DOKU_KMS_KEY"]
     )
     try:
-        status = execute(json.loads(payload), root, publish=publish)
+        if os.environ.get("DOKU_MODE") == "daily":
+            from .daily_train_model import execute as daily_execute
+
+            status = daily_execute(
+                json.loads(payload),
+                root,
+                publish=publish,
+                cutoff=os.environ["DOKU_CUTOFF"],
+                frozen_input=os.environ["DOKU_FROZEN_INPUT"],
+            )
+        elif os.environ.get("DOKU_MODE", "experiment") == "experiment":
+            status = execute(json.loads(payload), root, publish=publish)
+        else:
+            raise ValueError("Unsupported training mode")
         output = Path("/opt/ml/output/data")
         output.mkdir(parents=True, exist_ok=True)
         (output / "experiment-status.json").write_text(json.dumps(status, indent=2))

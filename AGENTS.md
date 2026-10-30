@@ -68,6 +68,11 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 027：TF 每日训练与 SageMaker 发布需求](specs/027-tf-daily-serving/requirements.md)、[设计](specs/027-tf-daily-serving/design.md) — 需求与设计已确认，已授权本地实施；[任务](specs/027-tf-daily-serving/tasks.md)、[验证](specs/027-tf-daily-serving/verification.md)、[运行合同](specs/027-tf-daily-serving/operations.md)。本仓负责日更训练、导出与 Endpoint 更新，serving 属于独立仓库；未云部署。
+
+Spec 027 在独立 TF 范围内将目标扩展到推理产物导出、S3 发布及 SageMaker Endpoint 更新，取代对应仅训练产物/不切换线上版本限制；基础设施仍属 iac，在线 serving 实现属于独立仓库。用户随后确认需求与设计并授权本地代码实施，仍未授权云操作。
+Source: 2026-10-30 用户确认 Q12 选择 B；随后确认 requirements/design 并要求实施代码。
+
 - [Spec 026：TF 可选加权指标早停](specs/026-tf-early-stop/requirements.md)、[设计](specs/026-tf-early-stop/design.md)、[任务](specs/026-tf-early-stop/tasks.md)、[验证](specs/026-tf-early-stop/verification.md)。
 
 - [Spec 025：TF 按 epoch 调学习率](specs/025-tf-epoch-learning-rate/requirements.md)、[设计](specs/025-tf-epoch-learning-rate/design.md)、[任务](specs/025-tf-epoch-learning-rate/tasks.md)、[验证](specs/025-tf-epoch-learning-rate/verification.md)。

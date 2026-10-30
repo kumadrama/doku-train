@@ -123,3 +123,14 @@ Source: Spec024 consistency-investigation.md、design.md、verification.md及用
 Source: 用户确认 opt15/prep15 逐 epoch 一致并授权 PR 合入；[合入验证](../../specs/024-finder-strict-migration/verification.md)。
 
 当前交付包含独立 Finder TF 路径、列投影/列数组行视图与 RSS 检查降频、列式基础输入准备与 train-only 词表拟合，以及统一随机状态/跨优化器梯度屏障。上述历史阶段中的“待验收”不代表当前状态。两项输入优化保持模型图、loss、shuffle 随机调用顺序和 batch 边界；RSS 检查降频改变超限检测时延。现有 PyTorch/XGBoost 路径不变；云端实验镜像不因源码合并自动更新。
+
+
+## Spec 027：TF 日更与 Endpoint 发布（目标）
+
+Source: 2026-10-30 用户确认模型提供方边界与 Q12 B；[需求](../../specs/027-tf-daily-serving/requirements.md)、[设计](../../specs/027-tf-daily-serving/design.md)。
+
+当前状态：新版 TF 已有训练/validation/选模和离线 test；Spec 027 已新增本地两阶段日更、独立导出和平台发布代码，验证见 [Spec 027 记录](../../specs/027-tf-daily-serving/verification.md)；未部署云端。
+
+目标状态：`train/daily_train_model.py` 根据 `online_config` 执行冻结的 30+1 训练，复用公共数据准备及 `training_pipeline.run()`；离线实验三阶段不变。`train/export_model.py` 从成功 run 导出推理包；`platforms/sagemaker` 在上游发布成功触发的一次性 ECS 中编排训练、导出及固定 Endpoint 更新。新实例就绪后一次性切换，失败保留旧版本。
+
+本仓不新增 `serving/` 或自研 C++ 服务。独立 serving 仓库交付 TensorFlow Serving 推理镜像与版本化合同；本仓通过固定镜像和制品部署，不跨仓 import 实现。IAM/网络/触发属 iac，监控属 monitoring，调用方实验与业务排序不属于本次工作。
