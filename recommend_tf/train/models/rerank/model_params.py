@@ -4,6 +4,8 @@ import math
 from copy import deepcopy
 from types import SimpleNamespace
 
+from ...comm.learning_rate import validate_schedules
+
 
 def layer(value, target=False):
     cfg = {
@@ -85,9 +87,11 @@ def parameters(config, vocabs=None):
         "tasks",
         "optimizer",
         "learning_rate",
+        "learning_rate_schedule",
         "optimizer_args",
         "sparse_optimizer",
         "sparse_learning_rate",
+        "sparse_learning_rate_schedule",
         "sparse_optimizer_args",
         "attn_scale",
         "output_layer_prefix",
@@ -126,6 +130,7 @@ def parameters(config, vocabs=None):
     )
     defaults.update(cfg)
     cfg = defaults
+    validate_schedules(cfg)
     for trans in cfg["feature_transformations"]:
         trans.setdefault("apply_to_features", [])
         trans.setdefault("apply_to", ["item"])

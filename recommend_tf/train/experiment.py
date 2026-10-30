@@ -39,6 +39,9 @@ def execute(config, root, publish=None, local_root=None):
                 "checkpoint": str(checkpoint),
                 "test_identity": measured["identity"],
             }
+        early_status = root / "training/early-stop.json"
+        if early_status.exists():
+            status["early_stop"] = json.loads(early_status.read_text())
         (root / "experiment-status.json").write_text(json.dumps(status, indent=2))
         sync()
         return status

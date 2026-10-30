@@ -23,7 +23,9 @@ from .datasvr.prepared import (
     tensor_batch,
     tensor_columns,
 )
+from .early_stop import EarlyStop, validate_early_stop
 from .eval.metrics import Metrics
+from .learning_rate import learning_rate_for_epoch, validate_schedules
 
 
 def seed_graph(seed):
@@ -113,6 +115,9 @@ def fit_vocabulary(prepared, identity, params, dtypes, batch_size):
 
 
 def run(config, prepared_root, output, resume=None, on_epoch=None):
+    early_options = validate_early_stop(config)
+    early = EarlyStop(early_options) if early_options is not None else None
+    validate_schedules(config["model"], config["max_epochs"])
     tf.disable_eager_execution()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -144,7 +149,25 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
             raise ValueError("Checkpoint identity mismatch")
         start_epoch = record["epoch"]
         best = record.get("best")
+        if early is not None:
+            if "early_stop" not in record:
+                raise ValueError("Checkpoint is missing early-stop state")
+            early = EarlyStop(early_options, record["early_stop"])
+            best = early.best
+    if early is not None:
+        (output / "selection.json").write_text(
+            json.dumps(
+                best
+                if best is not None
+                else {"status": "unavailable", "reason": "missing_early_stop_metric"}
+            )
+        )
+    completed_epoch = start_epoch
     for epoch in range(start_epoch, config["max_epochs"]):
+        if early is not None and early.stopped:
+            break
+        params.learning_rate = learning_rate_for_epoch(config["model"], epoch + 1)
+        params.sparse_learning_rate = learning_rate_for_epoch(config["model"], epoch + 1, "sparse_")
         epoch_start = time.monotonic()
         # Rebuild each epoch so Finder stateful dropout has reproducible epoch-local RNG.
         # Trainable weights and optimizer slots are restored from the preceding checkpoint.
@@ -253,12 +276,25 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                         "validation_with_input": time.monotonic() - validation_start,
                     },
                 }
+                record["learning_rate"] = params.learning_rate
+                if params.sparse_optimizer:
+                    record["sparse_learning_rate"] = params.sparse_learning_rate
                 metrics.append(record)
                 target = output / f"epoch-{epoch + 1:04d}"
                 target.mkdir()
                 saver.save(sess, str(target / "model"))
                 selection = config.get("selection")
-                if selection:
+                if early is not None:
+                    record["early_stop"] = early.observe(calculated, epoch + 1, target.resolve())
+                    best = early.best
+                    (output / "selection.json").write_text(
+                        json.dumps(
+                            best
+                            if best is not None
+                            else {"status": "unavailable", "reason": "missing_early_stop_metric"}
+                        )
+                    )
+                elif selection:
                     terms = selection["task_losses"]
                     if all(record["validation_loss"].get(k) is not None for k in terms):
                         score = sum(record["validation_loss"][k] * w for k, w in terms.items())
@@ -277,11 +313,15 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                         (output / "selection.json").write_text(
                             json.dumps({"status": "unavailable", "reason": "missing_task_loss"})
                         )
-                (target / "checkpoint.json").write_text(
-                    json.dumps(
-                        {"identity": logical, "epoch": epoch + 1, "prefix": "model", "best": best}
-                    )
-                )
+                checkpoint_record = {
+                    "identity": logical,
+                    "epoch": epoch + 1,
+                    "prefix": "model",
+                    "best": best,
+                }
+                if early is not None:
+                    checkpoint_record["early_stop"] = early.state
+                (target / "checkpoint.json").write_text(json.dumps(checkpoint_record))
                 from .epoch_metrics import save_epoch
 
                 save_epoch(output, record)
@@ -291,7 +331,25 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 if on_epoch:
                     on_epoch(record)
                 previous = target
-    # Final success marker is written last, only after all requested epochs complete.
+                completed_epoch = epoch + 1
+    if early is not None:
+        (output / "early-stop.json").write_text(
+            json.dumps(
+                {
+                    "enabled": True,
+                    "stopped_early": early.stopped,
+                    "reason": "patient_exhausted" if early.stopped else "max_epochs_reached",
+                    "completed_epochs": completed_epoch,
+                    "max_epochs": config["max_epochs"],
+                    "best_epoch": early.best["epoch"] if early.best else None,
+                    "options": early_options,
+                    "state": early.state,
+                },
+                allow_nan=False,
+                indent=2,
+            )
+        )
+    # Success follows completed epochs or an explicitly configured early stop.
     (output / "metrics.json").write_text(
         json.dumps(
             {

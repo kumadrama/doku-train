@@ -6,12 +6,16 @@ from pathlib import Path
 
 from .comm.datasvr.prepared import digest, prepare
 from .comm.datasvr.published_dataset import PublishedDataset
+from .comm.early_stop import validate_early_stop
+from .comm.learning_rate import validate_schedules
 from .comm.runtime_budget import MemoryBudget
 from .comm.training_pipeline import run, source_identity
 from .models.rerank.model_params import parameters
 
 
 def train(config, root, local_root=None, on_epoch=None):
+    validate_early_stop(config)
+    validate_schedules(config["model"], config["max_epochs"])
     root = Path(root)
     root.mkdir(parents=True, exist_ok=False)
     budget = MemoryBudget(config["dataset_config"]["execution"]["memory_limit_bytes"])
