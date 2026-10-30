@@ -16,4 +16,3 @@ Source: 2026-10-30 本次终端验证与原生 Linux 构建日志。实验配置
 ## 目标环境验证
 
 源码提交 `7366b2b07b47a4dc222969ae4338cb8fcaa6795b` 构建 CPU Linux amd64 镜像，通过 `DOKU_MODE=verify` 在断网容器执行完整 TF 测试：**62 passed**（129.67 秒），退出码 0。Python 3.10.22、TF 2.11.1、PyArrow 17.0.0；source/lock 摘要与冻结输入一致。构建及推送成功后才允许提交训练。
-
