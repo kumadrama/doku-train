@@ -11,3 +11,23 @@ piecewise_constant 在节点指定轮开始切换；piecewise_linear 在相邻�
 每轮指标写 learning_rate，独立 sparse_optimizer 时同时写 sparse_learning_rate；日志和 epoch-metrics/metrics.json 同步包含它们。现有本地 TensorBoard 转换器将数值字段映射为 train/learning_rate 和 train/sparse_learning_rate。WD 语义不变，不自动随 LR 缩放。
 
 为保持对照，A/B 使用同一镜像、冻结数据、随机种子、线程与机器规格；对旧 LN 配置仅增加 model.learning_rate_schedule。镜像包含当前 main 的已验证性能优化和本变更，必须记录 source/lock/config/image 摘要，不把镜像变更冒充配置差异。
+
+## 配置示例
+
+在现有 TF JSON 的 model 下增加下列字段；节点使用一基 epoch，以下仅是合成示例：
+
+```json
+{
+  "learning_rate": 0.001,
+  "learning_rate_schedule": {
+    "type": "piecewise_constant",
+    "points": [
+      {"epoch": 1, "learning_rate": 0.001},
+      {"epoch": 3, "learning_rate": 0.0005},
+      {"epoch": 5, "learning_rate": 0.0002}
+    ]
+  }
+}
+```
+
+该示例要求 max_epochs 至少为 5。独立 sparse_optimizer 可用相同结构声明 sparse_learning_rate_schedule，首节点与 sparse_learning_rate 相同；不声明时独立 sparse LR 不随 dense 调度变化。
