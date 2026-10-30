@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 026：TF 可选加权指标早停](specs/026-tf-early-stop/requirements.md)、[设计](specs/026-tf-early-stop/design.md)、[任务](specs/026-tf-early-stop/tasks.md)、[验证](specs/026-tf-early-stop/verification.md)。
+
 - [Spec 025：TF 按 epoch 调学习率](specs/025-tf-epoch-learning-rate/requirements.md)、[设计](specs/025-tf-epoch-learning-rate/design.md)、[任务](specs/025-tf-epoch-learning-rate/tasks.md)、[验证](specs/025-tf-epoch-learning-rate/verification.md)。
 
 Spec 024 在独立 `recommend_tf/train` 范围内采用 Python 3.10 / TensorFlow 2.11 CPU、Finder 标签与优化器语义，取代上文及下文仅限 PyTorch、禁止复用已授权 Finder 源码的对应限制。现有 `recommend` 行为不变，不兼容旧 TF 原型。
