@@ -1,2 +1,3 @@
-psm: doku-tf-rerank-daily
+psm: doku-tf-pipeline
 kind: task
+build_image: aws/codebuild/standard:7.0
