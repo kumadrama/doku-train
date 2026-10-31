@@ -22,3 +22,15 @@
 ## 未执行的生产门槛
 
 没有把 Spec 031 镜像/ZIP 上传、切换 AppConfig、启用恢复调度、更新 Endpoint 或发送测试告警。需要在平台扩展先上线后，按 operations.md 完成发布权限、兼容程序、启动参数、ready 生产者和策略的顺序迁移，再验收一次自然日更。
+
+## 2026-11-01 生产迁移进展
+
+以上“未执行”描述为最初实现时的历史状态。用户随后授权按顺序完成生产迁移。
+
+- 独立 IaC 栈发布能力已上线；monitoring code ownership、版本化 bootstrap、发布 IAM 与受信 binding 已应用。
+- monitoring 独立制品 `aa12d6de…` 已发布，AppConfig profile `tolz7n2` 已接入。真实暂停/持久化 ACK/恢复与配置回退通过，原 ACK ETag 保持不变；独立栈 post-plan 无变化。
+- TF 兼容镜像原生 162 tests passed；标准 pipeline 发布镜像 `20261101.1-17e7d0d`。修复训练镜像/source digest 必须同时冻结，原生镜像 receipt 来源构建 `doku-train:e5c203e0-3abb-4964-b58a-23c6e980e287`。
+- ECS revision 8 已激活；legacy command 移除后回读仍为 revision 8。corrected ready code apply `dj_ac3383cb-e159-4348-af87-46ce42700503` 成功，代码摘要匹配。
+- TF AppConfig 接线 apply `dj_db3b88e1-b797-48aa-bb60-0a07cbe18999` 后，从实际输出生成本 PR 的匹配 task/ready release；profile `9vo211i`，recovery 默认关闭。
+- 本 PR 不改变模型配方、28+1 日期窗口、训练/推理镜像或当前 Endpoint 模型。新冻结 binding SHA256：`45513e6bea3462f22cc7f42431d39ec62eeee86383bb280c74d19322c859ad12`；ready ZIP SHA256(base64)：`/IJgNpdCzfjXy29HAC89IP7Kuhf7JC/BQTKLLgfkJYc=`，两次打包相同。
+- 待完成：本 PR 发布后验证真实 Lambda 暂停/历史请求恢复幂等，启用有界恢复；至少一次自然日更、四任务指标和告警验收后才删除旧兼容配置。不得用前面的 gate 函数测试替代自然日更。
