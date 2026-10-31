@@ -8,6 +8,7 @@ from .datasvr.prepared import digest, prepare
 from .datasvr.published_dataset import PublishedDataset
 from .early_stop import validate_early_stop
 from .learning_rate import validate_schedules
+from .model_identity import model_name
 from .runtime_budget import MemoryBudget
 from .training_pipeline import run, source_identity
 
@@ -37,6 +38,7 @@ def train(
             config["dataset_config"], local_root=local_root, frozen_input=frozen_input
         )
         dataset.freeze(root / "input")
+        model_name(config)
         params = model_parameters(config["model"])
         identity = digest(
             {

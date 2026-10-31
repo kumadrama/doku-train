@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TF training envelope identity extension",
+  "description": "model_name is an optional top-level metadata field for offline runs and required by daily_train_model. Model-specific schemas describe the nested model object.",
+  "type": "object",
+  "properties": {"model_name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}}
+}

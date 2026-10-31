@@ -307,3 +307,10 @@ Source: 用户确认每日训练、独立评估、导出与 S3 发布、版本�
 Source: Spec 009 实施证据见 [任务](specs/009-daily-tree-model-publication/tasks.md) 与
 [验证](specs/009-daily-tree-model-publication/verification.md)。本仓本地/S3 入口已实现，
 消费端仍是跨仓目标；上述目标不代表已在生产运行。
+
+## Spec 028 / 030 production rollout
+
+Source: 用户已确认 Spec 028/030 并授权合并部署。
+
+[Spec 028](specs/028-tf-endpoint-rollout/design.md) 允许本仓独立 inference/、每日 Endpoint 发布与恢复；基础设施仍归 doku-iac。
+[Spec 030](specs/030-selected-model-monitoring/design.md) / [验证](specs/030-selected-model-monitoring/verification.md)：复用选模、配置模型身份、监控公开合同；目录/看板归 doku-monitoring。

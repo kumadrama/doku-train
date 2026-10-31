@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Selected model observation v1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "environment",
+    "model_name",
+    "run_id",
+    "run_uri",
+    "recipe_sha256",
+    "data_cutoff",
+    "source_sha256",
+    "manifest_sha256",
+    "checkpoint_identity",
+    "schema_version",
+    "event_type",
+    "training_completed_at_ms",
+    "selected_epoch",
+    "evaluation_split",
+    "display_label",
+    "tasks"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "model_name": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "run_uri": {
+      "type": "string"
+    },
+    "recipe_sha256": {
+      "type": "string"
+    },
+    "data_cutoff": {
+      "type": "string"
+    },
+    "source_sha256": {
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "type": "string"
+    },
+    "checkpoint_identity": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "doku-selected-model-metrics/v1"
+    },
+    "event_type": {
+      "const": "training_selected"
+    },
+    "training_completed_at_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "selected_epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "evaluation_split": {
+      "const": "validation"
+    },
+    "display_label": {
+      "const": "Test"
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "task",
+          "metric_name",
+          "metric_kind",
+          "value",
+          "reason",
+          "unit"
+        ],
+        "properties": {
+          "metric_kind": {
+            "enum": [
+              "auc",
+              "mse"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

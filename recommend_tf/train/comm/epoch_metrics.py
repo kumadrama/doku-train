@@ -4,10 +4,10 @@ import json
 import math
 from pathlib import Path
 
-import tensorflow.compat.v1 as tf
-
 
 def save_epoch(output, record):
+    import tensorflow.compat.v1 as tf
+
     output = Path(output)
     epoch = record["epoch"]
     folder = output / "epoch-metrics"
@@ -49,3 +49,56 @@ def save_epoch(output, record):
         writer.flush()
     finally:
         writer.close()
+
+
+def read_selected_metrics(root, config):
+    """Read the existing selector's decision; never rank epochs again."""
+    root = Path(root)
+    selection = json.loads((root / "training/selection.json").read_text())
+    if "checkpoint" not in selection:
+        return {
+            "schema_version": "doku-selected-epoch/v1",
+            "status": "unavailable",
+            "selection": selection,
+        }
+    epoch = selection["epoch"]
+    if type(epoch) is not int or epoch < 1:
+        raise ValueError("invalid selected epoch")
+    expected = f"epoch-{epoch:04d}"
+    if (
+        Path(selection["checkpoint"]).name != expected
+        or ".." in Path(selection["checkpoint"]).parts
+    ):
+        raise ValueError("selected checkpoint path differs")
+    checkpoint = json.loads((root / "training" / expected / "checkpoint.json").read_text())
+    record = json.loads((root / "training/epoch-metrics" / f"{epoch:04d}.json").read_text())
+    if checkpoint["epoch"] != epoch or record["epoch"] != epoch:
+        raise ValueError("selected epoch evidence differs")
+    metrics = {}
+    for task, options in config["model"]["tasks"].items():
+        metrics[task] = {}
+        for name, option in options.get("metrics", {}).items():
+            result = record["validation_metrics"][task][name]
+            value = result["value"]
+            if value is not None and (isinstance(value, bool) or not math.isfinite(value)):
+                raise ValueError("invalid selected metric")
+            if value is None and not result.get("reason"):
+                raise ValueError("unavailable metric requires a reason")
+            metrics[task][name] = dict(result, func=option["func"])
+    return {
+        "schema_version": "doku-selected-epoch/v1",
+        "status": "selected",
+        "selection": selection,
+        "checkpoint_identity": checkpoint["identity"],
+        "evaluation_split": "validation",
+        "metrics": metrics,
+    }
+
+
+def write_selected_metrics(root, config):
+    record = read_selected_metrics(root, config)
+    target = Path(root) / "training/selected-model-metrics.json"
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(record, sort_keys=True, allow_nan=False))
+    temporary.replace(target)
+    return record

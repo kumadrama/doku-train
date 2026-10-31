@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Doku TF four-task response v1",
+  "type": "object",
+  "required": ["model_version", "predictions"],
+  "additionalProperties": false,
+  "properties": {
+    "model_version": {"type": "string", "minLength": 1},
+    "predictions": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["completion", "fast_swipe", "immersive_click", "watch_seconds"],
+      "properties": {
+        "completion": {"type": "number"}, "fast_swipe": {"type": "number"},
+        "immersive_click": {"type": "number"}, "watch_seconds": {"type": "number"}
+      }
+    }}
+  }
+}

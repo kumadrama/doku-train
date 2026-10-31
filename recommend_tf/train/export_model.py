@@ -200,6 +200,14 @@ def execute(run_dir, output, *, outputs, evidence=None):
             response_order="request_order",
         )
         raw_fields = {value["source_field"] for value in signature["inputs"].values()} - {"length"}
+        # Sorting/truncation can depend on a companion field that is not itself
+        # reachable in the graph (for example weights used only for top-k order).
+        active_groups = {v["source_group"] for v in signature["inputs"].values()}
+        for group in config["model"]["input_features"].values():
+            if group.get("history_pooling") and group["from"] in active_groups:
+                raw_fields.update(group["features"])
+                if "weight_feature" in group:
+                    raw_fields.add(group["weight_feature"])
         feature_config = {
             "required_raw_fields": sorted(raw_fields),
             "defaults": {

@@ -134,3 +134,9 @@ Source: 2026-10-30 用户确认模型提供方边界与 Q12 B；[需求](../../s
 目标状态：`train/daily_train_model.py` 根据 `online_config` 执行冻结的 30+1 训练，复用公共数据准备及 `training_pipeline.run()`；离线实验三阶段不变。`train/export_model.py` 从成功 run 导出推理包；`platforms/sagemaker` 在上游发布成功触发的一次性 ECS 中编排训练、导出及固定 Endpoint 更新。新实例就绪后一次性切换，失败保留旧版本。
 
 本仓不新增 `serving/` 或自研 C++ 服务。独立 serving 仓库交付 TensorFlow Serving 推理镜像与版本化合同；本仓通过固定镜像和制品部署，不跨仓 import 实现。IAM/网络/触发属 iac，监控属 monitoring，调用方实验与业务排序不属于本次工作。
+
+## Selected-model monitoring
+
+Source: [Spec 030](../../specs/030-selected-model-monitoring/design.md).
+训练复用 selection 和同 epoch 指标；成功 run 封存标准事件。平台写不可变 outbox 与发布 journal；
+独立 monitoring worker 负责目录、补偿和 Grafana 同步，基础设施由 iac 装配。
