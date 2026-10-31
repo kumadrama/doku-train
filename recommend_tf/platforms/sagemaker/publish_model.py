@@ -5,6 +5,7 @@ import json
 import math
 import tarfile
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -123,7 +124,7 @@ class ReleaseState:
         self.save()
         return active
 
-    def finish(self, result):
+    def finish(self, result, monitoring_binding=None):
         if result["stage"] == "deployed":
             self.value["high_water"] = max(
                 self.value["high_water"] or result["cutoff"], result["cutoff"]
@@ -133,7 +134,17 @@ class ReleaseState:
             }
         if result["stage"] == "rolled_back" and result.get("rollback_target"):
             self.value["online"] = result["rollback_target"]
-        self.value["history"].append(dict(result))
+        result = dict(result)
+        result["release_revision"] = len(self.value["history"]) + 1
+        result["finished_at_ms"] = time.time_ns() // 1_000_000
+        if monitoring_binding:
+            try:
+                from recommend_tf.platforms.monitoring.report_metrics import release_event
+
+                result["monitoring_event"] = release_event(self.uri, result, monitoring_binding)
+            except Exception as error:
+                result["monitoring_error_type"] = type(error).__name__
+        self.value["history"].append(result)
         self.value["active"] = None
         self.save()
 
@@ -182,7 +193,11 @@ def describe(client, method, **kwargs):
         message = getattr(error, "response", {}).get("Error", {}).get("Message", "").lower()
         if missing(error) or (
             code == "ValidationException"
-            and ("could not find" in message or "does not exist" in message)
+            and (
+                "could not find" in message
+                or "does not exist" in message
+                or message.strip(" .") == "requested resource not found"
+            )
         ):
             return None
         raise
@@ -242,7 +257,10 @@ def deploy_step(client, runtime, state, binding, *, probe):
         "PrimaryContainer": {
             "Image": image,
             "ModelDataUrl": active["model_uri"],
-            "Environment": {"DOKU_MODEL_VERSION": active["model_version"]},
+            "Environment": {
+                **binding.get("container_environment", {}),
+                "DOKU_MODEL_VERSION": active["model_version"],
+            },
         },
         "EnableNetworkIsolation": True,
     }
@@ -344,10 +362,19 @@ def deploy_step(client, runtime, state, binding, *, probe):
         }
         active["attempted"] = True
         state.save()
-        if current:
-            client.update_endpoint(**kwargs)
-        else:
-            client.create_endpoint(**kwargs)
+        try:
+            if current:
+                client.update_endpoint(**kwargs)
+            else:
+                client.create_endpoint(**kwargs)
+        except Exception as error:
+            # An explicit API rejection is safe to retry after fixing its cause.
+            # Transport/timeout errors remain ambiguous and retain attempted=True.
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code in {"AccessDeniedException", "AccessDenied", "ValidationException"}:
+                active["attempted"] = False
+                state.save()
+            raise
         active["submitted"] = True
         state.save()
     return "pending"

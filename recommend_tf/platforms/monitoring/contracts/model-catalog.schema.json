@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "environment",
+    "model_name"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-catalog/v1"
+    },
+    "tasks": {
+      "type": "array"
+    },
+    "online": {
+      "type": "object"
+    },
+    "release": {
+      "type": "object"
+    }
+  }
+}

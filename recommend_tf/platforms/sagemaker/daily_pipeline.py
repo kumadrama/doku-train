@@ -120,6 +120,12 @@ def prepare_job(s3, config, ready, binding, operation, work):
             "DOKU_KMS_KEY": binding["kms_key"],
         }
     )
+    if binding.get("monitoring"):
+        context = {key: binding[key] for key in ("model_name", "environment", "region", "outputs")}
+        context["training_job_name"] = request["TrainingJobName"]
+        context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
+        context["monitoring"] = {"metric_mapping": binding["monitoring"].get("metric_mapping", {})}
+        request["Environment"]["DOKU_MONITORING_CONTEXT"] = json.dumps(context, sort_keys=True)
     for name in ("DOKU_SOURCE_SHA256", "DOKU_LOCK_SHA256"):
         if not request["Environment"].get(name):
             raise ValueError("training image provenance required: " + name)
@@ -176,6 +182,8 @@ def step(
         if observed["TrainingJobStatus"] != "Completed":
             return "pending"
         active["stage"] = "trained"
+        if "TrainingEndTime" in observed:
+            active["training_completed_at_ms"] = int(observed["TrainingEndTime"].timestamp() * 1000)
         state.save()
     if active["stage"] in {"trained", "exported"}:
         run = work / "run"
@@ -190,6 +198,22 @@ def step(
             active["stage"] = "no_selected_model"
             state.save()
             return active["stage"]
+        if binding.get("monitoring"):
+            try:
+                from recommend_tf.platforms.monitoring.report_metrics import report
+
+                report(s3, run, binding, run_uri=active["run_uri"])
+            except Exception as error:
+                print(
+                    json.dumps(
+                        {
+                            "event": "monitoring_failed",
+                            "operation": active["operation"],
+                            "error_type": type(error).__name__,
+                        }
+                    ),
+                    flush=True,
+                )
         output = work / "package"
         options = work / "outputs.json"
         options.write_text(json.dumps(binding["outputs"]))
@@ -296,6 +320,7 @@ def operation_identity(
         for k, v in binding.items()
         if k
         not in {
+            "monitoring",
             "poll_seconds",
             "max_wait_seconds",
             "download_limit_bytes",
@@ -342,6 +367,11 @@ def main():
         "--retry-id", default="", help="Explicit new attempt after a terminal training failure"
     )
     args = parser.parse_args()
+    return execute(args)
+
+
+def execute(args):
+    """Run the same durable workflow from CLI or an ECS adapter."""
     evidence = (
         json.loads(Path(args.bootstrap_evidence).read_text()) if args.bootstrap_evidence else None
     )
@@ -349,6 +379,11 @@ def main():
         json.loads(Path(p).read_text()) for p in (args.config, args.ready, args.binding)
     ]
     validate_binding(binding)
+    if binding.get("monitoring"):
+        from recommend_tf.train.comm.model_identity import model_name
+
+        if model_name(config, required=True) != binding.get("model_name"):
+            raise ValueError("monitoring binding and configuration model_name differ")
     if evidence is not None and not args.bootstrap_run:
         raise ValueError("bootstrap evidence requires bootstrap run")
     import fcntl
@@ -363,6 +398,34 @@ def main():
             session.client(name) for name in ("s3", "sagemaker", "sagemaker-runtime", "ecs")
         ]
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
+        if binding.get("monitoring", {}).get("catalog_uri"):
+            from recommend_tf.train.comm.model_identity import recipe_sha256
+
+            catalog_uri = (
+                binding["monitoring"]["catalog_uri"].rstrip("/")
+                + "/"
+                + config["model_name"]
+                + ".json"
+            )
+            catalog = None
+            try:
+                catalog = json.loads(read(s3, catalog_uri)[0])
+            except Exception as error:
+                print(
+                    json.dumps(
+                        {
+                            "event": "monitoring_catalog_unavailable",
+                            "error_type": type(error).__name__,
+                        }
+                    ),
+                    flush=True,
+                )
+            if catalog and catalog.get("recipe_sha256", recipe_sha256(config)) != recipe_sha256(
+                config
+            ):
+                raise ValueError(
+                    "model_name already identifies a different recipe; use a new model_name"
+                )
         operation = operation_identity(
             config,
             ready,
@@ -406,7 +469,23 @@ def main():
                     bootstrap_evidence=evidence,
                 )
             if outcome != "pending":
-                state.finish(state.value["active"])
+                state.finish(state.value["active"], binding if binding.get("monitoring") else None)
+                if binding.get("monitoring"):
+                    try:
+                        from recommend_tf.platforms.monitoring.report_metrics import report_release
+
+                        report_release(s3, state, binding)
+                    except Exception as error:
+                        print(
+                            json.dumps(
+                                {
+                                    "event": "monitoring_failed",
+                                    "operation": operation,
+                                    "error_type": type(error).__name__,
+                                }
+                            ),
+                            flush=True,
+                        )
                 print(json.dumps({"operation": operation, "status": outcome}))
                 if outcome != "deployed" and not (
                     args.rollback_version and outcome == "rolled_back"

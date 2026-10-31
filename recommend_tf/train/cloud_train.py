@@ -45,10 +45,35 @@ def main():
         if os.environ.get("DOKU_MODE") == "daily":
             from .daily_train_model import execute as daily_execute
 
+            def monitoring_source(root):
+                context = os.environ.get("DOKU_MONITORING_CONTEXT")
+                if not context:
+                    return
+                from recommend_tf.platforms.monitoring.report_metrics import (
+                    observation,
+                    source_evidence,
+                )
+
+                context = json.loads(context)
+                status_path = root / "daily-status.json"
+                metadata = json.loads(status_path.read_text())
+                metadata["training_job_name"] = context["training_job_name"]
+                status_path.write_text(json.dumps(metadata, sort_keys=True))
+                event = observation(
+                    root,
+                    context,
+                    run_uri=os.environ["DOKU_ARTIFACT_URI"],
+                    evidence=source_evidence(root),
+                )
+                (root / "training/monitoring-event.json").write_text(
+                    json.dumps(event, sort_keys=True)
+                )
+
             status = daily_execute(
                 json.loads(payload),
                 root,
                 publish=publish,
+                on_completed=monitoring_source,
                 cutoff=os.environ["DOKU_CUTOFF"],
                 frozen_input=os.environ["DOKU_FROZEN_INPUT"],
             )

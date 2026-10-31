@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Doku TF raw feature request v1",
+  "type": "object",
+  "required": ["schema_version", "instances"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "doku-tf-request/v1"},
+    "instances": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+  },
+  "$comment": "Per-model field names, scalar dtypes, defaults and history policies come from the verified feature-config.json. Runtime also enforces configured batch, body and history limits."
+}

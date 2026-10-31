@@ -40,3 +40,45 @@ jobs:
         run: >-
           docker run --rm --network none --entrypoint python sagemaker-smoke:local
           -m recommend.train.tests.sagemaker_container_smoke
+  tf-inference-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: .
+      TF_NUM_INTRAOP_THREADS: '1'
+      TF_NUM_INTEROP_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.18'
+          enable-cache: true
+      - run: uv python install 3.10
+      - run: uv sync --project recommend_tf --locked
+      - name: Prepare synthetic model and clean inference build context
+        run: |
+          uv run --project recommend_tf --locked python -m recommend_tf.inference.tests.container_smoke fixture --root /tmp/tf-fixture
+          uv run --project recommend_tf --locked python -m recommend_tf.platforms.sagemaker.build_context --kind inference --output /tmp/tf-context
+      - name: Build CPU TensorFlow Serving adapter
+        run: >-
+          docker build --platform linux/amd64
+          --build-arg TF_SERVING_IMAGE=tensorflow/serving@sha256:ceb17c529b59a3f0ffa3ef87404e0f2cf0e155cdec4a723ed49b6be487e4c728
+          -t tf-inference:test /tmp/tf-context
+      - name: Verify real container parity and invalid requests
+        run: |
+          docker run -d --name tf-smoke -p 127.0.0.1:18080:8080 -v /tmp/tf-fixture/package:/opt/ml/model:ro \
+            -e DOKU_MAX_BATCH=128 -e DOKU_MAX_HISTORY=10000 -e DOKU_MAX_REQUEST_BYTES=1048576 \
+            -e DOKU_CONCURRENCY=2 -e DOKU_INFERENCE_TIMEOUT_SECONDS=45 -e DOKU_TF_THREADS=1 \
+            -e DOKU_STARTUP_TIMEOUT_SECONDS=90 tf-inference:test
+          uv run --project recommend_tf --locked python -m recommend_tf.inference.tests.container_smoke verify --root /tmp/tf-fixture
+      - name: Build and check pipeline image on native amd64
+        run: |
+          uv run --project recommend_tf --locked python -m recommend_tf.platforms.sagemaker.build_context --kind pipeline --output /tmp/tf-pipeline-context
+          docker build --platform linux/amd64 --build-arg PYTHON_IMAGE=python@sha256:6ff506466f8b1e981719b468cc0023b8ef000b983cdec0eafe119d01f379e31d -t tf-pipeline:test /tmp/tf-pipeline-context
+          docker run --rm tf-pipeline:test --help
+          docker run --rm --entrypoint python tf-pipeline:test -m recommend_tf.train.export_model --help
+      - name: Container diagnostics and cleanup
+        if: always()
+        run: |
+          docker logs tf-smoke || true
+          docker rm -f tf-smoke || true

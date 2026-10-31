@@ -1,0 +1,20 @@
+{
+  "deployment": {
+    "endpoint_name": "synthetic",
+    "region": "us-east-2"
+  },
+  "endpoint_config": "synthetic",
+  "environment": "synthetic",
+  "event_id": "63c38e002894a4f53650a01fba3b8e390ebd53ee777d21c48c5082ae38ef4f2d",
+  "event_type": "model_release",
+  "model_name": "model_a",
+  "model_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "occurred_at_ms": 1793300000000,
+  "operation": "synthetic",
+  "release_revision": 1,
+  "run_uri": null,
+  "schema_version": "doku-model-release-event/v1",
+  "stage": "deployed",
+  "state_uri": "s3://synthetic/state",
+  "status": "published"
+}

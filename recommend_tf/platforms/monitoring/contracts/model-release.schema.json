@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_type",
+    "event_id",
+    "environment",
+    "model_name",
+    "state_uri",
+    "operation",
+    "release_revision",
+    "occurred_at_ms",
+    "status",
+    "deployment"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-release-event/v1"
+    },
+    "event_type": {
+      "const": "model_release"
+    },
+    "status": {
+      "enum": [
+        "published",
+        "failed",
+        "rolled_back",
+        "restored"
+      ]
+    },
+    "release_revision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

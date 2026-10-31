@@ -42,6 +42,7 @@ def fixture(root):
         {"optimizer": "adamw", "learning_rate": 0.004, "optimizer_args": {"weight_decay": 0.0001}},
         16,
     )
+    config["model_name"] = "synthetic_rerank"
     config["online_config"] = {"training_date": 6, "validation_date": 1}
     dataset = root / "fixture/dataset"
     manifest = json.loads((dataset / "manifest.json").read_text())
@@ -681,3 +682,61 @@ def test_input_failure_after_claim_can_release_slot(tmp_path, monkeypatch):
     state.finish(state.value["active"])
     assert state.value["active"] is None
     assert state.claim("next", "2026-10-08")["stage"] == "claimed"
+
+
+@pytest.mark.parametrize("code", ["AccessDeniedException", "ValidationException"])
+def test_explicit_endpoint_rejection_can_resume(code):
+    state, sm, binding = deployment_fixture()
+    original = sm.update_endpoint
+
+    def rejected(**kwargs):
+        raise ClientError({"Error": {"Code": code, "Message": "rejected"}}, "UpdateEndpoint")
+
+    sm.update_endpoint = rejected
+    with pytest.raises(ClientError):
+        deploy_step(sm, None, state, binding, probe=lambda *args: None)
+    assert state.value["active"]["attempted"] is False
+    sm.update_endpoint = original
+    assert deploy_step(sm, None, state, binding, probe=lambda *args: None) == "pending"
+    assert len(sm.updates) == 1
+
+
+def test_training_job_absence_validation_response():
+    from recommend_tf.platforms.sagemaker.publish_model import describe
+
+    class Client:
+        message = "Requested resource not found."
+
+        def describe_training_job(self, **kwargs):
+            raise ClientError(
+                {"Error": {"Code": "ValidationException", "Message": self.message}},
+                "DescribeTrainingJob",
+            )
+
+    client = Client()
+    assert describe(client, "describe_training_job", TrainingJobName="fixture") is None
+    client.message = "Invalid training job request"
+    with pytest.raises(ClientError):
+        describe(client, "describe_training_job", TrainingJobName="fixture")
+
+
+def test_monitoring_callback_failure_preserves_daily_success(tmp_path):
+    config, ready = fixture(tmp_path)
+    resolved = freeze(config, ready, tmp_path / "frozen")
+
+    def fail_monitoring(root):
+        raise RuntimeError("synthetic monitoring failure")
+
+    status = daily(
+        resolved,
+        tmp_path / "run",
+        cutoff=ready["cutoff"],
+        frozen_input=tmp_path / "frozen/input",
+        on_completed=fail_monitoring,
+    )
+    assert status["status"] == "completed"
+    assert status["monitoring"] == "failed"
+    from recommend_tf.train.comm.artifact_integrity import verify_run
+
+    record = verify_run(tmp_path / "run")
+    assert "training/selected-model-metrics.json" in record["files"]

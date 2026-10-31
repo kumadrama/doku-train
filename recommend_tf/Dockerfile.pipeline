@@ -1,0 +1,11 @@
+# Build from a prepared context containing hash-locked Linux requirements.txt
+# and recommend_tf/. Supply an approved immutable Python 3.10 CPU image digest.
+ARG PYTHON_IMAGE
+FROM ${PYTHON_IMAGE}
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace \
+    TF_CPP_MIN_LOG_LEVEL=2 TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1
+WORKDIR /workspace
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt
+COPY recommend_tf /workspace/recommend_tf
+ENTRYPOINT ["python", "-m", "recommend_tf.platforms.sagemaker.executor"]

@@ -1,0 +1,49 @@
+{
+  "checkpoint_identity": "model-digest",
+  "data_cutoff": "2026-10-29",
+  "dataset_timezone": "UTC",
+  "day_start_ms": 1793203200000,
+  "deployment": {
+    "endpoint_name": "synthetic",
+    "region": "us-east-2"
+  },
+  "display_label": "Test",
+  "environment": "synthetic",
+  "evaluated_dates": [
+    "2026-10-29"
+  ],
+  "evaluation_split": "validation",
+  "event_id": "86846238c96067706f501e3d7e8903e4cd689873cf0d7f1722d12cb3b5b503d6",
+  "event_type": "training_selected",
+  "manifest_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "model_name": "model_a",
+  "model_type": "rerank",
+  "recipe_sha256": "2471ef6c8affddf960c7eb7e37488369b450daf0632887dd1cdbd5d15fd07b34",
+  "run_id": "dd4ba51280453ce5e3c440ff9ea4a8a7da71b49490b22be0661869e44e7a826c",
+  "run_uri": "s3://synthetic/run",
+  "schema_version": "doku-selected-model-metrics/v1",
+  "selected_epoch": 2,
+  "selection_score": 0.4,
+  "source_sha256": "da59c97a04b126be96e9490073603765acfe8906ada3889c3f844eff3165f60e",
+  "tasks": [
+    {
+      "metric_kind": "auc",
+      "metric_name": "quality",
+      "reason": "single_class",
+      "task": "click",
+      "unit": "probability",
+      "valid_samples": 7,
+      "value": null
+    },
+    {
+      "metric_kind": "mse",
+      "metric_name": "error",
+      "reason": null,
+      "task": "watch",
+      "unit": "seconds",
+      "valid_samples": 7,
+      "value": 32.0
+    }
+  ],
+  "training_completed_at_ms": 1793300000000
+}
