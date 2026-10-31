@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 031 requirements](specs/031-runtime-release-ownership/requirements.md)、[design](specs/031-runtime-release-ownership/design.md) — 2026-10-31 用户授权实施，生产迁移另行验收。
+
 - [Spec 027：TF 每日训练与 SageMaker 发布需求](specs/027-tf-daily-serving/requirements.md)、[设计](specs/027-tf-daily-serving/design.md) — 需求与设计已确认，已授权本地实施；[任务](specs/027-tf-daily-serving/tasks.md)、[验证](specs/027-tf-daily-serving/verification.md)、[运行合同](specs/027-tf-daily-serving/operations.md)。本仓负责日更训练、导出与 Endpoint 更新，serving 属于独立仓库；未云部署。
 
 Spec 027 在独立 TF 范围内将目标扩展到推理产物导出、S3 发布及 SageMaker Endpoint 更新，取代对应仅训练产物/不切换线上版本限制；基础设施仍属 iac，在线 serving 实现属于独立仓库。用户随后确认需求与设计并授权本地代码实施，仍未授权云操作。

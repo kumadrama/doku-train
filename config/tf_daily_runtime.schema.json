@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "training_enabled",
+    "publication_enabled",
+    "recovery_enabled",
+    "recovery_max_items"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "doku-tf-runtime/v1"
+      ]
+    },
+    "training_enabled": {
+      "type": "boolean"
+    },
+    "publication_enabled": {
+      "type": "boolean"
+    },
+    "recovery_enabled": {
+      "type": "boolean"
+    },
+    "recovery_max_items": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    }
+  }
+}

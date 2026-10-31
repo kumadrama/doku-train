@@ -1,0 +1,51 @@
+{
+  "family": "doku-prod-tf-rerank-daily",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "cpu": "4096",
+  "memory": "8192",
+  "ephemeralStorage": {
+    "sizeInGiB": 40
+  },
+  "executionRoleArn": "{{EXECUTION_ROLE}}",
+  "taskRoleArn": "doku-prod-tf-rerank-daily-task",
+  "containerDefinitions": [
+    {
+      "name": "pipeline",
+      "image": "{{IMAGE}}",
+      "essential": true,
+      "environment": [
+        {
+          "name": "DOKU_CONFIG_URI",
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5/daily-config.json"
+        },
+        {
+          "name": "DOKU_CONFIG_SHA256",
+          "value": "c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5"
+        },
+        {
+          "name": "DOKU_BINDING_URI",
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/09e7d01bb20e95f1e7e59db824d70580ad885250f14cac4af4ec4f550d2ca641/binding.json"
+        },
+        {
+          "name": "DOKU_BINDING_SHA256",
+          "value": "09e7d01bb20e95f1e7e59db824d70580ad885250f14cac4af4ec4f550d2ca641"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/doku-prod-tf-rerank-daily",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "pipeline"
+        }
+      }
+    }
+  ]
+}
