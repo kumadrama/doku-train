@@ -91,7 +91,9 @@ Grafana 专用 Editor service account 每次同步创建 600 秒 token，并在 
 
 最终生产接线经 doku-iac #651 合并部署：
 
-- ECS task definition `doku-prod-tf-rerank-daily:5`；先注册新 revision 再切换 target，保留旧 revision。
+- ECS task definition `doku-prod-tf-rerank-daily:5`；先注册新 revision 再切换 target。
+  本次旧 revision 4 因原状态未设置 skip_destroy，已变为 INACTIVE；定义仍可查询。
+  新 revision 设置 skip_destroy=true，后续替换会保留注册状态。回退本次镜像需重新注册旧定义。
 - 原数据 ready 规则与日更规则保持 ENABLED；监控 outbox/reconcile 两条规则 ENABLED，
   SQS event-source mapping Enabled，Lambda Active/Successful，每五分钟补偿一次。
 - 稳定名称 `tf_rerank_ln_lr001` 来自每日配置；28 天 train + 1 天 validation 不变。
