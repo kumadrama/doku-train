@@ -34,3 +34,21 @@ Spec 011 AppConfig 控制。用户预先存在的 SageMaker 草案和索引不�
 再次执行 `UV_CACHE_DIR=/tmp/doku-train-uv-cache UV_OFFLINE=1 make check`：
 **157 passed, 3 skipped**，69.41 秒；格式/lint/类型（45 个源文件）和锁文件检查全部通过。
 生产部署和补跑授权不代表已经执行成功；结果以发布/工作流记录为准。
+
+## 2026-10-31 v5/v6 身份兼容本地验收
+
+Source: 本次本地执行；不代表已部署或生产重试成功。
+
+- `uv run pytest recommend/train/tests/unit/test_daily_contract_evolution.py recommend/train/tests/unit/test_dataset_identity.py -q`：17 passed。
+- `env -u UV_PROJECT_ENVIRONMENT PYTHONPATH=. TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1 uv run --project recommend_tf --locked python -m pytest recommend_tf/train/tests/test_dataset_identity.py -q -p no:cacheprovider --disable-warnings`：2 passed，100 warnings。
+- 最终 `make check`：退出码 0；两套依赖锁检查、Ruff 格式/lint、Mypy（70 文件）通过；
+  树/Torch 320 passed、3 skipped（173.26 秒），TF 170 passed、154 warnings（166.83 秒）。
+  首次执行发现新增测试闭包未绑定循环变量的 B023，修复后重新完整执行通过。
+- `git diff --check`：通过；AGENTS、interfaces 与本 Spec 共 6 个 Markdown 文件链接检查无缺失。
+- 两套 daily_contracts.py 的 `diff -u` 无差异；没有跨框架 import。
+
+合成 fixture 覆盖真实 daily prepare / TF freeze 入口，v5/v6 混合且新增未选特征无默认值，
+读取所选列成功；删除源 Manifest 后冻结恢复成功；逐日 dataset_id 保留。
+身份负例覆盖不同家族、原始 canonical ID 混入版本化家族、schema 不匹配、标签配置不同；
+原有合同语义冲突、物理缺列、默认值和冻结证据校验继续通过全量测试。
+现有未提交 TF 工作保留；未执行提交、部署、ACK、云训练或重做样本。

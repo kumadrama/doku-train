@@ -106,7 +106,7 @@ Source: Spec 024 已确认需求与设计；2026-10-29 用户验收 opt15/prep15
 
 - [Spec 013：每日 test AUC 看板](specs/013-test-auc-dashboard/requirements.md)、[设计](specs/013-test-auc-dashboard/design.md)、[任务](specs/013-test-auc-dashboard/tasks.md)、[验证](specs/013-test-auc-dashboard/verification.md) — 训练评估日志与 monitoring 四任务多模型看板；仅本地实现，未部署。
 
-- [Spec 012：跨日合同演进](specs/012-daily-contract-evolution/requirements.md)、[设计](specs/012-daily-contract-evolution/design.md)、[任务](specs/012-daily-contract-evolution/tasks.md)、[验证](specs/012-daily-contract-evolution/verification.md) — 标签版本合并、旧日期新增特征默认值与逐日证据冻结；生产恢复按本次明确授权执行。
+- [Spec 012：跨日合同演进](specs/012-daily-contract-evolution/requirements.md)、[设计](specs/012-daily-contract-evolution/design.md)、[任务](specs/012-daily-contract-evolution/tasks.md)、[验证](specs/012-daily-contract-evolution/verification.md) — 标签版本合并、旧日期新增特征默认值与逐日证据冻结；2026-10-31 增加树/Torch 与 TF 数据集家族跨版本兼容。
 
 - [Spec 011：AppConfig 运行开关](specs/011-appconfig-runtime-policy/requirements.md)、[设计](specs/011-appconfig-runtime-policy/design.md)、[任务](specs/011-appconfig-runtime-policy/tasks.md)、[验证](specs/011-appconfig-runtime-policy/verification.md) — 训练、发布、Redis 分发与清理的独立运行控制；禁止将独立训练 timer 打开。
 

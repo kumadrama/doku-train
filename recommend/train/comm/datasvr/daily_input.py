@@ -12,6 +12,7 @@ from recommend.train.comm.datasvr.daily_contracts import (
     digest,
     label_versions,
     merge_contracts,
+    merged_dataset_identity,
     validate_contracts,
 )
 
@@ -48,10 +49,6 @@ def resolve_days(
             raise ValueError("daily manifest digest mismatch")
         if not m.get("projection_sha256") or p["projection_sha256"] != m["projection_sha256"]:
             raise ValueError("daily pointer projection differs from manifest")
-        if manifests and any(
-            m[k] != manifests[0][k] for k in ["dataset_id", "label_config_version"]
-        ):
-            raise ValueError("incompatible daily dataset or label config")
         parts = m["partitions"]
         if not parts or sum(p["rows"] for p in parts) != m["row_count"]:
             raise ValueError("invalid daily row counts")
@@ -95,12 +92,14 @@ def resolve_days(
     parts = [p for m in manifests for p in m["partitions"]]
     if len({p["uri"] for p in parts}) != len(parts):
         raise ValueError("duplicate daily shards")
+    identity = merged_dataset_identity(manifests)
     merged = merge_contracts(bundles)
     contracts = {k: json.dumps(v, sort_keys=True).encode() for k, v in merged.items()}
     result = {
         k: manifests[0][k] for k in ["manifest_version", "dataset_id", "label_config_version"]
     }
     result.update(
+        dataset_id=identity,
         daily_contracts_version="doku-daily-contracts/v1",
         feature_schema_version=merged["features"]["feature_spec_version"],
         label_definition_version=",".join(
