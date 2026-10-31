@@ -51,7 +51,7 @@ ready adapter 使用相同 release 的配方/window 定义，保留当前 28+1�
 
 本地已读到 doku-tools `deploy-task/internal/ops/svc.go`：task 目标是 RegisterTaskDefinition only。因此 R3 依赖平台支持受信 target 激活，不能声称现有 task 发布自动生效。
 
-[INFERRED] 平台增加可选的“已登记 EventBridge ECS target”能力：binding 声明允许的 rule、bus、target ID、cluster、family 和 PassRole 范围；业务 manifest 只引用逻辑目标。
+[INFERRED] 平台还需为 Python Lambda 增加受信 runtime/architecture 声明，保持未声明的旧 Go 契约不变。平台增加可选的“已登记 EventBridge ECS target”能力：binding 声明允许的 rule、bus、target ID、cluster、family 和 PassRole 范围；业务 manifest 只引用逻辑目标。
 
 1. plan 回读旧 task ARN、target 全配置及摘要；检查新镜像/配置和角色/网络一致性。
 2. 使用同一环境/逻辑服务发布锁，注册固定 revision；发布前后比较 target，若出现外部漂移则拒绝覆盖。AWS target 更新不是数据库 CAS，锁与回读不可省略。
