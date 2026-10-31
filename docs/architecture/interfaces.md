@@ -104,3 +104,12 @@ Source: 2026-10-30 用户确认的每日发布与独立 serving 边界；[Spec 0
 当前状态：本仓已实现导出/发布适配及合同校验，外部 ready/serving 适配和云端联调尚未完成，详见 [运行合同](../../specs/027-tf-daily-serving/operations.md)。目标状态：成功 run/选定 checkpoint 导出 SavedModel、特征状态/配置、signature、lineage 与完整性清单；由外部 serving 镜像加载。具体包目录和 wire schema 须与外部仓库确认，不把训练 checkpoint 当稳定在线合同。
 
 日更输入按 `online_config.training_date/validation_date` 从上游截止日解析并冻结；普通离线入口不应用滚动窗口。响应为四主任务结果及实际模型版本，模型相关编码随制品版本配套。S3 上传完成与 Endpoint 部署完成分别记录；本仓负责后者的更新与确认，外部仓库负责服务实现。本次不修改原树模型或其 Redis 分发合同。
+
+## 2026-10-31 跨日数据集身份兼容
+
+Source: [Spec 012 修订](../../specs/012-daily-contract-evolution/design.md)，用户授权同步修复两套数据层。
+当前本地实现：recommend（树/Torch）和 recommend_tf 分别实现同一 adapter 规则，
+已知 fyp-rank-train 特征版本化身份在校验其 schema 对应关系后可跨版本合并。
+不同源 ID 的合成身份为 fyp-rank-train；同 ID 保持原值。逐日 lineage 新增 dataset_id，
+冻结恢复从原始证据重算身份。未知家族保持严格相等；标签和字段定义校验不放宽。
+目标部署状态：此次仅本地实施与验收，未部署，未重试生产任务。

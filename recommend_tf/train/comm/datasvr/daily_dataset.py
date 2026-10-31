@@ -6,7 +6,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .daily_contracts import digest, merge_contracts
+from .daily_contracts import digest, merge_contracts, merged_dataset_identity
 from .published_dataset import PublishedDataset
 
 
@@ -76,10 +76,6 @@ def freeze(config, ready, target):
             ]
             if not start <= lo < hi <= end:
                 raise ValueError("partition outside published UTC day")
-        if manifests and any(
-            manifest[k] != manifests[0][k] for k in ("dataset_id", "label_config_version")
-        ):
-            raise ValueError("incompatible daily dataset identity")
         # Existing additive daily-contract verifier requires these versioned fields.
         for key in ("label_config_version", "projection_sha256"):
             if not manifest.get(key):
@@ -96,10 +92,12 @@ def freeze(config, ready, target):
                 "contract_sha256": dataset.contract_digests,
             }
         )
+    identity = merged_dataset_identity(manifests)
     contracts = merge_contracts(bundles)
     contract_bytes = {k: json.dumps(v, sort_keys=True).encode() for k, v in contracts.items()}
     merged = copy.deepcopy(manifests[-1])
     merged.update(
+        dataset_id=identity,
         dataset_version="daily-" + digest(evidence),
         feature_schema_version=contracts["features"]["feature_spec_version"],
         label_definition_version=",".join(sorted(contracts["labels"]["label_definition_versions"])),

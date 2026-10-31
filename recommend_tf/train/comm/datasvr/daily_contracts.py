@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from typing import Any
 
 
@@ -20,6 +21,31 @@ def label_versions(value: Any) -> set[str]:
     if not isinstance(value, str) or not value or any(not x.strip() for x in value.split(",")):
         raise ValueError("invalid label version set")
     return set(value.split(","))
+
+
+def merged_dataset_identity(manifests: list[dict[str, Any]]) -> str:
+    """Normalize only the known upstream versioned family; retain source evidence."""
+    identities = []
+    families = []
+    for manifest in manifests:
+        identity = manifest["dataset_id"]
+        match = re.fullmatch(r"fyp-rank-train/fyp-rank-features-v([1-9][0-9]*)", identity)
+        if match:
+            if manifest["feature_schema_version"] != "fyp-rank-features/v" + match[1]:
+                raise ValueError("daily dataset identity/schema mismatch")
+            family = "fyp-rank-train"
+        else:
+            # Unknown identities must never alias the canonical merged family.
+            family = "exact:" + identity
+        identities.append(identity)
+        families.append(family)
+    if (
+        not manifests
+        or len(set(families)) != 1
+        or len({m["label_config_version"] for m in manifests}) != 1
+    ):
+        raise ValueError("incompatible daily dataset identity or label config")
+    return identities[0] if len(set(identities)) == 1 else families[0]
 
 
 def validate_contracts(manifest: dict[str, Any], contracts: dict[str, Any]) -> None:
@@ -78,6 +104,7 @@ def verify_daily_evidence(
     parts = []
     bundles = []
     records = []
+    originals = []
     versions: set[str] = set()
     for source in manifest["source_manifests"]:
         raw = source["manifest"].encode()
@@ -98,7 +125,8 @@ def verify_daily_evidence(
         ):
             raise ValueError("daily source contract checksum mismatch")
         validate_contracts(original, bundle)
-        if any(original[k] != manifest[k] for k in ["dataset_id", "label_config_version"]):
+        originals.append(original)
+        if original["label_config_version"] != manifest["label_config_version"]:
             raise ValueError("daily source identity mismatch")
         fields = {f["name"] for f in bundle["features"]["features"]}
         for part in original["partitions"]:
@@ -110,6 +138,7 @@ def verify_daily_evidence(
         versions.update(label_versions(original["label_definition_version"]))
         records.append(
             {
+                "dataset_id": original["dataset_id"],
                 "date": source["date"],
                 "uri": source["uri"],
                 "sha256": source["sha256"],
@@ -119,6 +148,8 @@ def verify_daily_evidence(
                 "contract_sha256": hashes,
             }
         )
+    if merged_dataset_identity(originals) != manifest["dataset_id"]:
+        raise ValueError("daily source identity mismatch")
     if not bundles or parts != manifest["partitions"] or merge_contracts(bundles) != contracts:
         raise ValueError("daily merged contracts or partitions differ from evidence")
     if versions != label_versions(manifest["label_definition_version"]):

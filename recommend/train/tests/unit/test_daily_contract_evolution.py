@@ -12,7 +12,7 @@ from recommend.train.comm.datasvr.published_dataset import PublishedDataset, dig
 from recommend.train.tests.smoke.test_tree_publication import daily_fixture
 
 
-def rewrite_day(daily, day, *, features=None, labels=None, drop=()):
+def rewrite_day(daily, day, *, features=None, labels=None, drop=(), identity=None):
     base = Path(daily.root.removeprefix("file://")) / f"date={day}/run_id=abc"
     manifest_path = base / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -31,6 +31,8 @@ def rewrite_day(daily, day, *, features=None, labels=None, drop=()):
         path = base / "part.parquet"
         pq.write_table(pq.ParquetFile(path).read().drop(list(drop)), path)
         manifest["partitions"][0]["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if identity is not None:
+        manifest["dataset_id"] = identity
     manifest.pop("content_sha256")
     manifest["content_sha256"] = digest(manifest)
     raw = json.dumps(manifest).encode()
@@ -185,3 +187,34 @@ def test_plain_manifest_accepts_declared_label_version_set(tmp_path):
     labels["label_definition_versions"].append("labels-v5")
     path.write_text(json.dumps(labels))
     assert PublishedDataset(config).labels
+
+
+def test_versioned_family_freeze_restore(tmp_path):
+    config, daily = daily_fixture(tmp_path)
+    for i in range(1, 9):
+        version = 6 if i == 8 else 5
+
+        def features(c, version=version):
+            c["feature_spec_version"] = f"fyp-rank-features/v{version}"
+            if version == 6:
+                c["features"].append({"name": "u_deep_link_drama_id", "dtype": "int64"})
+
+        rewrite_day(
+            daily,
+            f"2026-10-{i:02}",
+            features=features,
+            identity=f"fyp-rank-train/fyp-rank-features-v{version}",
+        )
+    config = prepared(tmp_path, config, daily)
+    dataset = PublishedDataset(config)
+    assert dataset.manifest["dataset_id"] == "fyp-rank-train"
+    rows = list(dataset.rows("train", {"i_episode_dur_s"}))
+    assert rows and all(not r["defaulted_features"] for r in dataset.source_records)
+    frozen = tmp_path / "restore"
+    dataset.freeze(frozen)
+    for path in Path(daily.root.removeprefix("file://")).rglob("*.json"):
+        path.unlink()
+    restored = PublishedDataset(config, frozen_input=frozen)
+    assert restored.source_records == dataset.source_records
+    assert list(restored.rows("train", {"i_episode_dur_s"})) == rows
+    assert restored.source_records[-1]["dataset_id"].endswith("-v6")
