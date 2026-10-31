@@ -1,6 +1,6 @@
 # Spec 031 生产迁移操作与门槛
 
-本次代码实施没有执行下列迁移。PR #30 已部署 TF daily revision 6，保持现有 Endpoint 模型不变。每一阶段单独记录输出，禁止把版本注册成功当作激活成功。
+下列为迁移顺序；2026-11-01 已开始执行，当前证据见 verification.md。PR #30 已部署 TF daily revision 6，保持现有 Endpoint 模型不变。每一阶段单独记录输出，禁止把版本注册成功当作激活成功。
 
 1. 发布 doku-tools 的 task-target 扩展并验证隔离目标：旧字段保留、部分失败回退、并发漂移拒绝。保存当前 target 全量 JSON、TD/镜像、两个 Lambda code hash、binding/recipe、Endpoint config 与 Terraform state。
 2. 在维护发布冻结下应用无资源删除的 IaC 交接。确认 removed destroy=false 保留 revision 6、target 仍指向 6、legacy_command 与原参数等值；Lambda code hash 保持，添加 doku:code-owner=dkd。恢复规则 DISABLED，runtime policy 为 null。新增 deferred 权限不依赖策略启用。生成 bindings 前必须实际 apply 完成。
