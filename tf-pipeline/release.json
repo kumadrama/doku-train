@@ -1,10 +1,11 @@
 {
   "schema_version": "doku-tf-runtime-release/v1",
-  "source_revision": "823bcbf94b6077392412826301b46e73075b5999",
-  "pipeline_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:b1cab3463859f71fad2092fd3eebeda4e7f0e8742bca31f96ce666af574deec5",
-  "training_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:2d3b2fa9645760a1937ae5582ef7a2d012cfbdcc05b2f50b074b16375a9ddae4",
-  "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/09e7d01bb20e95f1e7e59db824d70580ad885250f14cac4af4ec4f550d2ca641/binding.json",
-  "binding_sha256": "09e7d01bb20e95f1e7e59db824d70580ad885250f14cac4af4ec4f550d2ca641",
+  "source_revision": "07d50c32529e979aeef9d0251c27df6e16250dde",
+  "pipeline_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:7955a12315b3fd12225c66337a20b57f4d1726a40f031c98d10cdfd6331f0599",
+  "training_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:d47b87b5adf87cc58a6e2e4a86cfcbb0908a28a2532e69469e519ad22c9d92e8",
+  "inference_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:5009a4ef2391fc60af8545c5c5e93070b31d450baf46dfed56954d9fa69302c3",
   "config_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5/daily-config.json",
-  "config_sha256": "c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5"
+  "config_sha256": "c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5",
+  "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/b6b56b16e64c15b302af79ea4e7d7b61e32ead8e172af20653d26857c2fb67ce/binding.json",
+  "binding_sha256": "b6b56b16e64c15b302af79ea4e7d7b61e32ead8e172af20653d26857c2fb67ce"
 }
