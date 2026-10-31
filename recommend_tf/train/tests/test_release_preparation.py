@@ -42,12 +42,24 @@ def test_release_freezes_binding_and_task_defaults(tmp_path):
         )
     )
     image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/train@sha256:" + "a" * 64
+    provenance = tmp_path / "training-provenance.json"
+    provenance.write_text(
+        json.dumps(
+            dict(
+                image_uri=image,
+                source_revision="a" * 40,
+                source_sha256="b" * 64,
+                lock_sha256="c" * 64,
+            )
+        )
+    )
     args = SimpleNamespace(
         binding=str(binding),
         config=str(config),
         terraform_outputs=str(outputs),
         pipeline_image=image,
         training_image=image,
+        training_provenance=str(provenance),
         source_revision="a" * 40,
         config_prefix="s3://bucket/config",
         allow_legacy_ready=True,
@@ -69,6 +81,17 @@ def test_release_freezes_binding_and_task_defaults(tmp_path):
         json.loads((result / "binding.json").read_text())["deployment"]["image_uri"]
         == "frozen-inference"
     )
+    exported = json.loads((result / "binding.json").read_text())
+    assert exported["training_request"]["Environment"] == {
+        "DOKU_SOURCE_SHA256": "b" * 64,
+        "DOKU_LOCK_SHA256": "c" * 64,
+    }
+    args.output = str(tmp_path / "wrong-source")
+    args.source_revision = "d" * 40
+    with pytest.raises(ValueError, match="provenance"):
+        prepare(args)
+    assert not (tmp_path / "wrong-source").exists()
+    args.source_revision = "a" * 40
     args.output = str(tmp_path / "bad-release")
     args.training_image = "mutable:latest"
     with pytest.raises(ValueError, match="immutable"):

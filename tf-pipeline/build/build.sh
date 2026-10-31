@@ -10,5 +10,5 @@ assert re.fullmatch(r'[a-f0-9]{40}',revision)
 if subprocess.run(['git','cat-file','-e',revision],capture_output=True).returncode:
     subprocess.run(['git','fetch','origin',revision],check=True)
 # Changing runtime source requires a newly tested immutable runtime artifact.
-subprocess.run(['git','diff','--exit-code',revision,'HEAD','--','../recommend_tf'],check=True)
+subprocess.run(['git','diff','--exit-code',revision,'HEAD','--',':(top)recommend_tf',':(top,exclude)recommend_tf/train/tests/**'],check=True)
 PY

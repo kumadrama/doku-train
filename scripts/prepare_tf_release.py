@@ -21,12 +21,25 @@ def prepare(args):
             r"[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[^@]+@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("immutable ECR image digest required")
+    provenance = json.loads(Path(args.training_provenance).read_text())
+    if (
+        provenance.get("image_uri") != args.training_image
+        or provenance.get("source_revision") != args.source_revision
+    ):
+        raise ValueError("training provenance differs from selected immutable image/source")
+    for name in ("source_sha256", "lock_sha256"):
+        if not re.fullmatch(r"[a-f0-9]{64}", provenance.get(name, "")):
+            raise ValueError("verified training source and lock digests required")
     config_raw = Path(args.config).read_bytes()
     config = json.loads(config_raw)
     if config.get("model_name") != binding["model_name"]:
         raise ValueError("recipe/model binding mismatch")
     binding.update(applied)
     binding["training_request"]["AlgorithmSpecification"]["TrainingImage"] = args.training_image
+    binding["training_request"].setdefault("Environment", {}).update(
+        DOKU_SOURCE_SHA256=provenance["source_sha256"],
+        DOKU_LOCK_SHA256=provenance["lock_sha256"],
+    )
     if args.allow_legacy_ready:
         binding["legacy_ready_config_sha256"] = digest(config_raw)
     binding_raw = (json.dumps(binding, sort_keys=True, indent=2) + "\n").encode()
@@ -38,6 +51,7 @@ def prepare(args):
         source_revision=args.source_revision,
         pipeline_image=args.pipeline_image,
         training_image=args.training_image,
+        training_provenance=provenance,
         inference_image=binding["deployment"]["image_uri"],
         config_uri=prefix + "/" + digest(config_raw) + "/daily-config.json",
         config_sha256=digest(config_raw),
@@ -72,6 +86,7 @@ if __name__ == "__main__":
         "config-prefix",
         "pipeline-image",
         "training-image",
+        "training-provenance",
         "source-revision",
         "output",
     ):
