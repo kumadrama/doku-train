@@ -642,3 +642,25 @@ def test_binary_corrupt_catalog_can_be_rebuilt_without_guessing_version(setup):
     assert catalog["epoch"] != old
     assert catalog["current"]["version"] == "v1"
     distribution.verify("v1")
+
+
+@pytest.mark.parametrize(
+    "offset,action", [(-1, "younger_than_7_days"), (0, "younger_than_7_days"), (1, "drain")]
+)
+def test_joint_seven_day_retention_boundary(setup, tmp_path, offset, action):
+    registry, _, distribution, _ = setup
+    distribution.sync("v1")
+    seed(registry, tmp_path / "second", "v2", "2026-10-02")
+    distribution.sync("v2")
+    now = datetime.now(UTC) + timedelta(days=3)
+
+    def set_age(state):
+        state["versions"]["v1"]["created_at"] = (
+            now - timedelta(days=7, seconds=offset)
+        ).isoformat()
+
+    registry.update(set_age)
+    before = registry.store.get(registry.key)
+    plan = {row["version"]: row["action"] for row in distribution.cleanup(now=now)["plan"]}
+    assert plan == {"v1": action, "v2": "current"}
+    assert registry.store.get(registry.key) == before

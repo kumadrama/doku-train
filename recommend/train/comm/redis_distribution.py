@@ -542,8 +542,8 @@ class Distribution:
                 action = "producer_active"
             elif entry["state"] == "deleted":
                 action = "deleted"
-            elif now - instant(entry["created_at"]) <= timedelta(days=30):
-                action = "younger_than_30_days"
+            elif now - instant(entry["created_at"]) <= timedelta(days=7):
+                action = "younger_than_7_days"
             elif replaced and now - max(replaced) < timedelta(hours=24):
                 action = "replacement_grace"
             elif entry["state"] in {"available", "uploading"}:
