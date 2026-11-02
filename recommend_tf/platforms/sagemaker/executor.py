@@ -74,6 +74,37 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
                 s3, getattr(args, name + "_uri"), getattr(args, name + "_sha256"), root / name
             )
         binding = values["binding"]
+        if values["ready"].get("version") == "doku-tf-deferred/v1":
+            if not binding.get("deferred_uri") or not args.ready_uri.startswith(
+                binding["deferred_uri"].rstrip("/") + "/requests/"
+            ):
+                raise ValueError("untrusted deferred execution")
+            original = values["ready"]["arguments"]
+            current_policy = binding.get("runtime_policy")
+            current_deferred = binding["deferred_uri"]
+            for name in ("config", "ready", "binding"):
+                values[name] = download_json(
+                    s3, original[name + "_uri"], original[name + "_sha256"], root / name
+                )
+            if values["ready"].get("version") == "doku-tf-deferred/v1":
+                raise ValueError("nested deferred execution forbidden")
+            binding = values["binding"]
+            if (
+                binding.get("deferred_uri") != current_deferred
+                or binding.get("runtime_policy") != current_policy
+            ):
+                raise ValueError("deferred execution policy ownership changed")
+            for name, value in original.items():
+                setattr(args, name, value)
+        ready_recipe = values["ready"].get("config_sha256")
+        if ready_recipe and ready_recipe != args.config_sha256:
+            raise ValueError("ready and execution recipe differ")
+        if (
+            binding.get("runtime_policy")
+            and not ready_recipe
+            and (binding.get("legacy_ready_config_sha256") != args.config_sha256)
+        ):
+            raise ValueError("legacy ready recipe not explicitly allowed")
         validate_binding(binding)
         cluster_name = cluster.rsplit("/", 1)[-1]
         if binding["region"] != args.region or binding["ecs_cluster"] not in {
@@ -89,24 +120,47 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
                 raise ValueError("bootstrap evidence requires run")
             evidence = str(root / "evidence")
             download_json(s3, args.bootstrap_evidence_uri, args.bootstrap_evidence_sha256, evidence)
-        return invoke(
-            SimpleNamespace(
-                **{name: str(root / name) for name in values},
-                executor_arn=arn,
-                bootstrap_run=args.bootstrap_run,
-                bootstrap_evidence=evidence,
-                rollback_version=args.rollback_version,
-                retry_id=args.retry_id,
+        receipt = None
+        if binding.get("runtime_policy"):
+            if not binding.get("deferred_uri"):
+                raise ValueError("runtime policy requires deferred storage")
+            from .recover_daily import enqueue, set_status
+
+            receipt = enqueue(s3, binding, args, root)[1]
+        try:
+            result = invoke(
+                SimpleNamespace(
+                    **{name: str(root / name) for name in values},
+                    executor_arn=arn,
+                    bootstrap_run=args.bootstrap_run,
+                    bootstrap_evidence=evidence,
+                    rollback_version=args.rollback_version,
+                    retry_id=args.retry_id,
+                )
             )
-        )
+        except Exception:
+            # Keep the immutable request available for explicit recovery. Do not turn
+            # a failed training attempt into an implicit retrain with a new retry id.
+            raise
+        if receipt:
+            set_status(s3, binding, receipt, result or "completed")
+        return result
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--region", required=True)
     for name in ("config", "ready", "binding"):
-        parser.add_argument("--" + name + "-uri", required=True)
-        parser.add_argument("--" + name + "-sha256", required=True)
+        parser.add_argument(
+            "--" + name + "-uri",
+            default=os.environ.get("DOKU_" + name.upper() + "_URI"),
+            required=not os.environ.get("DOKU_" + name.upper() + "_URI"),
+        )
+        parser.add_argument(
+            "--" + name + "-sha256",
+            default=os.environ.get("DOKU_" + name.upper() + "_SHA256"),
+            required=not os.environ.get("DOKU_" + name.upper() + "_SHA256"),
+        )
     parser.add_argument("--bootstrap-run")
     parser.add_argument("--bootstrap-evidence-uri")
     parser.add_argument("--bootstrap-evidence-sha256")

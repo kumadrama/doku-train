@@ -1,0 +1,7 @@
+{
+  "schema_version": "doku-tf-runtime/v1",
+  "training_enabled": true,
+  "publication_enabled": true,
+  "recovery_enabled": false,
+  "recovery_max_items": 1
+}

@@ -144,10 +144,13 @@ def step(
     work,
     bootstrap_run=None,
     bootstrap_evidence=None,
+    policy=None,
 ):
     active = state.value["active"]
     stage = active["stage"]
     if stage == "claimed":
+        if not bootstrap_run and policy and not policy.allowed("training"):
+            return "deferred_training"
         if bootstrap_run:
             active.update(stage="trained", run_uri=bootstrap_run)
         else:
@@ -166,6 +169,8 @@ def step(
         request = active["training_request"]
         observed = describe(sm, "describe_training_job", TrainingJobName=request["TrainingJobName"])
         if observed is None:
+            if policy and not policy.allowed("training"):
+                return "deferred_training"
             sm.create_training_job(**request)
             return "pending"
         # Reconcile deterministic names against the actual submitted configuration.
@@ -248,6 +253,8 @@ def step(
         active.update(stage="uploaded", model_version=manifest["model_version"])
         state.save()
     if active["stage"] in {"uploaded", "deploying"}:
+        if active["stage"] == "uploaded" and policy and not policy.allowed("publication"):
+            return "deferred_publication"
         return deploy_step(
             sm,
             runtime,
@@ -321,6 +328,9 @@ def operation_identity(
         if k
         not in {
             "monitoring",
+            "runtime_policy",
+            "legacy_ready_config_sha256",
+            "deferred_uri",
             "poll_seconds",
             "max_wait_seconds",
             "download_limit_bytes",
@@ -397,6 +407,23 @@ def execute(args):
         s3, sm, runtime, ecs = [
             session.client(name) for name in ("s3", "sagemaker", "sagemaker-runtime", "ecs")
         ]
+        policy = None
+        if binding.get("runtime_policy"):
+            from botocore.config import Config
+
+            from recommend_tf.platforms.runtime_policy import RuntimePolicy
+
+            policy = RuntimePolicy(
+                session.client(
+                    "appconfigdata",
+                    config=Config(
+                        connect_timeout=3,
+                        read_timeout=5,
+                        retries={"mode": "standard", "max_attempts": 2},
+                    ),
+                ),
+                binding["runtime_policy"],
+            )
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
         if binding.get("monitoring", {}).get("catalog_uri"):
             from recommend_tf.train.comm.model_identity import recipe_sha256
@@ -435,6 +462,14 @@ def execute(args):
             rollback_version=args.rollback_version,
             retry_id=args.retry_id,
         )
+        active = state.value["active"]
+        if (
+            args.rollback_version
+            and policy
+            and not (active and active["operation"] == operation)
+            and not policy.allowed("publication")
+        ):
+            return "deferred_publication"
         preflight_ready(
             state, config, ready, operation, skip=bool(args.bootstrap_run or args.rollback_version)
         )
@@ -451,7 +486,7 @@ def execute(args):
                 args.rollback_version and result["stage"] == "rolled_back"
             ):
                 raise RuntimeError("previous attempt failed; explicit retry-id required")
-            return
+            return result["stage"]
         acquire_executor(state, ecs, binding["ecs_cluster"], args.executor_arn)
         started = time.monotonic()
         while time.monotonic() - started < binding["max_wait_seconds"]:
@@ -467,7 +502,18 @@ def execute(args):
                     work=Path(directory),
                     bootstrap_run=args.bootstrap_run,
                     bootstrap_evidence=evidence,
+                    policy=policy,
                 )
+            if outcome.startswith("deferred_"):
+                # A graceful pause owns no in-flight AWS operation. Release only this
+                # executor, so recovery after a long pause does not require expired
+                # ECS STOPPED metadata. Journal CAS still protects concurrent resumes.
+                if state.value["active"].get("executor") != args.executor_arn:
+                    raise ValueError("cannot defer another executor")
+                state.value["active"].pop("executor")
+                state.save()
+                print(json.dumps({"operation": operation, "status": outcome}), flush=True)
+                return outcome
             if outcome != "pending":
                 state.finish(state.value["active"], binding if binding.get("monitoring") else None)
                 if binding.get("monitoring"):
@@ -491,7 +537,7 @@ def execute(args):
                     args.rollback_version and outcome == "rolled_back"
                 ):
                     raise RuntimeError("daily pipeline did not deploy: " + outcome)
-                return
+                return outcome
             time.sleep(binding["poll_seconds"])
         raise TimeoutError(
             "execution budget exhausted; persistent state retained for reconciliation"

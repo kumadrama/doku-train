@@ -1,0 +1,12 @@
+{
+  "apiVersion": "doku.dkd/v1",
+  "kind": "LambdaDeployment",
+  "metadata": {
+    "psm": "doku-tf-ready",
+    "env": "prod"
+  },
+  "artifact": {
+    "key": "doku-tf-ready/releases/fc8260369742cdf8d7cb6f47002f3d20fecaba17fb242fc141328b2e07e42587.zip",
+    "object_version": "GlUgbfuTokdHHRxYoPfQPOiY2aja_yrd"
+  }
+}
