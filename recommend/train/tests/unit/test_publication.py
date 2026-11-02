@@ -309,3 +309,15 @@ def test_active_local_reader_prevents_run_retirement(tmp_path):
         assert "run-v1" not in registry.read()[0].get("retired_local_runs", [])
     cleanup_local(registry, tmp_path / "runs", tmp_path / "exports", apply=True)
     assert not local.exists()
+
+
+@pytest.mark.parametrize(
+    "offset,action", [(-1, "younger_than_7_days"), (0, "younger_than_7_days"), (1, "drain")]
+)
+def test_seven_day_retention_boundary(tmp_path, offset, action):
+    registry = Registry(ObjectStore(tmp_path.as_uri()), "test")
+    now = datetime.now(UTC) + timedelta(days=3)
+    seed(registry, "old", now - timedelta(days=7, seconds=offset))
+    seed(registry, "current", now - timedelta(days=1), day="2026-10-02")
+    plan = {row["version"]: row["action"] for row in registry.cleanup(now=now)["plan"]}
+    assert plan == {"old": action, "current": "current"}

@@ -240,8 +240,8 @@ class Registry:
                     reason = "producer_active"
                 elif entry["state"] == "deleted":
                     reason = "deleted"
-                elif now - instant(entry["created_at"]) <= timedelta(days=30):
-                    reason = "younger_than_30_days"
+                elif now - instant(entry["created_at"]) <= timedelta(days=7):
+                    reason = "younger_than_7_days"
                 elif entry.get("replaced_at") and now - instant(entry["replaced_at"]) < timedelta(
                     hours=24
                 ):

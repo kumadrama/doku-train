@@ -254,9 +254,9 @@ Redis 包，再切目录。deleting/deleted 不可回滚。回滚 current 是否
 
 ### 6.1 保护与保留
 
-年龄基于可信创建时间，超过 30 天才候选；S3 current 和 Redis current 无条件保护。
+年龄基于可信创建时间，超过 7 天才候选；S3 current 和 Redis current 无条件保护。
 替换时间取 S3/Redis 各自相关引用最后被替换时间的较晚值，至少再保护 24 小时；
-Redis 同步长期失败时，旧线上版本可以保留超过 30 天。
+Redis 同步长期失败时，旧线上版本可以保留超过 7 天。
 
 同步中目标、未决控制操作、活动 producer、消费者 pins 均保护。历史 dates 引用不是永久保留：
 候选可先退出解析并 drain，但两服务已有 pin 不得被强行释放。未知引用或 Redis 不可读时
@@ -294,7 +294,7 @@ S3 上游投影、共享冻结输入保持 Spec 009 边界，不被 Redis 清理
 
 本地卸载和 S3/Redis 删除是不同动作：本地只需排空本实例请求后释放其 pin，远端由统一清理决定。
 Redis 首版不另设更短淘汰期，也不使用 LRU 提前回收受保留规则保护的包；容量不足拒绝同步并告警。
-部署前测量 serving 子集、旧新双版本/30 天积累、复制开销、网络与加载耗时，不能用 S3 全归档
+部署前测量 serving 子集、旧新双版本/7 天积累、复制开销、网络与加载耗时，不能用 S3 全归档
 大小直接当 Redis 内存用量。后续若需要只缓存少数版本，须另行设计精确版本回填及可用性合同。
 
 ## 7. 接入顺序与验收
@@ -317,7 +317,7 @@ Redis 首版不另设更短淘汰期，也不使用 LRU 提前回收受保留规
 | R3/R4 | 编码后切 current、跨实例 predictor 未预热：响应精确原版或明确错误，绝不换版。 |
 | R6/R7 | 同步重试、同日多版本、迟到操作、回滚竞态：generation 单调，旧任务不覆盖新目录。 |
 | R6 | catalog 成功响应丢失、S3 确认失败：unknown 可恢复，不重训、不丢保护。 |
-| R8/R9 | S3 新版但 Redis 旧版超过 30 天：旧 Redis current 仍不能删除。 |
+| R8/R9 | S3 新版但 Redis 旧版超过 7 天：旧 Redis current 仍不能删除。 |
 | R9/R10 | pin 与 draining/deleting 并发；服务失联；两个服务分批排空：禁止新 pin，有 pin 不删。 |
 | R10 | 目录撤销中断、Redis 删除一半、S3 删除一半：保持不可解析，按原键集幂等恢复。 |
 | R11 | Redis 全丢、丢单文件、failover 回退、旧 writer：停止不确定控制写入，重建 epoch，不复活墓碑。 |
@@ -343,3 +343,5 @@ lineage、配置摘要或模型版本。没有绑定时保留 v1 S3-only 行为�
 ## PROD 连接装配
 
 运行时支持 DOKU_TRAIN_REDIS_SECRET_ID 与 URL 二选一，Secret 使用平台 username/password/host/port/db/tls 合同，强制 TLS 和 db=0；只授权训练/清理 task role 读取指定 readwrite Secret。密码不进入 Terraform 或工作流环境。db/doku-redis-model 为平台 setup 身份声明。
+
+Source: 2026-11-02 Spec 033 已确认：模型产物保留期从 30 天调整为 7 天，两侧联合清理保护不变。

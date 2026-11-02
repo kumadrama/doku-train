@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 033：模型产物七天保留](specs/033-redis-seven-day-retention/requirements.md)、[设计](specs/033-redis-seven-day-retention/design.md) — 已确认并授权实施部署，两侧统一 7 天，安全保护不变。
+
 - [Spec 031 requirements](specs/031-runtime-release-ownership/requirements.md)、[design](specs/031-runtime-release-ownership/design.md) — 2026-10-31 用户授权实施，生产迁移另行验收。
 
 - [Spec 027：TF 每日训练与 SageMaker 发布需求](specs/027-tf-daily-serving/requirements.md)、[设计](specs/027-tf-daily-serving/design.md) — 需求与设计已确认，已授权本地实施；[任务](specs/027-tf-daily-serving/tasks.md)、[验证](specs/027-tf-daily-serving/verification.md)、[运行合同](specs/027-tf-daily-serving/operations.md)。本仓负责日更训练、导出与 Endpoint 更新，serving 属于独立仓库；未云部署。
@@ -302,7 +304,7 @@ Source: 用户确认每日训练、独立评估、导出与 S3 发布、版本�
 - 新增独立发布指标门禁，由 YAML 声明，本次阈值 0.60；不阻断训练产物保存，不恢复旧训练门禁。
 - 日更窗口由配置声明并解析为冻结日期列表，训练最多 30 自然日，validation/test 各一天，
   三段各至少一天，允许缺日；不够三段就跳过，不做隐式降级。
-- 上游训练投影成功后触发单次流水线；本仓不常驻计时。按创建时间保留 30 天，保护当前发布
+- 上游训练投影成功后触发单次流水线；本仓不常驻计时。按创建时间保留 7 天，保护当前发布
   版本及被替换后至少 24 小时的版本；清理须与发布/回滚和活动引用协调。
 - 具体需求和目标设计以文档索引中的 Spec 009 为准。上述均非当前实现能力声明。
 
