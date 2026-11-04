@@ -12,6 +12,6 @@
   "inference_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:5009a4ef2391fc60af8545c5c5e93070b31d450baf46dfed56954d9fa69302c3",
   "config_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5/daily-config.json",
   "config_sha256": "c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5",
-  "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/3b02868287e85a25cdddf2868fc35ee7c2c673cfc0c819832efbaf1d560668c6/binding.json",
-  "binding_sha256": "3b02868287e85a25cdddf2868fc35ee7c2c673cfc0c819832efbaf1d560668c6"
+  "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c177bfe80558a26aa785f47afc5b84232e078b6821bd4008b61424b098359b57/binding.json",
+  "binding_sha256": "c177bfe80558a26aa785f47afc5b84232e078b6821bd4008b61424b098359b57"
 }

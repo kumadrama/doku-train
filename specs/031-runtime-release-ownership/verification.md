@@ -34,3 +34,14 @@
 - TF AppConfig 接线 apply `dj_db3b88e1-b797-48aa-bb60-0a07cbe18999` 后，从实际输出生成本 PR 的匹配 task/ready release；profile `9vo211i`，recovery 默认关闭。
 - 本 PR 不改变模型配方、28+1 日期窗口、训练/推理镜像或当前 Endpoint 模型。新冻结 binding SHA256：`45513e6bea3462f22cc7f42431d39ec62eeee86383bb280c74d19322c859ad12`；ready ZIP SHA256(base64)：`/IJgNpdCzfjXy29HAC89IP7Kuhf7JC/BQTKLLgfkJYc=`，两次打包相同。
 - 待完成：本 PR 发布后验证真实 Lambda 暂停/历史请求恢复幂等，启用有界恢复；至少一次自然日更、四任务指标和告警验收后才删除旧兼容配置。不得用前面的 gate 函数测试替代自然日更。
+
+
+## 2026-11-04 推理并发配置调整（已授权发布，等待生产验收）
+
+用户要求 SageMaker 推理并发和 ai-engine 调用限额同步调整为 20。当前线上任务 revision 9 的 binding 摘要为 `45513e6bea3462f22cc7f42431d39ec62eeee86383bb280c74d19322c859ad12`；新 binding 仅将 `deployment.container_environment.DOKU_CONCURRENCY` 从字符串 `2` 改为 `20`，内容摘要为 `c177bfe80558a26aa785f47afc5b84232e078b6821bd4008b61424b098359b57`。训练请求、配方、模型制品、推理镜像、实例规格和数量均未修改。
+
+本地 release 与 task-definition 已同步新 binding 坐标；ready Lambda 候选包经 `scripts/package_tf_ready.py` 生成并核对内嵌 release/config 摘要，binding 和 ready 候选包已上传至受信 S3 前缀；lambda.yml 已记录新对象的真实版本号，尚未更新线上任务或函数。与当前已部署 ZIP 逐文件比较，只有 ready_release.json 的 binding_uri 和 binding_sha256 改变，其余程序及冻结配方字节一致。原始 binding 与新 binding 的结构对比确认仅有一个配置值变化。发布时必须先上传不可变 binding，再发布匹配的任务与 ready 包，不能只改 task 而留下持有旧 binding 的 ready/recovery 生产者。
+
+线上只读检查发现日更训练 `doku-daily-5418d9cbe6a6616b5df4eb33f9437040430edb58` 仍处于 InProgress/Training，发布 journal active.stage 为 training。不得修改这轮冻结绑定或中止训练；需要协调该轮自动发布后再切换端点配置，避免旧 executor 覆盖。当前 Endpoint 的并发仍为 2，未执行生产变更。
+
+本轮本地验证：`python3 scripts/package_tf_ready.py ...` 连续两次产物字节一致；与生产包逐文件比对仅 release binding 两字段变化；`git diff --check` 通过。用户已明确授权继续合入并发布，并要求保留正在运行的训练。
