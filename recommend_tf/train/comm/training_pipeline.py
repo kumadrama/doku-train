@@ -195,10 +195,16 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 objective_sums = {}
                 objective_batches = 0
                 for batch in batches(
-                    rows(prepared_root / "train", ident, columns=input_columns(params, dtypes)),
+                    rows(
+                        prepared_root / "train",
+                        ident,
+                        columns=input_columns(params, dtypes),
+                        seed=config["seed"] + epoch,
+                    ),
                     size,
                     config["seed"] + epoch,
                     config["shuffle_buffer_size"],
+                    replacement=bool(config.get("data_sources")),
                 ):
                     result = sess.run(
                         {
@@ -232,7 +238,7 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 valid = {name: 0.0 for name in params.tasks}
                 valid_denominators = {name: 0.0 for name in params.tasks}
                 metric_path = output / f"metrics-{epoch + 1:04d}.sqlite"
-                accumulator = Metrics(metric_path, params.tasks)
+                accumulator = Metrics(metric_path, params.eval_tasks)
                 for batch in batches(
                     rows(
                         prepared_root / "validation", ident, columns=input_columns(params, dtypes)
@@ -284,7 +290,21 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 target.mkdir()
                 saver.save(sess, str(target / "model"))
                 selection = config.get("selection")
-                if early is not None:
+                empty_validation = bool(config.get("data_sources")) and not any(
+                    metric["rows"] for task in calculated.values() for metric in task.values()
+                )
+                if empty_validation:
+                    (output / "selection.json").write_text(
+                        json.dumps(
+                            {
+                                "status": "unavailable",
+                                "reason": "empty_validation",
+                                "final_checkpoint": str(target.resolve()),
+                                "epoch": epoch + 1,
+                            }
+                        )
+                    )
+                elif early is not None:
                     record["early_stop"] = early.observe(calculated, epoch + 1, target.resolve())
                     best = early.best
                     (output / "selection.json").write_text(
@@ -392,13 +412,25 @@ def evaluate_checkpoint(config, prepared_root, checkpoint, output, split="test")
     dtypes = config["dtypes"]
     size = config["batch_size"]
     prepared = Path(prepared_root) / split
-    first = next(batches(rows(prepared, ident, columns=input_columns(params, dtypes)), size))
+    first = next(batches(rows(prepared, ident, columns=input_columns(params, dtypes)), size), None)
     output.mkdir(parents=True, exist_ok=False)
     sums = {name: 0.0 for name in params.tasks}
     denoms = {name: 0.0 for name in params.tasks}
     path = output / "metrics.sqlite"
-    accumulator = Metrics(path, params.tasks)
+    accumulator = Metrics(path, params.eval_tasks)
     try:
+        if first is None:
+            metrics = {
+                "loss": {name: None for name in params.tasks},
+                "metrics": accumulator.finish(),
+                "checkpoint": str(checkpoint),
+                "identity": logical,
+                "split": split,
+                "status": "skipped",
+                "reason": "empty",
+            }
+            (output / "metrics.json").write_text(json.dumps(metrics, allow_nan=False))
+            return metrics
         with tf.Graph().as_default():
             seed_graph(config["seed"])
             ph = placeholders(tensor_batch(first, params, dtypes))

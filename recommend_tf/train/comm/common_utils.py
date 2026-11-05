@@ -36,6 +36,19 @@ def wrap_for_sparse2(fn):
     return new_fn
 
 
+def multiply(x, y):
+    """Numeric weights may multiply boolean masks without implicit TF bool conversion."""
+    if tf.is_tensor(x) and x.dtype == tf.bool:
+        other = tf.convert_to_tensor(y)
+        if other.dtype != tf.bool:
+            return tf.cast(x, other.dtype) * other
+    if tf.is_tensor(y) and y.dtype == tf.bool:
+        other = tf.convert_to_tensor(x)
+        if other.dtype != tf.bool:
+            return other * tf.cast(y, other.dtype)
+    return x * y
+
+
 def eval_expr(expr, variables):
 
     def eval_inner(expr):
@@ -63,7 +76,7 @@ def eval_expr(expr, variables):
             binops = {
                 ast.Add: lambda x, y: x + y,
                 ast.Sub: lambda x, y: x - y,
-                ast.Mult: lambda x, y: x * y,
+                ast.Mult: multiply,
                 ast.Div: lambda x, y: x / y,
                 ast.FloorDiv: lambda x, y: x // y,
                 ast.Mod: lambda x, y: x % y,

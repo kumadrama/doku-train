@@ -362,6 +362,10 @@ class PublishedDataset:
             if self.daily_fields
             else set()
         )
+        if self.config.get("optional_audit_defaults"):
+            absent |= (
+                (requested - set(file.schema_arrow.names)) & {"request_time_ms"} & defaults.keys()
+            )
         selected = sorted(requested - absent)
         if not set(selected) <= set(file.schema_arrow.names):
             raise ValueError(

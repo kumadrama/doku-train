@@ -26,6 +26,7 @@ def layer(value, target=False):
             "loss_type",
             "loss_weight",
             "loss_by_weight",
+            "loss_reduction",
             "predict_fn",
             "soft_label",
             "metrics",
@@ -64,6 +65,8 @@ def layer(value, target=False):
         cfg.setdefault("from", "features")
         cfg.setdefault("loss_weight", "1.0")
         cfg.setdefault("loss_by_weight", False)
+        if "loss_reduction" in cfg and cfg["loss_reduction"] != "sum":
+            raise ValueError("loss_reduction only supports explicit sum")
         if cfg["num_outputs"] < 1:
             raise ValueError("num_outputs must be positive")
     return cfg
@@ -85,6 +88,7 @@ def parameters(config, vocabs=None):
         "fm_layers",
         "output_layer",
         "tasks",
+        "eval_tasks",
         "optimizer",
         "learning_rate",
         "learning_rate_schedule",
@@ -142,6 +146,18 @@ def parameters(config, vocabs=None):
             raise ValueError("Only scalar/embed concat groups are supported")
     cfg["output_layer"] = layer(cfg["output_layer"])
     cfg["tasks"] = {name: layer(head, True) for name, head in cfg["tasks"].items()}
+    evaluation = cfg.get("eval_tasks")
+    if evaluation is None:
+        cfg["eval_tasks"] = deepcopy(cfg["tasks"])
+    else:
+        if not isinstance(evaluation, dict) or set(evaluation) - cfg["tasks"].keys():
+            raise ValueError("eval_tasks must reference existing tasks")
+        for name, override in evaluation.items():
+            if not isinstance(override, dict) or set(override) - {"metrics", "metric_label"}:
+                raise ValueError("eval_tasks only overrides metrics and metric_label")
+        cfg["eval_tasks"] = {
+            name: dict(cfg["tasks"][name], **override) for name, override in evaluation.items()
+        }
     for key in ("dense_use_weight_decay", "sparse_use_weight_decay"):
         if not isinstance(cfg[key], bool):
             raise ValueError(key + " must be boolean")

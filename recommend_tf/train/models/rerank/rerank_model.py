@@ -326,14 +326,23 @@ def model_fn(features, labels, mode, params):
     denominators = {}
     for name, head in params.tasks.items():
         source = features if head["from"] == "features" else raw_features
+        metric_head = params.eval_tasks.get(name, {})
         metric_values[name] = {
-            metric: eval_expr(
-                option.get("label", head.get("metric_label", head["label"])), source["item"]
-            )
-            for metric, option in head.get("metrics", {}).items()
+            metric: {
+                "label": eval_expr(
+                    option.get("label", metric_head.get("metric_label", head["label"])),
+                    source["item"],
+                ),
+                "filter": tf.convert_to_tensor(
+                    eval_expr(option.get("filter", "True"), source["item"]), dtype=tf.bool
+                ),
+            }
+            for metric, option in metric_head.get("metrics", {}).items()
         }
         denominators[name] = (
-            tf.math.count_nonzero(weights[name], dtype=tf.float32)
+            tf.constant(1.0)
+            if head.get("loss_reduction") == "sum"
+            else tf.math.count_nonzero(weights[name], dtype=tf.float32)
             if head.get("loss_by_weight", False)
             else tf.cast(tf.size(labels[name]), tf.float32)
         )
