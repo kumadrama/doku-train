@@ -15,6 +15,7 @@ import tensorflow.compat.v1 as tf
 
 from recommend_tf.train.comm.common_utils import eval_expr
 
+from .. import timing
 from ..runtime_budget import check_memory
 from .published_dataset import stream_digest
 
@@ -117,6 +118,7 @@ def organize_columns(columns, defaults, groups, histories):
     return result
 
 
+@timing.measured("prepare")
 def prepare(
     blocks,
     root,
@@ -191,11 +193,12 @@ def input_columns(params, dtypes):
 class ColumnRow(Mapping):
     """A row reference keeps its immutable NumPy columns alive through shuffle."""
 
-    __slots__ = ("columns", "index")
+    __slots__ = ("columns", "index", "block_key")
 
-    def __init__(self, columns, index):
+    def __init__(self, columns, index, block_key=None):
         self.columns = columns
         self.index = index
+        self.block_key = block_key
 
     def __getitem__(self, key):
         return self.columns[key][self.index]
@@ -238,14 +241,18 @@ def rows(root, identity, columns=None, seed=None):
             if not path.is_relative_to(boundary) or file_checksum(path) != record["sha256"]:
                 raise ValueError("Prepared shard mismatch")
             actual = 0
-            for block in pq.ParquetFile(path).iter_batches(batch_size=1024, columns=columns):
+            for block_index, block in enumerate(
+                pq.ParquetFile(path).iter_batches(batch_size=1024, columns=columns)
+            ):
                 values = {
                     name: column_values(array)
                     for name, array in zip(block.schema.names, block.columns)
                 }
                 for index in range(block.num_rows):
                     actual += 1
-                    yield ColumnRow(values, index)
+                    yield ColumnRow(
+                        values, index, (identity, str(path), record["sha256"], block_index)
+                    )
             if actual != record["rows"]:
                 raise ValueError("Prepared shard row mismatch")
 
@@ -328,6 +335,7 @@ def batches(source, size, seed=None, buffer_size=1, replacement=False):
         yield batch
 
 
+@timing.measured("tensor_batch")
 def tensor_batch(batch, params, dtypes):
     item = {}
     history_fields = {
@@ -410,6 +418,7 @@ def join_columns(blocks):
     return result
 
 
+@timing.measured("tensor_columns")
 def tensor_columns(columns, params, dtypes):
     """Construct the same padded tensors without scalar row lookups."""
     history_fields = {

@@ -140,3 +140,13 @@ Source: 2026-10-30 用户确认模型提供方边界与 Q12 B；[需求](../../s
 Source: [Spec 030](../../specs/030-selected-model-monitoring/design.md).
 训练复用 selection 和同 epoch 指标；成功 run 封存标准事件。平台写不可变 outbox 与发布 journal；
 独立 monitoring worker 负责目录、补偿和 Grafana 同步，基础设施由 iac 装配。
+
+
+## TF 训练耗时观测（Spec 035）
+
+Source: specs/035-tf-training-time-optimization/design.md；2026-11-05 Q11本地实施授权。
+
+当前状态：TF公共timing组件接入准备、编码、计算、保存与评估，默认关闭；独立benchmark入口通过本地镜像运行隔离进程，记录阶段和资源证据，不参与模型算法或checkpoint配置身份。
+目标状态：冻结tf-lr002输入后，以代码优化和单机CPU资源对照验证完整训练耗时降低至少50%。已按用户后续授权完成12个独立两epoch资源/代码实验；随后组合及b4096完整40epoch验证通过，有界预取和批量编码为推荐显式配置，默认仍关闭，完整流程50%目标未宣称达成。
+
+TF input_pipeline提供显式可选的columns编码、按不可变prepared分片身份索引的有界编码缓存、FIFO单线程预取；默认rows/缓存0/预取0。三项仅优化输入，不改模型、随机序列、batch边界或跨日切分；缓存仅每Run复用，不跨Run或checkpoint共享。Source: Spec 035设计及用户后续实施授权。

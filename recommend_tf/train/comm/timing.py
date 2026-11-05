@@ -114,6 +114,12 @@ class Timer:
             try:
                 value = next(values)
             except StopIteration:
+                self.record(
+                    "/".join((*_path.get(), name)),
+                    time.perf_counter() - started,
+                    count=0,
+                    unit=unit,
+                )
                 return
             except BaseException as exc:
                 self.record(
