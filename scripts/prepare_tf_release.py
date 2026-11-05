@@ -58,6 +58,10 @@ def prepare(args):
         binding_uri=prefix + "/" + digest(binding_raw) + "/binding.json",
         binding_sha256=digest(binding_raw),
     )
+    if getattr(args, "pipeline_source_revision", None):
+        if not re.fullmatch(r"[a-f0-9]{40}", args.pipeline_source_revision):
+            raise ValueError("pipeline source revision must be a full commit SHA")
+        release["pipeline_source_revision"] = args.pipeline_source_revision
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
     (output / "binding.json").write_bytes(binding_raw)
@@ -91,5 +95,6 @@ if __name__ == "__main__":
         "output",
     ):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--pipeline-source-revision")
     parser.add_argument("--allow-legacy-ready", action="store_true")
     prepare(parser.parse_args())

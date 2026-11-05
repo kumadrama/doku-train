@@ -164,3 +164,19 @@ d961bd3a01089d17754e71b2109eb85cb8529fc521839fe3e032a8e4b7df73c5。
 SageMaker 输出是外层归档，包含 canonical/、deployment.json 和内层 model.tar.gz，
 部署时必须使用内层官方归档。尚未执行 Endpoint 部署或修改滚动日更绑定。
 本地 py_compile 与 git diff --check 通过。
+
+## 2026-11-06 日更发布依赖预检
+
+官方发布模块新增 inference.official 依赖后，ready/recovery Lambda 制品也必须包含
+official、artifact_loader、request_adapter。package_tf_ready 已补齐三个无 TensorFlow
+依赖模块。临时目录解压生成 ZIP 后，以 python -S 隔离 site-packages 导入
+ready_event/recover_daily 成功。此项修复属于本次生产 30+1 日更发布前置验证。
+
+发布清单现在可独立记录 pipeline_source_revision，避免把新编排代码误记为旧训练镜像
+源码。新增 test_ready_package 在隔离目录使用 python -S 导入实际 ZIP：1 passed。
+30+1 本地窗口检查：cutoff=2026-11-04 时训练 2026-10-05..2026-11-03（30 天），
+validation=2026-11-04（1 天）。生产接线仍待实际部署回读。
+
+本次 `make check`：通用 329 passed/3 skipped，TF 193 passed，inference 8 passed；
+format/lint/mypy/两套锁文件检查通过。IaC 配套 PR #736 的生产 plan 为 6 create、
+3 update、0 delete，保留旧 Endpoint；此处仍不代表已部署。

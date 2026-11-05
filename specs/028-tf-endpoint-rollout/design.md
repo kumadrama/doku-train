@@ -167,3 +167,12 @@ Source: 用户授权修复历史实验导出兼容并继续导出。
 但必须通过原 COMMITTED 全文件摘要校验、test=not_requested、状态中的 selection
 与独立 selection 文件一致，并重新从选中 checkpoint/epoch 指标重建 selected metrics
 逐字段核对。保持原始封存文件不变。其他失败状态继续拒绝。
+
+### 2026-11-06 官方 Serving 日更接线
+
+沿用已验收实验训练镜像，发布侧使用包含官方 Serving 的新 pipeline 镜像。
+release 分别记录 `source_revision`（训练 provenance）与可选
+`pipeline_source_revision`（编排镜像源码）；构建检查以后者为准，旧 release
+未声明时回退到前者。ready/recovery ZIP 必须包含 official 的纯标准库依赖，
+并在禁用 site-packages 的独立目录验证导入。
+Source: 用户要求继续完成滚动 30+1 日更；保留 LR 0.002、batch 2048、完播权重 1.0。
