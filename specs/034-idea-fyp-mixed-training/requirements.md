@@ -5,7 +5,7 @@ Source: 2026-11-04 本会话 Q1–Q19 用户决策；原始需求为支持新 Id
 
 ## 范围与输入
 
-- 仅 TF 公共训练输入与执行路径；不扩展 Torch/树模型，不包含云训练、部署或历史数据重产。
+- 仅 TF 公共训练输入与执行路径；不扩展 Torch/树模型。初始实施不包含云操作；2026-11-05 用户另行授权合并部署、两天历史数据重产及 SageMaker smoke，随后明确授权 Idea 只读 IAM 和稳定哈希重跑；不含模型/Endpoint 发布。
 - 消费 doku-offline 的 FYP 产物与 doku-rec-offline/idea 的 request-training **每日投影产物**，不直接消费原始小时快照，不 import 上游实现。
 - 每日出口已提供 doku-train-dataset-manifest/v1、扁平 Parquet 与版本化特征/标签合同；复用基础 reader，适配多源与每日解析。不得将缺少 FYP 特有元数据等同于 Idea 合同损坏。
 - data_sources 逐来源声明 name、稳定 source_id、format 和不可变 manifest_uri。来源 ID 不依赖数组位置，读取层注入 datasvr_source；不自动作为模型特征。
