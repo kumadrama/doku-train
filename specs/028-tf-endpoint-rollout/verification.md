@@ -180,3 +180,18 @@ validation=2026-11-04（1 天）。生产接线仍待实际部署回读。
 本次 `make check`：通用 329 passed/3 skipped，TF 193 passed，inference 8 passed；
 format/lint/mypy/两套锁文件检查通过。IaC 配套 PR #736 的生产 plan 为 6 create、
 3 update、0 delete，保留旧 Endpoint；此处仍不代表已部署。
+
+### 2026-11-06 ln002 官方 Serving 30+1 发布
+
+- 目标：独立 `doku-prod-tf-rerank-official`；旧 Endpoint/线上 FYP 路由保留。
+- Bootstrap：`doku-exp-latest31-1105-tf-lr002`，epoch 11；模型版本
+  `e50f8fff8c8fc758d47ed6d103b621c830693464a298adb6fb6d0fe6f0e47bdf`。
+- 日更配方：`tf_rerank_ln_lr002_3feat`，LR .002、batch 2048、completion weight 1.0，
+  30+1；selection 保留四任务 validation loss 加权和最小值。
+- pipeline digest `cea154935e9ca27120a5014cbaaf5f86a8dd6b2a5e5d2b4d16a3a885465d99a3`；
+  训练镜像及 provenance 保留已验收实验版本；官方推理镜像由 binding 固定 digest。
+- 配方 SHA `636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f`；
+  binding SHA `712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6`；
+  ready ZIP SHA `c3e2ff774c5359fcb90bb2efbba780ce654e612324261c58eedea8b0e17d9bef`。
+- IaC PR #736 已合并并 apply：6 add/3 change/0 destroy。当前部署声明已生成并上传
+  回读校验；task target 激活、ready code hash、Endpoint probe 仍需发布后验收。
