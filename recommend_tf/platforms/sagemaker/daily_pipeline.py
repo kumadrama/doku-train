@@ -9,6 +9,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum
 from recommend_tf.train.comm.datasvr.daily_contracts import digest
 from recommend_tf.train.comm.datasvr.daily_dataset import freeze
@@ -248,7 +249,11 @@ def step(
         )
         state.save()
         active["model_uri"] = publish_package(
-            s3, output, binding["model_prefix"], binding["kms_key"]
+            s3,
+            output,
+            binding["model_prefix"],
+            binding["kms_key"],
+            inference_protocol=official.protocol(binding["deployment"]),
         )
         active.update(stage="uploaded", model_version=manifest["model_version"])
         state.save()
@@ -261,7 +266,11 @@ def step(
             state,
             binding["deployment"],
             probe=lambda client, endpoint, version: verify_probe(
-                client, endpoint, version, binding["probe"]
+                client,
+                endpoint,
+                version,
+                binding["probe"],
+                inference_protocol=official.protocol(binding["deployment"]),
             ),
         )
     if active["stage"] == "rollback_pending":
@@ -306,6 +315,15 @@ def validate_binding(binding):
         if type(binding.get(name)) is not int or binding[name] <= 0:
             raise ValueError("positive execution budget required: " + name)
     deployment = binding["deployment"]
+    if official.protocol(deployment) == official.PROTOCOL:
+        # Reject legacy/hook environment settings before any training is submitted.
+        # The placeholder digest is used only for validation, never deployment.
+        official.environment(deployment, "0" * 64)
+        probe_request = binding["probe"]["request"]
+        if probe_request.get("signature_name") != "serving_default" or not probe_request.get(
+            "inputs"
+        ):
+            raise ValueError("official probe requires prepared tensors")
     if (
         type(deployment["instance_count"]) is not int
         or deployment["instance_count"] < 1

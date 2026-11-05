@@ -10,6 +10,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum, files
 
 
@@ -149,7 +150,8 @@ class ReleaseState:
         self.save()
 
 
-def publish_package(s3, package, prefix, kms_key):
+def publish_package(s3, package, prefix, kms_key, *, inference_protocol=official.LEGACY_PROTOCOL):
+    serving_protocol = official.protocol({"inference_protocol": inference_protocol})
     package = Path(package)
     manifest = json.loads((package / "manifest.json").read_text())
     actual = files(package)
@@ -163,6 +165,17 @@ def publish_package(s3, package, prefix, kms_key):
         + "/"
         + checksum(package / "manifest.json")
     )
+    if serving_protocol == official.PROTOCOL:
+        uri += "/tensorflow-serving-v1"
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "model.tar.gz"
+            evidence = official.package(package, archive)
+            metadata = Path(directory) / "deployment.json"
+            metadata.write_text(json.dumps(evidence, sort_keys=True))
+            immutable_put(s3, uri + "/model.tar.gz", archive, kms_key)
+            immutable_put(s3, uri + "/deployment.json", metadata, kms_key)
+        immutable_put(s3, uri + "/manifest.json", package / "manifest.json", kms_key)
+        return uri + "/model.tar.gz"
     with tempfile.TemporaryDirectory() as directory:
         archive = Path(directory) / "model.tar.gz"
         # Deterministic tar metadata and gzip header make retry contents identical.
@@ -257,10 +270,7 @@ def deploy_step(client, runtime, state, binding, *, probe):
         "PrimaryContainer": {
             "Image": image,
             "ModelDataUrl": active["model_uri"],
-            "Environment": {
-                **binding.get("container_environment", {}),
-                "DOKU_MODEL_VERSION": active["model_version"],
-            },
+            "Environment": official.environment(binding, active["model_version"]),
         },
         "EnableNetworkIsolation": True,
     }
@@ -380,17 +390,36 @@ def deploy_step(client, runtime, state, binding, *, probe):
     return "pending"
 
 
-def verify_probe(runtime, endpoint, version, probe):
+def verify_probe(runtime, endpoint, version, probe, *, inference_protocol=official.LEGACY_PROTOCOL):
+    serving_protocol = official.protocol({"inference_protocol": inference_protocol})
+    options = {}
+    if serving_protocol == official.PROTOCOL:
+        if probe["request"].get("signature_name") != "serving_default" or not probe["request"].get(
+            "inputs"
+        ):
+            raise ValueError("official probe requires prepared tensors")
+        options["CustomAttributes"] = official.custom_attributes(version)
     response = runtime.invoke_endpoint(
         EndpointName=endpoint,
         ContentType=probe["content_type"],
         Body=json.dumps(probe["request"]).encode(),
+        **options,
     )
     with response["Body"] as stream:
         body = json.load(stream)
-    if body[probe["version_field"]] != version:
-        raise ValueError("Endpoint reported wrong model version")
-    rows = body[probe["outputs_field"]]
+    if serving_protocol == official.PROTOCOL:
+        outputs = body.get("outputs")
+        if not isinstance(outputs, dict) or set(outputs) != set(probe["tasks"]):
+            raise ValueError("Endpoint output contract differs")
+        if any(
+            not isinstance(v, list) or len(v) != probe["expected_rows"] for v in outputs.values()
+        ):
+            raise ValueError("Endpoint output row count differs")
+        rows = [dict(zip(outputs, values)) for values in zip(*outputs.values())]
+    else:
+        if body[probe["version_field"]] != version:
+            raise ValueError("Endpoint reported wrong model version")
+        rows = body[probe["outputs_field"]]
     if len(rows) != probe["expected_rows"]:
         raise ValueError("Endpoint output row count differs")
     for row in rows:

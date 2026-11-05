@@ -134,3 +134,27 @@ Source: 2026-10-30 用户最新指示：第④⑤步继续实施，窗口改为 
 现有上游没有发出 TF ready 自定义事件。新增 `platforms/sagemaker/ready_event.py` Lambda 适配器接收指定 PROD 样本任务的 ECS STOPPED 事件，并通过 DescribeTasks 二次核验任务身份、成功退出、daily join/project-training 参数及明确日期。小时任务忽略；不能凭 S3 写入事件认为数据成熟。按配置 28+1 读取日级 `_SUCCESS`，核验其版本、不可变 Manifest 摘要、24 个源 marker 和特征合同，写入摘要寻址 ready 并发出既定 ready 事件。训练入口仍再次完整验证窗口与合同。Lambda、IAM 和事件接线由独立 IaC rollout stack 管理，自动触发验收后启用。
 
 SageMaker 部署镜像使用 Docker distribution manifest v2，拒绝仅通过 ECS 验证的 OCI manifest。运行时镜像 config/layers 均保持摘要固定。
+
+## 2026-11-05：官方 TensorFlow Serving 直通协议
+
+Source: 用户“用官方方案来实现吧”，承接 DTE 诊断中的 Python prepare 瓶颈；授权实现
+推理侧官方容器适配，不改变训练算法、权重、特征来源、历史长度或运行中训练。
+
+新增显式 `deployment.inference_protocol=tensorflow-serving/v1`。ai-engine 按冻结合同用 Go
+完成默认值/序列整理/padding，再用标准 inputs 列式 JSON 调用 AWS 官方 TF Serving DLC。
+原始特征协议为默认值，允许独立 release/Endpoint 并存。模型图中的 lookup/transforms
+保留。独立 official.py 校验 canonical inventory 后生成确定性官方布局，不修改源产物；
+deployment.json 记录新归档与 canonical manifest 摘要，S3 路径追加 tensorflow-serving-v1。
+
+真实 TFS 模型名固定为 doku_tf_<完整业务 model_version>，数字版本固定 1。每次请求和
+发布 probe 均用 CustomAttributes 指定此模型，避免官方响应没有 model_version 时只检查
+本地标签。日更发布入口只增协议传递，不改变训练/导出调用；probe 配置显式提供标准输入。
+当前线上配置不自动迁移；正式切换需同步发布 binding 与 ai-engine release，先验证独立 DTE
+Endpoint 再切流。仅官方容器可复用，不能把旧自定义镜像与新协议混用。
+
+编排镜像通过 `build_context --kind pipeline` 携带 inference 模块及其依赖，排除该目录的
+测试文件。仅提交代码不会升级已发布镜像；启用新协议前须重建并固定 pipeline 镜像摘要。
+发布回归用合成文件、内存 S3 与模拟 SageMaker API 验证已完成产物的发布流程，并从隔离
+构建目录导入编排模块，不依赖源码工作树或 TensorFlow。
+
+官方资料：[SageMaker TensorFlow Serving DLC](https://aws.github.io/deep-learning-containers/tensorflow/inference/deployment/sagemaker/)。
