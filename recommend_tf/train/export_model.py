@@ -75,9 +75,24 @@ def execute(run_dir, output, *, outputs, evidence=None):
         "daily-status.json" if (root / "daily-status.json").exists() else "experiment-status.json"
     )
     status = json.loads((root / status_name).read_text())
-    if status.get("status") != "completed":
+    legacy_selected = status.get("status") == "selected"
+    if status.get("status") != "completed" and not legacy_selected:
         raise ValueError("export requires a successful selected run")
     selection = json.loads((root / "training/selection.json").read_text())
+    if legacy_selected:
+        from .comm.epoch_metrics import read_selected_metrics
+
+        selected_path = "training/selected-model-metrics.json"
+        if (
+            selected_path not in sealed["files"]
+            or status.get("test") != "not_requested"
+            or status.get("selection") != selection
+        ):
+            raise ValueError("legacy selected run lacks sealed completion evidence")
+        selected = json.loads((root / selected_path).read_text())
+        config = json.loads((root / "experiment-config.json").read_text())
+        if selected.get("status") != "selected" or selected != read_selected_metrics(root, config):
+            raise ValueError("legacy selected metrics differ from checkpoint evidence")
     epoch = selection["epoch"]
     if type(epoch) is not int or epoch < 1:
         raise ValueError("invalid selected epoch")

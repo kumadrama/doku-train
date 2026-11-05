@@ -740,3 +740,38 @@ def test_monitoring_callback_failure_preserves_daily_success(tmp_path):
 
     record = verify_run(tmp_path / "run")
     assert "training/selected-model-metrics.json" in record["files"]
+
+
+def test_legacy_selected_export_requires_consistent_sealed_evidence(tmp_path):
+    from recommend_tf.train.comm.artifact_integrity import seal_run
+
+    config, ready = fixture(tmp_path)
+    frozen = tmp_path / "frozen"
+    resolved = freeze(config, ready, frozen)
+    root = tmp_path / "run"
+    daily(resolved, root, cutoff=ready["cutoff"], frozen_input=frozen / "input")
+    selection = json.loads((root / "training/selection.json").read_text())
+    (root / "daily-status.json").unlink()
+    status = root / "experiment-status.json"
+    status.write_text(
+        json.dumps({"status": "selected", "selection": selection, "test": "not_requested"})
+    )
+    seal_run(root, status.name)
+    outputs = dict.fromkeys(("completion", "fast_swipe", "immersive_click"), "probability")
+    outputs["watch_seconds"] = "seconds"
+    before = (root / "COMMITTED.json").read_bytes()
+    export(root, tmp_path / "export", outputs=outputs)
+    assert (root / "COMMITTED.json").read_bytes() == before
+
+    selected_path = root / "training/selected-model-metrics.json"
+    selected = json.loads(selected_path.read_text())
+    selected["checkpoint_identity"] = "incorrect"
+    selected_path.write_text(json.dumps(selected))
+    seal_run(root, status.name)
+    with pytest.raises(ValueError, match="selected metrics differ"):
+        export(root, tmp_path / "bad-metrics", outputs=outputs)
+
+    selected_path.unlink()
+    seal_run(root, status.name)
+    with pytest.raises(ValueError, match="sealed completion evidence"):
+        export(root, tmp_path / "missing-metrics", outputs=outputs)

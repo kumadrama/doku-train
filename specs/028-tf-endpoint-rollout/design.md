@@ -158,3 +158,12 @@ Endpoint 再切流。仅官方容器可复用，不能把旧自定义镜像与�
 构建目录导入编排模块，不依赖源码工作树或 TensorFlow。
 
 官方资料：[SageMaker TensorFlow Serving DLC](https://aws.github.io/deep-learning-containers/tensorflow/inference/deployment/sagemaker/)。
+
+## 已封存实验 selected 状态兼容（2026-11-06）
+
+Source: 用户授权修复历史实验导出兼容并继续导出。
+历史独立 train/validation 实验在完整训练结束后将 selected-model-metrics.status
+写入 experiment-status，造成状态为 selected 而非 completed。导出允许此历史状态，
+但必须通过原 COMMITTED 全文件摘要校验、test=not_requested、状态中的 selection
+与独立 selection 文件一致，并重新从选中 checkpoint/epoch 指标重建 selected metrics
+逐字段核对。保持原始封存文件不变。其他失败状态继续拒绝。
