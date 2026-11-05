@@ -206,3 +206,31 @@ format/lint/mypy/两套锁文件检查通过。IaC 配套 PR #736 的生产 plan
 ChecksumSHA256（FULL_OBJECT），仅 Metadata.sha256 不足。保持 ZIP 字节及 key
 摘要不变，新增带原生 SHA256 的对象版本并更新 lambda.yml，保留旧版本。
 head-object --checksum-mode ENABLED 已验证版本号、SHA256 和 FULL_OBJECT。
+
+### 2026-11-06 生产激活验收
+
+- dkd task apply `dj_5030041a-66b1-413d-9746-1583110fb86b` succeeded：
+  EventBridge `doku-prod-tf-rerank-daily` 实际 target 从 revision 10 切至 11；
+  回读 pipeline 容器四个 DOKU 配置坐标均匹配 release。实际运行镜像 digest 为
+  `b122f7fedc38226c61540bc45cf8df2cccafc0b6813291d56f4d2950e4431171`。
+- dkd Lambda apply `dj_37144972-7096-4d2c-9b14-8be6d265ceb8` succeeded：
+  code SHA256 回读等于 `pjaOi3kVU8M4gbiQGv0++wh1xxVW+ja+Ym4TJf40A5w=`。
+  恢复入口真实调用在维护暂停状态返回 paused，未发生依赖导入错误。
+- AppConfig 原开关已恢复（版本 5、deployment 423 COMPLETE）：training、publication、
+  recovery 均 true。上游成功、日更执行、恢复及任务失败四条规则均 ENABLED。
+- 首轮正式 ready 事件 EventId `28e1de71-7f38-e021-03db-6b0774be5e52`；
+  ECS task `3c8828164173486189171136f48db156` 使用 revision 11。
+  SageMaker `doku-daily-695ad769a2fe59347e7dea905a93c06696e7a6c4`
+  回读为 InProgress / Training。冻结训练 2026-10-05..2026-11-03，验证 2026-11-04。
+  本次完成的是部署和首轮启动，尚未声称该轮训练/后续自动模型替换已完成。
+- 新 Endpoint `doku-prod-tf-rerank-official` InService，初始模型为上述 epoch 11。
+  旧 Endpoint 配置仍为 `tf-dd04d60c76f2837e8f23f19b93a6c440673dab714e32e3b7`；
+  未改变 FYP 路由。新状态日志与 deferred 队列独立于旧版本。
+- 跨日修复完整 `make check`：329 passed/3 skipped，TF 195 passed，inference 8 passed；
+  PR #45 CI 全通过。发布后独立 IaC stack `terraform plan -detailed-exitcode` 返回 0，
+  No changes，确认不会回写 dkd 管理的 task/Lambda 制品。
+
+本地可执行证据保存在 `runs/daily-ln002-20261106/`（不入库）：
+`production-status.json`、`activation-full.json`、`endpoint-verification.json`、
+`defaulted-feature-days.json`、`post-deploy-plan.txt`。发布入口为 main 上 tf-pipeline
+与 tf-ready 清单；训练镜像保持已验收版本，不能把 main 后续训练优化误称为已进入该镜像。
