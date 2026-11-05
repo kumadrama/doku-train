@@ -15,6 +15,9 @@ def package(output, release=None, config=None):
         "recommend_tf/platforms/sagemaker/recover_daily.py",
         "recommend_tf/platforms/sagemaker/publish_model.py",
         "recommend_tf/train/comm/artifact_integrity.py",
+        "recommend_tf/inference/official.py",
+        "recommend_tf/inference/artifact_loader.py",
+        "recommend_tf/inference/request_adapter.py",
     ]
     entries = {name: (root / name).read_bytes() for name in names}
     if release is not None:
