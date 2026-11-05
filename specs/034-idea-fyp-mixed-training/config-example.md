@@ -12,7 +12,7 @@ data_sources:
     source_id: 1
     format: doku-train-dataset-manifest/v1
     manifest_uri: 's3://<bucket>/ml/idea/train/daily/environment=<env>/date={date}/_SUCCESS'
-item_filter: '(datasvr_source == 0 and u_account_id % 50 == 1) or datasvr_source == 1'
+item_filter: '(datasvr_source == 0 and stable_hash(u_account_id) % 50 == 1) or datasvr_source == 1'
 shuffle_buffer_size: 65536
 seed: 42
 model:
@@ -40,7 +40,7 @@ model:
 
 示例省略必需的模型头、label、dtypes、默认值等，不可原样运行。`u_account_id` 是 FYP 投影的账号字段，作为采样输入显式声明，不自动加入模型特征；Idea 无该列时显式配置默认值 0。placement 缺失时采用显式空字符串默认值，不推断为 REGULAR。标量特征默认值为 0，序列默认值遵守其形状合同（如空列表）。
 
-Source: doku-offline/fyp-rank-samples/tests/unit/test_dataset.py 验证 u_account_id 投影；本会话确认按用户取模。实际输入合同必须包含该采样列，否则补齐上游投影，不能以默认 0 静默替代 FYP 账号。
+Source: doku-offline/fyp-rank-samples/tests/unit/test_dataset.py 验证 u_account_id 投影；2026-11-05 用户确认按用户稳定哈希后取模。实际输入合同必须包含该采样列，否则补齐上游投影，不能以默认 0 静默替代 FYP 账号。
 
 原示意 shuffle 对象收敛为现有 `shuffle_buffer_size` / `seed` 键；多源自动启用交错，每 epoch 使用 seed+epoch，无重复配置。
 

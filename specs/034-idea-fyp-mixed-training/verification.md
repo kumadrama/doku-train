@@ -64,3 +64,11 @@ Source: 用户授权分别审查、合并和部署，回溯两天 Idea 样本并
 验收通过 `aws sagemaker describe-training-job`、`aws s3api list-objects-v2`、下载源状态和指标 JSON 后断言两个来源 ready、阶段 completed 以及逐目标样本数。
 
 FYP 实际保留比例明显低于预期的约 1/50，需单独核验输入用户 ID 分布；本次证明真实双源流程可运行，不代表预期辅助数据量已达成。
+
+
+## 稳定哈希采样修正
+
+原始列独立核验：11-02 175,603 行、12,931 个账号，无 NULL/0，其中 175,011 行为偶数；直接取模命中 18 行。11-03 173,873 行、14,583 个账号，无 NULL/0，直接取模命中 22 行。与训练源状态精确一致，问题为 ID 低位分布偏斜。
+
+用户授权稳定哈希后取模及重跑。新增 golden hash 向量，覆盖大于 2^53 的相邻 int64、int64 边界、字符串一致性、跨 batch/graph 不变、结构化偶数 ID 的采样分布以及 float ID 拒绝。
+执行 `python -m pytest recommend_tf/train/tests/test_stable_hash.py recommend_tf/train/tests/test_mixed_integration.py recommend_tf/train/tests/test_mixed_review.py -q --disable-warnings`：14 passed，21.84 秒。后补 golden 向量再运行 stable_hash 专项。
