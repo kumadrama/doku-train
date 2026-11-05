@@ -10,6 +10,7 @@ import base64
 import copy
 import hashlib
 import json
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,6 +22,10 @@ from recommend.train.comm.redis_artifact_store import RedisTransport, identifier
 
 def sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
+
+
+class PlanningConflict(ConflictError):
+    """Registry changed before ownership; safe to read and plan again."""
 
 
 class Distribution:
@@ -213,7 +218,7 @@ class Distribution:
 
         def acquire(latest: dict[str, Any]) -> None:
             if latest.get("revision") != old_revision:
-                raise ConflictError("registry changed while planning; retry")
+                raise PlanningConflict("registry changed while planning; retry")
             if latest.get("active_run") or latest["distribution"]["operation"]:
                 raise ConflictError("producer/distribution operation active")
             latest["distribution"]["generation"] = generation
@@ -511,6 +516,16 @@ class Distribution:
         self.registry.update(complete)
 
     def cleanup(self, *, apply: bool = False, now: datetime | None = None) -> dict[str, Any]:
+        for attempt in range(4):
+            try:
+                return self._cleanup_once(apply=apply, now=now)
+            except PlanningConflict:
+                if attempt == 3:
+                    raise
+                time.sleep(0.1 * 2**attempt)
+        raise AssertionError("unreachable")
+
+    def _cleanup_once(self, *, apply: bool, now: datetime | None) -> dict[str, Any]:
         now = now or datetime.now(UTC)
         if now.tzinfo is None:
             raise ValueError("timezone required")
