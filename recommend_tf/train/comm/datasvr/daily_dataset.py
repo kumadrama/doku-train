@@ -57,6 +57,10 @@ def freeze(config, ready, target):
             raise ValueError("missing upstream publication/maturity evidence")
         options = copy.deepcopy(resolved["dataset_config"])
         options["dataset"] = {"manifest_uri": source["manifest_uri"]}
+        # Validate each source contract before applying the union feature selection.
+        # Selected additions may be absent on old days; the merged reader below
+        # enforces both membership in the union and explicit per-day defaults.
+        options["features"] = []
         dataset = PublishedDataset(options)
         if hashlib.sha256(dataset.manifest_bytes).hexdigest() != source["manifest_sha256"]:
             raise ValueError("source manifest file digest mismatch")

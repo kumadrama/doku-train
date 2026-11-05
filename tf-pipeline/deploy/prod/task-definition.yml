@@ -23,19 +23,19 @@
       "environment": [
         {
           "name": "DOKU_CONFIG_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5/daily-config.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f/daily-config.json"
         },
         {
           "name": "DOKU_CONFIG_SHA256",
-          "value": "c230fc809646e0525679f2254151a7a5c11f68aa4653914ff3d5be250b4dfbb5"
+          "value": "636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f"
         },
         {
           "name": "DOKU_BINDING_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/c177bfe80558a26aa785f47afc5b84232e078b6821bd4008b61424b098359b57/binding.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6/binding.json"
         },
         {
           "name": "DOKU_BINDING_SHA256",
-          "value": "c177bfe80558a26aa785f47afc5b84232e078b6821bd4008b61424b098359b57"
+          "value": "712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6"
         }
       ],
       "logConfiguration": {

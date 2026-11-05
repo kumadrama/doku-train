@@ -52,3 +52,10 @@ Source: 本次本地执行；不代表已部署或生产重试成功。
 身份负例覆盖不同家族、原始 canonical ID 混入版本化家族、schema 不匹配、标签配置不同；
 原有合同语义冲突、物理缺列、默认值和冻结证据校验继续通过全量测试。
 现有未提交 TF 工作保留；未执行提交、部署、ACK、云训练或重做样本。
+
+2026-11-06：test_daily_freeze_selected_feature_added_after_first_day 两个参数用例通过。
+覆盖旧日期物理缺列按显式默认值填充、新日期保留实际值、lineage 默认字段记录、
+缺少默认值拒绝、全窗口未声明字段拒绝，以及直接单日读取仍拒绝未声明字段。
+命令：TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1 PYTHONPATH=.
+recommend_tf/.venv/bin/python -m pytest recommend_tf/train/tests/test_daily_publication.py
+-q -k selected_feature_added --disable-warnings；结果 2 passed。

@@ -775,3 +775,58 @@ def test_legacy_selected_export_requires_consistent_sealed_evidence(tmp_path):
     seal_run(root, status.name)
     with pytest.raises(ValueError, match="sealed completion evidence"):
         export(root, tmp_path / "missing-metrics", outputs=outputs)
+
+
+@pytest.mark.parametrize("explicit_default", [True, False])
+def test_daily_freeze_selected_feature_added_after_first_day(tmp_path, explicit_default):
+    from pathlib import Path
+    from urllib.parse import urlsplit
+
+    from recommend_tf.train.comm.datasvr.published_dataset import PublishedDataset
+
+    config, ready = fixture(tmp_path)
+    selected = "ctx_platform"
+    source = ready["sources"][0]
+    folder = tmp_path / source["date"]
+    contract_path = folder / "contracts/features.json"
+    contract = json.loads(contract_path.read_text())
+    contract["features"] = [f for f in contract["features"] if f["name"] != selected]
+    raw_contract = json.dumps(contract).encode()
+    contract_path.write_bytes(raw_contract)
+    manifest = json.loads((folder / "manifest.json").read_text())
+    part = manifest["partitions"][0]
+    shard = Path(urlsplit(part["uri"]).path)
+    pq.write_table(pq.read_table(shard).drop([selected]), shard)
+    part["sha256"] = hashlib.sha256(shard.read_bytes()).hexdigest()
+    manifest["projection_sha256"] = digest(contract)
+    manifest["contract_sha256"]["features"] = hashlib.sha256(raw_contract).hexdigest()
+    manifest["content_sha256"] = digest(
+        {k: v for k, v in manifest.items() if k != "content_sha256"}
+    )
+    raw_manifest = json.dumps(manifest).encode()
+    (folder / "manifest.json").write_bytes(raw_manifest)
+    source["manifest_sha256"] = hashlib.sha256(raw_manifest).hexdigest()
+    source["contract_sha256"] = manifest["contract_sha256"]
+    config["dataset_config"]["feature_default_values"].pop(selected, None)
+    if explicit_default:
+        config["dataset_config"]["feature_default_values"][selected] = "unknown"
+    else:
+        with pytest.raises(ValueError, match="missing explicit feature defaults"):
+            freeze(config, ready, tmp_path / "frozen")
+        return
+    # A standalone old day must remain strict; only the daily union permits filling.
+    single = copy.deepcopy(config["dataset_config"])
+    single["dataset"] = {"manifest_uri": source["manifest_uri"]}
+    with pytest.raises(ValueError, match="feature is not in source contract"):
+        PublishedDataset(single)
+    resolved = freeze(config, ready, tmp_path / "frozen")
+    dataset = PublishedDataset(resolved["dataset_config"])
+    rows = list(dataset.rows("train", {selected}))
+    assert [r[selected] for r in rows[:4]] == ["unknown"] * 4
+    assert {r[selected] for r in rows[4:]} == {"android", "ios"}
+    assert dataset.source_records[0]["defaulted_features"] == [selected]
+    invalid = copy.deepcopy(config)
+    invalid["dataset_config"]["features"].append("never_declared")
+    invalid["dataset_config"]["feature_default_values"]["never_declared"] = 0
+    with pytest.raises(ValueError, match="feature is not in source contract"):
+        freeze(invalid, ready, tmp_path / "invalid")
