@@ -201,3 +201,8 @@ format/lint/mypy/两套锁文件检查通过。IaC 配套 PR #736 的生产 plan
 独立 Endpoint 已 InService；3 行合成请求与本地导出模型最大绝对差 1.8844e-6，
 10 次预热后客户端往返中位约 313ms（包含跨地域网络，非服务端延迟 SLA），
 错误模型名返回 ModelError / original HTTP 404。task 与 ready 激活仍待发布后回读。
+
+生产 task 已由 dkd 激活 revision 11；ready Lambda 发布前校验要求 S3 原生
+ChecksumSHA256（FULL_OBJECT），仅 Metadata.sha256 不足。保持 ZIP 字节及 key
+摘要不变，新增带原生 SHA256 的对象版本并更新 lambda.yml，保留旧版本。
+head-object --checksum-mode ENABLED 已验证版本号、SHA256 和 FULL_OBJECT。
