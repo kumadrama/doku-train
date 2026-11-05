@@ -182,7 +182,27 @@ def sparse_slice_helper(*args):
 
 bitwise_left_shift = tf.bitwise.left_shift
 bitwise_right_shift = tf.bitwise.right_shift
+
+
+@wrap_for_sparse
+def stable_hash(value):
+    """Versioned sampling hash: exact decimal integers or UTF-8 strings, fixed key.
+
+    Keep the key and bucket count stable across runs, batches and epochs. This
+    is a sampling primitive, not an anonymization or cryptographic API.
+    """
+    value = tf.convert_to_tensor(value)
+    if value.dtype.is_integer:
+        value = tf.strings.as_string(value)
+    elif value.dtype != tf.string:
+        raise ValueError("stable_hash requires integer or string input")
+    return tf.strings.to_hash_bucket_strong(
+        value, num_buckets=2147483647, key=[0x44554B55, 0x53414D504C45]
+    )
+
+
 expr_funcs = {
+    "stable_hash": stable_hash,
     "float": lambda x: tf.cast(x, tf.float32),
     "int": lambda x: tf.cast(x, tf.int64),
     "cast": lambda x, dtype: tf.cast(x, tf.as_dtype(dtype)),

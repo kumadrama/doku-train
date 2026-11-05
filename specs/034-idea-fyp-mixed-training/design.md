@@ -43,3 +43,10 @@ placement 来自上游每日投影 string 字段：WATCH_NOW 对应 watch_now，
 ## 2026-11-05 单入口兼容补充
 
 Source: 用户要求原 manifest_uri 能力兼容到多源。每来源 manifest_uri 支持精确 Manifest 或显式 `{date}` 模板。原 TF 单源 reader 是精确读取，模板解析为多源新增适配，不声称旧 reader 原生发现每日产物。解析日期来自已有 split 配置；支持 FYP/Idea _SUCCESS 的 manifest_uri+manifest_sha256 公共合同，不要求 Idea 补 FYP 专有字段。解析及加载期间验证指针未变化、摘要一致、时间范围正确；冻结 URI 列表与指针原文，重放不解析可变入口。
+
+
+## 2026-11-05 稳定用户采样
+
+Source: 真实 smoke 发现 FYP 175,603 行中 175,011 行账号为偶数（99.66%），直接 `% 50 == 1` 只保留 18 行。原始 Parquet 列聚合与训练端结果一致；用户明确授权改为稳定哈希并重跑。
+
+表达式新增 `stable_hash(x)`，接受整数或 string，整数转精确十进制字符串（不经过 float），调用 TensorFlow `to_hash_bucket_strong`，固定 key `[0x44554B55, 0x53414D504C45]`、bucket count `2147483647`。固定映射不依赖 batch、epoch、run seed 或 Python 进程 hash；键和桶数视为采样合同，不静默更改。不用于匿名化。总过滤声明 `stable_hash(u_account_id) % 50 == 1`，来源门控不变；仍按用户采样，曝光保留比例不保证恰好 2%。

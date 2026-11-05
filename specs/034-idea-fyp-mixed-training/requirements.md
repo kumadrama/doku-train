@@ -5,7 +5,7 @@ Source: 2026-11-04 本会话 Q1–Q19 用户决策；原始需求为支持新 Id
 
 ## 范围与输入
 
-- 仅 TF 公共训练输入与执行路径；不扩展 Torch/树模型，不包含云训练、部署或历史数据重产。
+- 仅 TF 公共训练输入与执行路径；不扩展 Torch/树模型。初始实施不包含云操作；2026-11-05 用户另行授权合并部署、两天历史数据重产及 SageMaker smoke，随后明确授权 Idea 只读 IAM 和稳定哈希重跑；不含模型/Endpoint 发布。
 - 消费 doku-offline 的 FYP 产物与 doku-rec-offline/idea 的 request-training **每日投影产物**，不直接消费原始小时快照，不 import 上游实现。
 - 每日出口已提供 doku-train-dataset-manifest/v1、扁平 Parquet 与版本化特征/标签合同；复用基础 reader，适配多源与每日解析。不得将缺少 FYP 特有元数据等同于 Idea 合同损坏。
 - data_sources 逐来源声明 name、稳定 source_id、format 和不可变 manifest_uri。来源 ID 不依赖数组位置，读取层注入 datasvr_source；不自动作为模型特征。
@@ -13,7 +13,7 @@ Source: 2026-11-04 本会话 Q1–Q19 用户决策；原始需求为支持新 Id
 
 ## 采样、字段和混合
 
-- item_filter 为总过滤，适用于进入后续训练/评估的数据。FYP 按用户标识取模，保留 user_id % 50 == 1；Idea 全量。实际字段须从源合同核实映射，不引入 uin 私有命名，不改为曝光采样或 hash 采样。
+- item_filter 为总过滤，适用于进入后续训练/评估的数据。FYP 对用户标识做稳定哈希后取模，保留 stable_hash(u_account_id) % 50 == 1；Idea 全量。实际字段须从源合同核实映射，不引入 uin 私有命名，不改为曝光采样。2026-11-05 用户明确授权此调整，取代此前直接取模、不使用 hash 的限制。
 - 两来源特征取配置所需字段，对方不存在的字段通过显式 feature_default_values 补 0；保持 dtype/shape 合同。标签占位不等价于允许参与 loss。
 - 同名字段语义与类型须核对，不盲目合并。来源间历史等结构化特征按已声明合同对齐。
 - 采样后自然混合，不强制来源配比，不重复 Idea。每 epoch 每条保留样本使用一次。

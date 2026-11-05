@@ -64,3 +64,24 @@ Source: 用户授权分别审查、合并和部署，回溯两天 Idea 样本并
 验收通过 `aws sagemaker describe-training-job`、`aws s3api list-objects-v2`、下载源状态和指标 JSON 后断言两个来源 ready、阶段 completed 以及逐目标样本数。
 
 FYP 实际保留比例明显低于预期的约 1/50，需单独核验输入用户 ID 分布；本次证明真实双源流程可运行，不代表预期辅助数据量已达成。
+
+
+## 稳定哈希采样修正
+
+原始列独立核验：11-02 175,603 行、12,931 个账号，无 NULL/0，其中 175,011 行为偶数；直接取模命中 18 行。11-03 173,873 行、14,583 个账号，无 NULL/0，直接取模命中 22 行。与训练源状态精确一致，问题为 ID 低位分布偏斜。
+
+用户授权稳定哈希后取模及重跑。新增 golden hash 向量，覆盖大于 2^53 的相邻 int64、int64 边界、字符串一致性、跨 batch/graph 不变、结构化偶数 ID 的采样分布以及 float ID 拒绝。
+执行 `python -m pytest recommend_tf/train/tests/test_stable_hash.py recommend_tf/train/tests/test_mixed_integration.py recommend_tf/train/tests/test_mixed_review.py -q --disable-warnings`：14 passed，21.84 秒。后补 golden 向量再运行 stable_hash 专项。
+
+
+## 稳定哈希重跑验收（2026-11-05）
+
+- 最终 TF 全套：191 passed（146.16 秒）；golden hash 专项 3 passed（1.16 秒）；Ruff 和 `git diff --check` 通过。
+- 新镜像 digest `sha256:4be2c536449a854bdbb1031c3766086b89f9262a263c87120ebed5d5f838f441`（同上 ECR 仓库），源码 commit `5737466`；配置唯一变化为 `stable_hash(u_account_id) % 50 == 1`。
+- SageMaker `doku-exp-idea-fyp-hash-smoke-20261105` 返回 Completed，单台 ml.m5.4xlarge，训练/计费 270 秒。
+- 下载两次 `input/sources.json` 并逐来源断言 resolved_manifest_uris、manifest_digests 相等、status 均 ready。FYP train 3,137（原始 175,603，约 1.79%）、validation 2,751（原始 173,873，约 1.58%）；Idea train 27,768、validation 34,661 不变。按用户抽样不要求曝光率精确 2%。
+- Idea validation：read_more AUC 0.5249455313147062 / logloss 0.08077392335943981 / 34,661 行；watch_now AUC 0.5119119600669082 / logloss 0.13450123781401843 / 7,526 行；vote AUC 0.7779844181188438 / logloss 0.21041323512502863 / 27,135 行。
+- `COMMITTED.json` 存在、experiment-status 为 completed、test skipped/empty；checkpoint、冻结输入和指标已写出。prepare 161.24 秒、训练流程 65.53 秒、总流程 226.81 秒，采样峰值 RSS 1,368,260,608 字节。
+- 产物：`s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/runs/doku-exp-idea-fyp-hash-smoke-20261105/live/`。
+
+两天 1 epoch smoke 验收数据路径、用户采样、混训及验证过滤；不作泛化质量或 28 天容量结论。未发布模型或 Endpoint。
