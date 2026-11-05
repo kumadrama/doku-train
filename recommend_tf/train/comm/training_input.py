@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+from . import timing
 from .datasvr.prepared import digest, prepare
 from .datasvr.published_dataset import PublishedDataset
 from .early_stop import validate_early_stop
@@ -13,6 +14,7 @@ from .runtime_budget import MemoryBudget
 from .training_pipeline import run, source_identity
 
 
+@timing.measured("prepare_and_train")
 def train(
     config,
     root,

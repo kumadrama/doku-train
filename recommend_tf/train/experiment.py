@@ -3,11 +3,13 @@
 import json
 from pathlib import Path
 
+from .comm import timing
 from .comm.artifact_integrity import seal_run
 from .comm.training_pipeline import evaluate_checkpoint
 from .train_rerank import train
 
 
+@timing.measured("experiment")
 def execute(config, root, publish=None, local_root=None):
     root = Path(root)
     if root.exists():

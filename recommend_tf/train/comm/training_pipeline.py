@@ -14,6 +14,7 @@ import tensorflow.compat.v1 as tf
 
 from ..models.rerank.model_params import parameters
 from ..models.rerank.rerank_model import model_fn, transform_features
+from . import timing
 from .datasvr.prepared import (
     batches,
     column_batches,
@@ -25,7 +26,18 @@ from .datasvr.prepared import (
 )
 from .early_stop import EarlyStop, validate_early_stop
 from .eval.metrics import Metrics
+from .input_pipeline import InputPipeline
+from .input_pipeline import options as input_options
 from .learning_rate import learning_rate_for_epoch, validate_schedules
+
+
+def timed_batches(*args, **kwargs):
+    return timing.current().iterate("input", batches(*args, **kwargs))
+
+
+@timing.measured("compute")
+def timed_run(session, *args, **kwargs):
+    return session.run(*args, **kwargs)
 
 
 def seed_graph(seed):
@@ -63,6 +75,7 @@ def placeholders(values):
     }
 
 
+@timing.measured("feed")
 def feed(place, values):
     return {
         tensor: values[group][key]
@@ -71,6 +84,7 @@ def feed(place, values):
     }
 
 
+@timing.measured("vocabulary")
 def fit_vocabulary(prepared, identity, params, dtypes, batch_size):
     keys = {}
     types = {}
@@ -114,7 +128,9 @@ def fit_vocabulary(prepared, identity, params, dtypes, batch_size):
     }
 
 
+@timing.measured("training")
 def run(config, prepared_root, output, resume=None, on_epoch=None):
+    input_options(config)
     early_options = validate_early_stop(config)
     early = EarlyStop(early_options) if early_options is not None else None
     validate_schedules(config["model"], config["max_epochs"])
@@ -134,6 +150,7 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
         json.dumps({"event": "fit_vocabulary_complete", "seconds": vocabulary_seconds}), flush=True
     )
     params = parameters(config["model"], vocabs)
+    pipeline = InputPipeline(config, params, config["dtypes"])
     logical = digest({"config": config, "vocabs": vocabs, "source": source_identity()})
     (output / "feature-state.json").write_text(json.dumps(vocabs, sort_keys=True))
     first = next(
@@ -194,44 +211,49 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 denominators = {name: 0.0 for name in params.tasks}
                 objective_sums = {}
                 objective_batches = 0
-                for batch in batches(
-                    rows(
-                        prepared_root / "train",
-                        ident,
-                        columns=input_columns(params, dtypes),
-                        seed=config["seed"] + epoch,
-                    ),
-                    size,
-                    config["seed"] + epoch,
-                    config["shuffle_buffer_size"],
-                    replacement=bool(config.get("data_sources")),
-                ):
-                    result = sess.run(
-                        {
-                            "losses": train["losses"],
-                            "step": train["train_op"],
-                            "objective": train["objective_losses"],
-                            "denominators": train["loss_denominators"],
-                        },
-                        feed(ph, tensor_batch(batch, params, dtypes)),
-                    )
-                    objective_batches += 1
-                    for name, value in result["objective"].items():
-                        objective_sums[name] = objective_sums.get(name, 0.0) + float(value)
-                    if int(result["step"]) % 100 == 0:
-                        print(
-                            json.dumps(
-                                {
-                                    "event": "train_step",
-                                    "epoch": epoch + 1,
-                                    "step": int(result["step"]),
-                                }
+                with timing.current().span("train_epoch"):
+                    with pipeline.batches(
+                        timed_batches(
+                            rows(
+                                prepared_root / "train",
+                                ident,
+                                columns=input_columns(params, dtypes),
+                                seed=config["seed"] + epoch,
                             ),
-                            flush=True,
+                            size,
+                            config["seed"] + epoch,
+                            config["shuffle_buffer_size"],
+                            replacement=bool(config.get("data_sources")),
                         )
-                    for name, value in result["losses"].items():
-                        sums[name] += float(value) * result["denominators"][name]
-                        denominators[name] += float(result["denominators"][name])
+                    ) as encoded:
+                        for values in encoded:
+                            result = timed_run(
+                                sess,
+                                {
+                                    "losses": train["losses"],
+                                    "step": train["train_op"],
+                                    "objective": train["objective_losses"],
+                                    "denominators": train["loss_denominators"],
+                                },
+                                feed(ph, values),
+                            )
+                            objective_batches += 1
+                            for name, value in result["objective"].items():
+                                objective_sums[name] = objective_sums.get(name, 0.0) + float(value)
+                            if int(result["step"]) % 100 == 0:
+                                print(
+                                    json.dumps(
+                                        {
+                                            "event": "train_step",
+                                            "epoch": epoch + 1,
+                                            "step": int(result["step"]),
+                                        }
+                                    ),
+                                    flush=True,
+                                )
+                            for name, value in result["losses"].items():
+                                sums[name] += float(value) * result["denominators"][name]
+                                denominators[name] += float(result["denominators"][name])
 
                 validation_start = time.monotonic()
                 train_seconds = validation_start - train_start
@@ -239,30 +261,37 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 valid_denominators = {name: 0.0 for name in params.tasks}
                 metric_path = output / f"metrics-{epoch + 1:04d}.sqlite"
                 accumulator = Metrics(metric_path, params.eval_tasks)
-                for batch in batches(
-                    rows(
-                        prepared_root / "validation", ident, columns=input_columns(params, dtypes)
-                    ),
-                    size,
-                ):
-                    result = sess.run(
-                        {
-                            "losses": evaluation["losses"],
-                            "denominators": evaluation["loss_denominators"],
-                            "predictions": evaluation["predictions"],
-                            "metric_values": evaluation["metric_values"],
-                        },
-                        feed(ph, tensor_batch(batch, params, dtypes)),
-                    )
-                    for name, value in result["losses"].items():
-                        valid[name] += float(value) * result["denominators"][name]
-                        valid_denominators[name] += float(result["denominators"][name])
-                        accumulator.add(
-                            name, result["predictions"][name], result["metric_values"][name]
+                with timing.current().span("validation_epoch"):
+                    with pipeline.batches(
+                        timed_batches(
+                            rows(
+                                prepared_root / "validation",
+                                ident,
+                                columns=input_columns(params, dtypes),
+                            ),
+                            size,
                         )
-                calculated = accumulator.finish()
-                accumulator.close()
-                metric_path.unlink()
+                    ) as encoded:
+                        for values in encoded:
+                            result = timed_run(
+                                sess,
+                                {
+                                    "losses": evaluation["losses"],
+                                    "denominators": evaluation["loss_denominators"],
+                                    "predictions": evaluation["predictions"],
+                                    "metric_values": evaluation["metric_values"],
+                                },
+                                feed(ph, values),
+                            )
+                            for name, value in result["losses"].items():
+                                valid[name] += float(value) * result["denominators"][name]
+                                valid_denominators[name] += float(result["denominators"][name])
+                                accumulator.add(
+                                    name, result["predictions"][name], result["metric_values"][name]
+                                )
+                    calculated = accumulator.finish()
+                    accumulator.close()
+                    metric_path.unlink()
                 record = {
                     "epoch": epoch + 1,
                     "train_objective_batch_mean": {
@@ -288,7 +317,8 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                 metrics.append(record)
                 target = output / f"epoch-{epoch + 1:04d}"
                 target.mkdir()
-                saver.save(sess, str(target / "model"))
+                with timing.current().span("checkpoint"):
+                    saver.save(sess, str(target / "model"))
                 selection = config.get("selection")
                 empty_validation = bool(config.get("data_sources")) and not any(
                     metric["rows"] for task in calculated.values() for metric in task.values()
@@ -352,6 +382,7 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
                     on_epoch(record)
                 previous = target
                 completed_epoch = epoch + 1
+                timing.current().epoch(epoch + 1)
     if early is not None:
         (output / "early-stop.json").write_text(
             json.dumps(
@@ -392,9 +423,21 @@ def run(config, prepared_root, output, resume=None, on_epoch=None):
             }
         )
     )
+    if "input_pipeline" in config:
+        (output / "input-pipeline.json").write_text(
+            json.dumps(
+                {
+                    "options": pipeline.options,
+                    "cache_hits": pipeline.hits,
+                    "cache_misses": pipeline.misses,
+                    "cache_bytes": pipeline.cache_bytes,
+                }
+            )
+        )
     return metrics
 
 
+@timing.measured("test")
 def evaluate_checkpoint(config, prepared_root, checkpoint, output, split="test"):
     """Read-only checkpoint evaluation; never updates the training run."""
     if split not in ("validation", "test"):
@@ -408,6 +451,7 @@ def evaluate_checkpoint(config, prepared_root, checkpoint, output, split="test")
     if record["identity"] != logical:
         raise ValueError("Checkpoint identity mismatch")
     params = parameters(config["model"], vocabs)
+    pipeline = InputPipeline(config, params, config["dtypes"])
     ident = config["prepared_identity"]
     dtypes = config["dtypes"]
     size = config["batch_size"]
@@ -445,23 +489,32 @@ def evaluate_checkpoint(config, prepared_root, checkpoint, output, split="test")
             with tf.Session(config=options) as sess:
                 sess.run([tf.global_variables_initializer(), tf.tables_initializer()])
                 saver.restore(sess, str(checkpoint / "model"))
-                for batch in batches(
-                    rows(prepared, ident, columns=input_columns(params, dtypes)), size
-                ):
-                    values = sess.run(
-                        {
-                            k: graph[k]
-                            for k in ("losses", "loss_denominators", "predictions", "metric_values")
-                        },
-                        feed(ph, tensor_batch(batch, params, dtypes)),
+                with pipeline.batches(
+                    timed_batches(
+                        rows(prepared, ident, columns=input_columns(params, dtypes)), size
                     )
-                    for name, value in values["losses"].items():
-                        count = values["loss_denominators"][name]
-                        sums[name] += float(value) * count
-                        denoms[name] += float(count)
-                        accumulator.add(
-                            name, values["predictions"][name], values["metric_values"][name]
+                ) as encoded:
+                    for values in encoded:
+                        values = timed_run(
+                            sess,
+                            {
+                                k: graph[k]
+                                for k in (
+                                    "losses",
+                                    "loss_denominators",
+                                    "predictions",
+                                    "metric_values",
+                                )
+                            },
+                            feed(ph, values),
                         )
+                        for name, value in values["losses"].items():
+                            count = values["loss_denominators"][name]
+                            sums[name] += float(value) * count
+                            denoms[name] += float(count)
+                            accumulator.add(
+                                name, values["predictions"][name], values["metric_values"][name]
+                            )
         metrics = {
             "loss": {
                 name: value / denoms[name] if denoms[name] else None for name, value in sums.items()
