@@ -146,3 +146,21 @@ git diff --check
 
 这组结果验证发布代码与镜像上下文依赖，不代表新镜像已构建发布、真实 Endpoint 已加载，
 或 FYP/ai-engine 端到端验收已执行。新协议需显式配置；现有日更配置不会自动切换。
+
+## 2026-11-06 sealed selected 历史产物真实导出
+
+用户授权修复兼容并继续导出。作业 doku-exp-export-ln002-epoch11-20261106
+使用独立 SageMaker 执行环境读取原始 COMMITTED，并完成全部摘要校验、
+选模记录重建、epoch 11 checkpoint 恢复及三组合成 batch 的 SavedModel parity。
+describe-training-job 返回 Completed/Completed；export_model.execute 和
+official.package 均成功。源码兼容补丁位于 codex/export-sealed-selected-run，
+尚未提交或合并。原训练产物未修改。
+
+模型版本 e50f8fff8c8fc758d47ed6d103b621c830693464a298adb6fb6d0fe6f0e47bdf。
+canonical manifest SHA256 为
+8572517fa7d87ebfe393f5d562783a46fa92ac477de788917ab2b812af3a1844。
+官方部署归档 SHA256 为
+d961bd3a01089d17754e71b2109eb85cb8529fc521839fe3e032a8e4b7df73c5。
+SageMaker 输出是外层归档，包含 canonical/、deployment.json 和内层 model.tar.gz，
+部署时必须使用内层官方归档。尚未执行 Endpoint 部署或修改滚动日更绑定。
+本地 py_compile 与 git diff --check 通过。
