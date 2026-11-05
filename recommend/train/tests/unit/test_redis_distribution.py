@@ -664,3 +664,63 @@ def test_joint_seven_day_retention_boundary(setup, tmp_path, offset, action):
     plan = {row["version"]: row["action"] for row in distribution.cleanup(now=now)["plan"]}
     assert plan == {"v1": action, "v2": "current"}
     assert registry.store.get(registry.key) == before
+
+
+@pytest.mark.parametrize("continuous", [False, True])
+def test_cleanup_replans_revision_conflicts(setup, tmp_path, monkeypatch, continuous):
+    registry, _, distribution, _ = setup
+    distribution.sync("v1")
+    seed(registry, tmp_path / "second", "v2", "2026-10-02")
+    distribution.sync("v2")
+    registry.consumer_ready()
+    distribution.protocol_ready()
+    original = distribution._begin
+    attempts = []
+    sleeps = []
+    monkeypatch.setattr("recommend.train.comm.redis_distribution.time.sleep", sleeps.append)
+
+    def racing_begin(state, **kwargs):
+        attempts.append(state["revision"])
+        if continuous or len(attempts) == 1:
+            registry.pin("v2", "concurrent-reader")
+        return original(state, **kwargs)
+
+    monkeypatch.setattr(distribution, "_begin", racing_begin)
+    now = datetime.now(UTC) + timedelta(days=4)
+    if continuous:
+        with pytest.raises(ConflictError, match="registry changed while planning"):
+            distribution.cleanup(apply=True, now=now)
+        assert len(attempts) == 4
+        assert sleeps == [0.1, 0.2, 0.4]
+        assert registry.read()[0]["versions"]["v1"]["state"] == "available"
+    else:
+        assert distribution.cleanup(apply=True, now=now)["executed"] == "drain"
+        assert len(attempts) == 2
+        assert sleeps == [0.1]
+    assert len(set(attempts)) == len(attempts)
+    assert registry.read()[0]["distribution"]["operation"] is None
+
+
+def test_cleanup_replan_respects_changed_retention(setup, tmp_path, monkeypatch):
+    registry, _, distribution, _ = setup
+    distribution.sync("v1")
+    seed(registry, tmp_path / "second", "v2", "2026-10-02")
+    distribution.sync("v2")
+    registry.consumer_ready()
+    distribution.protocol_ready()
+    now = datetime.now(UTC) + timedelta(days=4)
+    original = distribution._begin
+    monkeypatch.setattr("recommend.train.comm.redis_distribution.time.sleep", lambda _: None)
+
+    def racing_begin(state, **kwargs):
+        def refresh(latest):
+            latest["versions"]["v1"]["created_at"] = now.isoformat()
+
+        registry.update(refresh)
+        return original(state, **kwargs)
+
+    monkeypatch.setattr(distribution, "_begin", racing_begin)
+    result = distribution.cleanup(apply=True, now=now)
+    assert "executed" not in result
+    assert result["plan"][0]["action"] == "younger_than_7_days"
+    assert registry.read()[0]["versions"]["v1"]["state"] == "available"
