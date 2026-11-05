@@ -1,6 +1,6 @@
 # Spec 034 验证记录
 
-日期：2026-11-04（Asia/Shanghai）。仅本地合成 fixture，不涉及真实用户样本或云操作。
+初始验证日期：2026-11-04（Asia/Shanghai）。以下历史记录为本地验证；2026-11-05 已授权执行的云端结果见末节。
 
 ## 已执行
 
@@ -19,9 +19,9 @@
 - test_filtered_metrics / test_migration：逐指标独立过滤/分母/AUC、空指标、loss 门控与 metric filter 独立。
 - test_mixed_input：重复 source ID 拒绝、不可用来源冻结跳过与空清单、所有来源共享 prepared 磁盘预算。
 
-## 限制
+## 初始本地验证时的限制（云端状态见末节）
 
-未运行生产训练或 28 天容量基准；测试耗时不代表生产 SLA。未推送 PR、未部署、未重产历史每日数据。现有 exporter 固定四输出与旧输入冻结布局，本 Spec 不扩展混训模型的线上导出发布入口；训练 checkpoint/指标/lineage 可本地审查。采样、模型目标集合、loss 权重和指标过滤须按 config-example.md 在实际实验配置显式声明。
+当时未运行生产训练或 28 天容量基准；测试耗时不代表生产 SLA。未推送 PR、未部署、未重产历史每日数据。现有 exporter 固定四输出与旧输入冻结布局，本 Spec 不扩展混训模型的线上导出发布入口；训练 checkpoint/指标/lineage 可本地审查。采样、模型目标集合、loss 权重和指标过滤须按 config-example.md 在实际实验配置显式声明。
 
 ## 最后增量验证
 
@@ -43,3 +43,24 @@
 线上只读核对两天输入：UTC 11/02 FYP175603/Idea27768行，11/03 FYP173873/Idea34661行。FYP104特征包含u_account_id；Idea119特征待placement回溯为120。测试配置使用11/02训练、11/03验证、无独立test，1epoch；不会发布模型/Endpoint。
 
 合并前真实合同形状合成检查发现空历史词表初始化失败，已修复为空词表直接映射 OOV，保留 padding 不产生梯度语义；新增整数/字符串回归。空词表及迁移测试26项通过（20.17秒），120列Idea合同形状的合成双源完整实验completed，test skipped/empty。
+
+
+## 2026-11-05 云端部署、历史回溯与两天 smoke
+
+Source: 用户授权分别审查、合并和部署，回溯两天 Idea 样本并在 SageMaker 测试；随后明确授权最小 Idea 只读 IAM 变更及部署。
+
+- doku-rec-offline PR #43 合并 `195e155a498d239f9260ac67144cf955e685bcb7`；两个每日 workflow run `41965639449`、`41965643399` 成功。
+- UTC 2026-11-02 重产 27,768 行（REGULAR 21,426、WATCH_NOW 6,342）；11-03 重产 34,661 行（REGULAR 27,135、WATCH_NOW 7,526）。120 个特征包含 placement；校验和、曝光唯一性通过，新旧所有原有列逐值一致，无 placement 缺失。
+- doku-train PR #38 合并 `c92d3e43e9392a96394420e76bf16208bec16428`；原生 amd64 CI 的完整 `make check`、训练容器和推理容器检查全部通过。本地 ARM 模拟 amd64 TensorFlow 曾发生段错误，不作为训练成功证据。
+- doku-iac PR #708、#709 已合并。已审查并应用 Terraform plan：0 新增、2 策略原地更新、0 删除；随后仅刷新 binding output。`terraform validate` 通过。`aws iam simulate-principal-policy` 验证 Idea 前缀 GetObject allowed、PutObject implicitDeny。
+- 训练镜像：`703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:5eb805bdddb5cfe3a8113d10dea133c5d2e19c4f9f11c93222c2670f86f79c97`；源码来自 PR #38 head `95a13d0c919bea78d1522085d0a461e78ebffc11`，配置、源码和锁文件摘要由容器入口校验。
+- SageMaker job：`doku-exp-idea-fyp-smoke-20261105`，us-east-2，单台 ml.m5.4xlarge CPU、100 GB 磁盘。`aws sagemaker describe-training-job` 返回 Completed；训练/计费时间 244 秒。
+- 执行配置：UTC 11-02 train、11-03 validation、无独立 test，1 epoch、学习率 0.001；FYP 使用 `u_account_id % 50 == 1`，Idea 全量。仅实验训练，没有模型或 Endpoint 发布。
+- `input/sources.json` 确认 FYP、Idea 均 ready：train 分别 18、27,768 行，validation 分别 22、34,661 行。test 明确 skipped/empty；`COMMITTED.json`、checkpoint、冻结输入和指标已上传。
+- 验证指标过滤计数：read_more 34,661、watch_now 7,526、vote 27,135，与 Idea 及 placement 汇总吻合。AUC 分别为 0.519172244966012、0.517921217008511、0.7637566019826636；logloss 分别为 0.08254345534036014、0.1348324622672557、0.21016498079639878。
+- 数据准备 150.86 秒，训练流程 53.85 秒，总流程 204.73 秒，采样峰值 RSS 1,313,624,064 字节。单次两天 smoke 不能代表 28 天容量 SLA 或模型质量结论。
+
+产物根目录：`s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/runs/doku-exp-idea-fyp-smoke-20261105/live/`。
+验收通过 `aws sagemaker describe-training-job`、`aws s3api list-objects-v2`、下载源状态和指标 JSON 后断言两个来源 ready、阶段 completed 以及逐目标样本数。
+
+FYP 实际保留比例明显低于预期的约 1/50，需单独核验输入用户 ID 分布；本次证明真实双源流程可运行，不代表预期辅助数据量已达成。
