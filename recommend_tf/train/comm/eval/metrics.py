@@ -10,30 +10,37 @@ class Metrics:
     def __init__(self, path, tasks):
         self.tasks = tasks
         self.db = sqlite3.connect(str(path))
-        self.db.execute("CREATE TABLE predictions(task TEXT, score REAL, positive INTEGER)")
+        self.db.execute(
+            "CREATE TABLE predictions(task TEXT, metric TEXT, score REAL, positive INTEGER)"
+        )
         self.sums = {name: {} for name in tasks}
-        self.counts = {name: 0 for name in tasks}
+        self.counts = {name: {} for name in tasks}
 
     def add(self, name, prediction, values):
-        p = np.asarray(prediction, dtype=np.float64).reshape(-1)
-        if not np.isfinite(p).all():
-            raise ValueError("Non-finite evaluation prediction")
-        self.counts[name] += len(p)
-        auc_done = False
+        if name not in self.tasks:
+            return
+        predictions = np.asarray(prediction, dtype=np.float64).reshape(-1)
         for metric, option in self.tasks[name].get("metrics", {}).items():
-            y = np.broadcast_to(np.asarray(values[metric], dtype=np.float64), p.shape)
-            if not np.isfinite(y).all():
-                raise ValueError("Non-finite metric label")
+            entry = values[metric]
+            label = entry["label"] if isinstance(entry, dict) else entry
+            mask = entry.get("filter", True) if isinstance(entry, dict) else True
+            mask = np.asarray(mask)
+            if mask.dtype != np.bool_:
+                raise ValueError("Metric filter must be boolean")
+            keep = np.broadcast_to(mask, predictions.shape)
+            p = predictions[keep]
+            y = np.broadcast_to(np.asarray(label, dtype=np.float64), predictions.shape)[keep]
+            if not np.isfinite(p).all() or not np.isfinite(y).all():
+                raise ValueError("Non-finite evaluation prediction or metric label")
+            self.counts[name][metric] = self.counts[name].get(metric, 0) + len(p)
             fn = option["func"]
             if fn == "auc":
                 if not np.isin(y, [0, 1]).all():
                     raise ValueError("AUC requires binary labels")
-                if not auc_done:
-                    self.db.executemany(
-                        "INSERT INTO predictions VALUES (?,?,?)",
-                        ((name, float(score), int(label)) for score, label in zip(p, y)),
-                    )
-                    auc_done = True
+                self.db.executemany(
+                    "INSERT INTO predictions VALUES (?,?,?,?)",
+                    ((name, metric, float(score), int(label)) for score, label in zip(p, y)),
+                )
                 continue
             if fn == "valid_rows":
                 value = len(y)
@@ -54,9 +61,9 @@ class Metrics:
     def finish(self):
         result = {}
         for name, head in self.tasks.items():
-            count = self.counts[name]
             out = {}
             for metric, option in head.get("metrics", {}).items():
+                count = self.counts[name].get(metric, 0)
                 fn = option["func"]
                 reason = None
                 if not count:
@@ -66,8 +73,8 @@ class Metrics:
                     negatives = positives = 0
                     wins = 0.0
                     for score, pos, total in self.db.execute(
-                        "SELECT score,SUM(positive),COUNT(*) FROM predictions WHERE task=? GROUP BY score ORDER BY score",
-                        (name,),
+                        "SELECT score,SUM(positive),COUNT(*) FROM predictions WHERE task=? AND metric=? GROUP BY score ORDER BY score",
+                        (name, metric),
                     ):
                         neg = total - pos
                         wins += pos * (negatives + 0.5 * neg)

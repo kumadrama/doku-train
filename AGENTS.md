@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 034：TF Idea/FYP 混训需求](specs/034-idea-fyp-mixed-training/requirements.md) — 需求已确认并授权本地实施；[设计](specs/034-idea-fyp-mixed-training/design.md)、[任务](specs/034-idea-fyp-mixed-training/tasks.md)、[验证](specs/034-idea-fyp-mixed-training/verification.md)。未部署。
+
 - [Spec 033：模型产物七天保留](specs/033-redis-seven-day-retention/requirements.md)、[设计](specs/033-redis-seven-day-retention/design.md) — 已确认并授权实施部署，两侧统一 7 天，安全保护不变。
 
 - [Spec 031 requirements](specs/031-runtime-release-ownership/requirements.md)、[design](specs/031-runtime-release-ownership/design.md) — 2026-10-31 用户授权实施，生产迁移另行验收。

@@ -27,7 +27,12 @@ def execute(config, root, publish=None, local_root=None):
             publish(root)
 
     try:
-        train(config, root, local_root=local_root, on_epoch=sync, on_created=created)
+        result = train(config, root, local_root=local_root, on_epoch=sync, on_created=created)
+        if isinstance(result, dict) and result.get("status") == "skipped":
+            (root / "experiment-status.json").write_text(json.dumps(result))
+            (root / "experiment-config.json").write_text(json.dumps(config, sort_keys=True))
+            sync()
+            return result
         selection = json.loads((root / "training/selection.json").read_text())
         if "checkpoint" not in selection:
             status = {
@@ -42,7 +47,8 @@ def execute(config, root, publish=None, local_root=None):
             status = {
                 "status": "completed",
                 "selected_epoch": selection["epoch"],
-                "test": "completed",
+                "test": measured.get("status", "completed"),
+                **({"test_reason": measured["reason"]} if "reason" in measured else {}),
                 "checkpoint": str(checkpoint),
                 "test_identity": measured["identity"],
             }

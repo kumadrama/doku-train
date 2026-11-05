@@ -20,3 +20,27 @@ properties:
     type: array
     items: {type: string, minLength: 1}
     default: []
+  tasks:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        loss_reduction: {enum: [sum]}
+        metrics: {$ref: '#/definitions/metrics'}
+  eval_tasks:
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        metric_label: {type: string}
+        metrics: {$ref: '#/definitions/metrics'}
+definitions:
+  metrics:
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        func: {type: string}
+        label: {type: string}
+        filter: {type: string}

@@ -34,44 +34,66 @@ def train(
     started = time.monotonic()
     try:
         budget.start()
-        dataset = PublishedDataset(
-            config["dataset_config"], local_root=local_root, frozen_input=frozen_input
-        )
-        dataset.freeze(root / "input")
-        model_name(config)
-        params = model_parameters(config["model"])
-        identity = digest(
-            {
-                "manifest": dataset.manifest,
-                "source": source_identity(),
-                "model": config["model"],
-                "defaults": config["dataset_config"]["feature_default_values"],
-                "histories": config["histories"],
-                "item_filter": config["item_filter"],
+        if "data_sources" in config:
+            from copy import deepcopy
+
+            from .datasvr.mixed_input import prepare_sources
+
+            config = deepcopy(config)
+            for task in config["model"]["tasks"].values():
+                task["loss_reduction"] = "sum"
+            config["dtypes"] = {
+                k: "str" if v == "string" else v for k, v in config["dtypes"].items()
             }
-        )
-        # Explicit raw dtype mapping is checked against source columns by reader;
-        # no hidden production source or current/latest pointer.
-        columns = set(config["dtypes"])
-        for split in splits:
-            print(json.dumps({"event": "prepare_split", "split": split}), flush=True)
-
-            def blocks():
-                for cols in dataset.iter_batches(split, columns):
-                    # Reader already applied event-time splitting; omit audit-only columns.
-                    names = sorted(columns)
-                    yield {name: cols[name] for name in names}
-
-            prepare(
-                blocks(),
-                root / "prepared" / split,
-                config["dataset_config"]["feature_default_values"],
-                params,
-                config["histories"],
-                config["item_filter"],
-                identity,
-                config["dataset_config"]["execution"]["cache_limit_bytes"],
+            config["dtypes"]["datasvr_source"] = "int64"
+            model_name(config)
+            params = model_parameters(config["model"])
+            identity, count = prepare_sources(
+                config, root, params, splits, source_identity(), local_root, frozen_input
             )
+            if "train" in splits and not count:
+                status = {"status": "skipped", "reason": "no_training_sources"}
+                (root / "run-status.json").write_text(json.dumps(status))
+                return status
+        else:
+            dataset = PublishedDataset(
+                config["dataset_config"], local_root=local_root, frozen_input=frozen_input
+            )
+            dataset.freeze(root / "input")
+            model_name(config)
+            params = model_parameters(config["model"])
+            identity = digest(
+                {
+                    "manifest": dataset.manifest,
+                    "source": source_identity(),
+                    "model": config["model"],
+                    "defaults": config["dataset_config"]["feature_default_values"],
+                    "histories": config["histories"],
+                    "item_filter": config["item_filter"],
+                }
+            )
+            # Explicit raw dtype mapping is checked against source columns by reader;
+            # no hidden production source or current/latest pointer.
+            columns = set(config["dtypes"])
+            for split in splits:
+                print(json.dumps({"event": "prepare_split", "split": split}), flush=True)
+
+                def blocks():
+                    for cols in dataset.iter_batches(split, columns):
+                        # Reader already applied event-time splitting; omit audit-only columns.
+                        names = sorted(columns)
+                        yield {name: cols[name] for name in names}
+
+                prepare(
+                    blocks(),
+                    root / "prepared" / split,
+                    config["dataset_config"]["feature_default_values"],
+                    params,
+                    config["histories"],
+                    config["item_filter"],
+                    identity,
+                    config["dataset_config"]["execution"]["cache_limit_bytes"],
+                )
         preparation_seconds = time.monotonic() - started
         runtime = {
             k: v

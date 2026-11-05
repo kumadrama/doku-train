@@ -20,14 +20,19 @@ def lookup(keys, name, params, valid=None):
     if keys.dtype != key_dtype:
         raise ValueError("Vocabulary key dtype mismatch: " + name)
     with tf.variable_scope("local_embeddings/" + name, reuse=tf.AUTO_REUSE):
-        table = tf.lookup.StaticHashTable(
-            tf.lookup.KeyValueTensorInitializer(
-                tf.constant(state["keys"], dtype=key_dtype),
-                tf.range(2, len(state["keys"]) + 2, dtype=tf.int64),
-            ),
-            default_value=1,
-        )
-        ids = table.lookup(keys)
+        if state["keys"]:
+            table = tf.lookup.StaticHashTable(
+                tf.lookup.KeyValueTensorInitializer(
+                    tf.constant(state["keys"], dtype=key_dtype),
+                    tf.range(2, len(state["keys"]) + 2, dtype=tf.int64),
+                ),
+                default_value=1,
+            )
+            ids = table.lookup(keys)
+        else:
+            # An all-empty train history has no vocabulary keys. Every future
+            # valid key is OOV; do not initialize a hash table with empty keys.
+            ids = tf.ones(tf.shape(keys), dtype=tf.int64)
         dim = params.embed_dim.get(name, params.embed_dim["*"])
         variable = tf.get_variable(
             "weights",

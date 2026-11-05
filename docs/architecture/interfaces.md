@@ -113,3 +113,16 @@ Source: [Spec 012 修订](../../specs/012-daily-contract-evolution/design.md)，
 不同源 ID 的合成身份为 fyp-rank-train；同 ID 保持原值。逐日 lineage 新增 dataset_id，
 冻结恢复从原始证据重算身份。未知家族保持严格相等；标签和字段定义校验不放宽。
 目标部署状态：此次仅本地实施与验收，未部署，未重试生产任务。
+
+## Spec 034：多源 TF 输入（本地实施）
+
+Source: specs/034-idea-fyp-mixed-training/requirements.md、design.md。
+TF envelope 新增 data_sources，逐来源冻结版本化 Manifest/合同；使用稳定 source_id 注入 datasvr_source。
+源失败静默排除并记录证据；无训练数据则 skipped，不声明成功产物。任务 loss 支持显式 sum；
+eval_tasks 的逐指标 filter 与 loss_weight 分离。卡片 placement 仅作为用户接受的资格近似。
+未部署；配置片段及限制见 Spec 034/config-example.md。
+
+Source: 2026-11-05 用户要求保留多源单 manifest_uri 配置体验。
+多源 manifest_uri 可为精确 Manifest 或包含 `{date}` 的每日入口模板；后者按 split 日期解析
+_SUCCESS，校验指向的不可变 Manifest 摘要和日期，冻结解析证据。resume 使用冻结 URI/合同，
+不重新读取指针。不使用 latest，不自动列举存储目录；manifest_uris 仅保留显式列表兼容。

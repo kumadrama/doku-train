@@ -117,12 +117,24 @@ def organize_columns(columns, defaults, groups, histories):
     return result
 
 
-def prepare(blocks, root, defaults, params, histories, item_filter, identity, budget):
+def prepare(
+    blocks,
+    root,
+    defaults,
+    params,
+    histories,
+    item_filter,
+    identity,
+    budget,
+    *,
+    allow_empty=False,
+    budget_root=None,
+):
     root = Path(root)
     root.mkdir(parents=True, exist_ok=False)
     files = []
     total = 0
-    used = sum(p.stat().st_size for p in root.parent.rglob("*.parquet"))
+    used = sum(p.stat().st_size for p in Path(budget_root or root.parent).rglob("*.parquet"))
     for block in blocks:
         check_memory()
         if isinstance(block, Mapping):
@@ -157,7 +169,7 @@ def prepare(blocks, root, defaults, params, histories, item_filter, identity, bu
             }
         )
         total += table.num_rows
-    if not total:
+    if not total and not allow_empty:
         raise ValueError("No samples after filter")
     manifest = {"identity": identity, "files": files, "rows": total}
     (root / "complete.json").write_text(json.dumps(manifest, sort_keys=True))
@@ -213,54 +225,100 @@ def column_values(array):
     return array.to_numpy(zero_copy_only=False)
 
 
-def rows(root, identity, columns=None):
+def rows(root, identity, columns=None, seed=None):
     root = Path(root)
     manifest = json.loads((root / "complete.json").read_text())
     if manifest["identity"] != identity:
         raise ValueError("Prepared identity mismatch")
+
+    def read(records):
+        for record in records:
+            path = (root / record["file"]).resolve()
+            boundary = root.parent.resolve() if "source_id" in record else root.resolve()
+            if not path.is_relative_to(boundary) or file_checksum(path) != record["sha256"]:
+                raise ValueError("Prepared shard mismatch")
+            actual = 0
+            for block in pq.ParquetFile(path).iter_batches(batch_size=1024, columns=columns):
+                values = {
+                    name: column_values(array)
+                    for name, array in zip(block.schema.names, block.columns)
+                }
+                for index in range(block.num_rows):
+                    actual += 1
+                    yield ColumnRow(values, index)
+            if actual != record["rows"]:
+                raise ValueError("Prepared shard row mismatch")
+
+    files = manifest["files"]
     count = 0
-    for record in manifest["files"]:
-        path = root / record["file"]
-        if path.parent != root or file_checksum(path) != record["sha256"]:
-            raise ValueError("Prepared shard mismatch")
-        actual = 0
-        for block in pq.ParquetFile(path).iter_batches(batch_size=1024, columns=columns):
-            values = {
-                name: column_values(array) for name, array in zip(block.schema.names, block.columns)
-            }
-            for index in range(block.num_rows):
-                actual += 1
-                count += 1
-                yield ColumnRow(values, index)
-        if actual != record["rows"]:
-            raise ValueError("Prepared shard row mismatch")
+    if seed is None or not files or not all("source_id" in r for r in files):
+        for row in read(files):
+            count += 1
+            yield row
+    else:
+        groups = {}
+        for record in files:
+            groups.setdefault(record["source_id"], []).append(record)
+        streams = [iter(read(records)) for records in groups.values()]
+        remaining = [sum(r["rows"] for r in records) for records in groups.values()]
+        rng = random.Random(seed)
+        while sum(remaining):
+            draw = rng.randrange(sum(remaining))
+            for index, available in enumerate(remaining):
+                if draw < available:
+                    try:
+                        row = next(streams[index])
+                    except StopIteration as exc:
+                        raise ValueError("Prepared source row mismatch") from exc
+                    remaining[index] -= 1
+                    count += 1
+                    yield row
+                    break
+                draw -= available
+        # Exhaust generators so final shard counts/checksums are checked too.
+        for stream in streams:
+            if next(stream, None) is not None:
+                raise ValueError("Prepared source row mismatch")
     if count != manifest["rows"]:
         raise ValueError("Prepared total row mismatch")
 
 
-def batches(source, size, seed=None, buffer_size=1):
+def batches(source, size, seed=None, buffer_size=1, replacement=False):
     if size < 1 or buffer_size < 1:
         raise ValueError("Batch and shuffle capacity must be positive")
     rng = random.Random(seed)
     buffer = []
     batch = []
     for index_in_source, row in enumerate(source):
-        # Bound checking latency while avoiding a process syscall per sample.
-        # The background peak-RSS sampler still runs every 50 ms.
         if index_in_source % 1024 == 0:
             check_memory()
-        buffer.append(row)
-        if len(buffer) < buffer_size:
+        if not replacement:
+            buffer.append(row)
+            if len(buffer) < buffer_size:
+                continue
+            index = rng.randrange(len(buffer)) if seed is not None else 0
+            batch.append(buffer.pop(index))
+        elif seed is None:
+            batch.append(row)
+        elif len(buffer) < buffer_size:
+            buffer.append(row)
             continue
-        index = rng.randrange(len(buffer)) if seed is not None else 0
-        batch.append(buffer.pop(index))
+        else:
+            index = rng.randrange(len(buffer))
+            batch.append(buffer[index])
+            buffer[index] = row
         if len(batch) == size:
             check_memory()
             yield batch
             batch = []
     while buffer:
         index = rng.randrange(len(buffer)) if seed is not None else 0
-        batch.append(buffer.pop(index))
+        if replacement:
+            batch.append(buffer[index])
+            buffer[index] = buffer[-1]
+            buffer.pop()
+        else:
+            batch.append(buffer.pop(index))
         if len(batch) == size:
             check_memory()
             yield batch
@@ -310,8 +368,9 @@ def column_batches(root, identity, columns, size):
     pending = []
     buffered = total = 0
     for record in manifest["files"]:
-        path = root / record["file"]
-        if path.parent != root or file_checksum(path) != record["sha256"]:
+        path = (root / record["file"]).resolve()
+        boundary = root.parent.resolve() if "source_id" in record else root.resolve()
+        if not path.is_relative_to(boundary) or file_checksum(path) != record["sha256"]:
             raise ValueError("Prepared shard mismatch")
         actual = 0
         for block in pq.ParquetFile(path).iter_batches(batch_size=size, columns=columns):
