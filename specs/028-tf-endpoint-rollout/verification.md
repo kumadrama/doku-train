@@ -188,10 +188,16 @@ format/lint/mypy/两套锁文件检查通过。IaC 配套 PR #736 的生产 plan
   `e50f8fff8c8fc758d47ed6d103b621c830693464a298adb6fb6d0fe6f0e47bdf`。
 - 日更配方：`tf_rerank_ln_lr002_3feat`，LR .002、batch 2048、completion weight 1.0，
   30+1；selection 保留四任务 validation loss 加权和最小值。
-- pipeline digest `cea154935e9ca27120a5014cbaaf5f86a8dd6b2a5e5d2b4d16a3a885465d99a3`；
+- pipeline digest `b122f7fedc38226c61540bc45cf8df2cccafc0b6813291d56f4d2950e4431171`；
   训练镜像及 provenance 保留已验收实验版本；官方推理镜像由 binding 固定 digest。
 - 配方 SHA `636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f`；
   binding SHA `712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6`；
-  ready ZIP SHA `c3e2ff774c5359fcb90bb2efbba780ce654e612324261c58eedea8b0e17d9bef`。
+  ready ZIP SHA `a6368e8b791553c33881b8901afd3efb0875c71556fa36be626e1325fe34039c`。
 - IaC PR #736 已合并并 apply：6 add/3 change/0 destroy。当前部署声明已生成并上传
   回读校验；task target 激活、ready code hash、Endpoint probe 仍需发布后验收。
+
+真实 31 天 Manifest 冻结在跨日新增特征修复后通过，覆盖 2026-10-05..2026-11-04。
+新 pipeline 源码 f53b718，CodeBuild f9ee44c0-a92f-4e9c-aee1-7bcc07dcc3a6 SUCCEEDED。
+独立 Endpoint 已 InService；3 行合成请求与本地导出模型最大绝对差 1.8844e-6，
+10 次预热后客户端往返中位约 313ms（包含跨地域网络，非服务端延迟 SLA），
+错误模型名返回 ModelError / original HTTP 404。task 与 ready 激活仍待发布后回读。
