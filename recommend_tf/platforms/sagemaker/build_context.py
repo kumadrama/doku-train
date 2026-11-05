@@ -16,13 +16,15 @@ def prepare(output, *, kind, config=None):
     package = output / "recommend_tf"
     package.mkdir()
     include = ["inference"] if kind == "inference" else ["train", "platforms"]
+    if kind == "pipeline":
+        include.append("inference")
     for directory in include:
         for path in (source / directory).rglob("*"):
             if not path.is_file() or not (
                 path.suffix == ".py" or path.name.endswith(".schema.yml")
             ):
                 continue
-            if "__pycache__" in path.parts or (kind == "inference" and "tests" in path.parts):
+            if "__pycache__" in path.parts or (directory == "inference" and "tests" in path.parts):
                 continue
             target = package / path.relative_to(source)
             target.parent.mkdir(parents=True, exist_ok=True)

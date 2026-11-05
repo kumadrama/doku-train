@@ -42,3 +42,40 @@ docker build --platform linux/amd64 \
 模型默认挂载 `/opt/ml/model`；本地可以用 DOKU_MODEL_ROOT 显式覆盖。发布器将 binding.deployment.container_environment 传入推理容器，并强制 DOKU_MODEL_VERSION 为本次制品版本。
 
 实际容器回归见 CI `tf-inference-container`，使用 `recommend_tf.inference.tests.container_smoke` 生成合成模型并验证完整请求结果。测试代码可以引用训练 fixture；生产 inference 模块禁止引用 train。
+
+## 官方 DLC 直通模式
+
+新增 `official.py` 将既有 canonical SavedModel 重打包供 AWS 官方 TensorFlow Serving
+容器使用；训练、导出算法和历史长度保持不变。原 Python app/raw 协议继续可用。
+直通模式由 ai-engine Go 层实现原 request_adapter 的整理/padding，SageMaker 接收
+`{"signature_name":"serving_default","inputs":...}`，响应为 `{"outputs":...}`。
+
+```sh
+python -m recommend_tf.inference.official \
+  --source /path/to/canonical-package \
+  --output /path/to/new-model.tar.gz \
+  --probe /path/to/synthetic-raw-request.json
+```
+
+命令仅操作本地文件，输出部署摘要及转换后的合成 probe；不上传、不部署、不训练。
+输出归档采用 `<doku_tf_完整模型摘要>/1/saved_model.pb` 和 `variables/` 布局；
+合同文件保存在 `doku-contract/`，其中 manifest 原封不动描述 canonical 产物。
+没有 `code/inference.py`，请求不经过 Python handler。
+
+日更 **deployment** binding 使用 `inference_protocol: tensorflow-serving/v1`，
+显式固定官方镜像 digest，container_environment 使用 `SAGEMAKER_TFS_*` 设置。
+发布器自动设 `SAGEMAKER_TFS_DEFAULT_MODEL_NAME`，拒绝旧 DOKU_* 和 Python hook 设置；
+模型包走独立 `/tensorflow-serving-v1/model.tar.gz`，同目录有 deployment.json。
+probe.request 必须使用上述工具产生的标准 tensor 请求；不再需要 version_field /
+outputs_field。每次探测携带具体 TFS 模型名和数字版本 1，验证任务集合、行数及有限数值。
+省略协议字段时保留原行为。切换时为新模型创建独立 Endpoint，保留旧 Endpoint 供回滚。
+
+接入 ai-engine [PR #11](https://github.com/kumadrama/ai-engine/pull/11) 时，使用本入口提供
+其部署文档引用的模型包。发布顺序是：更新本仓源码 → 重建并固定 pipeline 镜像 digest →
+生成并校验官方模型包/合成 probe → 显式更新部署 binding → 执行获授权的发布。
+仅合入源码不会更新现有镜像、Endpoint 或日更配置。pipeline 构建上下文包含
+`inference/official.py` 及其加载/请求适配依赖，避免运行时缺模块。
+
+无需 TensorFlow 的发布回归：`make inference-check`。测试使用合成文件和内存中的云 API
+替身，不启动训练或访问 AWS；覆盖打包、发布编排、旧协议与构建上下文的独立导入。
+验证边界见 [Spec 028 verification](../../specs/028-tf-endpoint-rollout/verification.md)。

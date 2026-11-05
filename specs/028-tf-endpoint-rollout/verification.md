@@ -120,3 +120,29 @@ PYTHONPATH=. TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1 \
 当前 Endpoint `doku-prod-tf-rerank`，us-east-2，最新已发布数据截止日 2026-10-29。首次由上游自然事件触发的下一次日更尚未发生，本次确认的是触发接线与开关启用，不能将其写成已跑完下一天训练。
 
 可执行证据：`runs/spec028-rollout-20261030/remaining-acceptance.json`、`remaining-acceptance-20261031.log`、`enable-auto-plan.log`、`enable-auto-apply.log`、`final-acceptance-20261031.json`（环境运行文件按规则忽略，不提交模型或真实数据）。本次 IAM 模块 mock test 1 passed，`terraform fmt -check` 与 `git diff --check` 通过。
+
+## 2026-11-05 官方 TensorFlow Serving 配套提交验证
+
+本次从 main `818565fce8eede430c837cedf196ac42e2819f20` 整理推理发布配套。
+`recommend_tf/train/` 没有改动，未运行训练、上传模型或改变云端配置。
+
+在仓库根执行：
+
+```sh
+python -m unittest discover -s recommend_tf/inference/tests -p 'test_*.py' -v
+ruff check recommend_tf/inference/official.py recommend_tf/inference/tests/test_official*.py \
+  recommend_tf/platforms/sagemaker/{publish_model,daily_pipeline,build_context}.py
+ruff format --check recommend_tf/inference/official.py recommend_tf/inference/tests/test_official*.py \
+  recommend_tf/platforms/sagemaker/{publish_model,daily_pipeline,build_context}.py
+git diff --check
+```
+
+8 项测试通过。覆盖确定性打包及 canonical 文件保持不变、重复输出/损坏包拒绝、旧/新协议
+独立不可变发布路径、模型名与探测版本绑定、非法输出拒绝、旧协议版本校验、binding 预检、
+已完成产物的打包→部署→探测，以及从独立 pipeline 构建目录导入发布模块。测试中的模型
+文件是合成占位文件，导出子进程与 AWS API 均为替身；未加载或训练真实 TensorFlow 模型。
+格式、lint、diff 空白检查通过。`make inference-check` 使用根项目锁定依赖运行同一组测试，
+已加入 CI 的 `make check`；完整 CI 结果以对应 PR 检查为准。
+
+这组结果验证发布代码与镜像上下文依赖，不代表新镜像已构建发布、真实 Endpoint 已加载，
+或 FYP/ai-engine 端到端验收已执行。新协议需显式配置；现有日更配置不会自动切换。

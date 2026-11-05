@@ -18,3 +18,12 @@ Source: 用户确认 requirements/design 并授权代码实施；随后明确最
 Source: 2026-10-30 用户最新指示：第④⑤步继续实施，窗口改为 28 天训练 + 1 天 validation，取代此前等待 31 天的安排。
 
 2026-10-31 最终验收通过；以 verification.md 的最终记录与 final-acceptance-20261031.json 为准。
+
+2026-11-05 官方 TensorFlow Serving 发布配套：
+
+- [x] canonical SavedModel 确定性重打包，源文件完整性校验，模型名绑定完整版本摘要。
+- [x] 发布器支持显式官方协议、独立 S3 路径和部署元信息，默认维持旧协议。
+- [x] 编排传递协议，启动前拒绝冲突配置，探测指定实际模型并核验输出。
+- [x] pipeline 构建上下文包含新增运行模块，独立导入回归通过。
+- [x] 发布回归接入 `make check`；8 项测试及格式/lint 验证见 verification.md。
+- [ ] 后续按目标环境重建 pipeline 镜像并更新显式 binding；不随本次源码提交自动执行。

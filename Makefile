@@ -24,7 +24,11 @@ smoke:
 capacity:
 	uv run pytest recommend/train/tests/performance -q -m performance
 
-check: lockcheck format lint typecheck test tf-check
+check: lockcheck format lint typecheck test tf-check inference-check
+
+.PHONY: inference-check
+inference-check:
+	uv run --locked python -m unittest discover -s recommend_tf/inference/tests -p 'test_*.py' -v
 
 .PHONY: tf-check
 tf-check:
