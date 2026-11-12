@@ -23,11 +23,11 @@
       "environment": [
         {
           "name": "DOKU_CONFIG_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f/daily-config.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b/daily-config.json"
         },
         {
           "name": "DOKU_CONFIG_SHA256",
-          "value": "636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f"
+          "value": "d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b"
         },
         {
           "name": "DOKU_BINDING_URI",

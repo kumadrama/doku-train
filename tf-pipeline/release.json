@@ -10,8 +10,8 @@
     "lock_sha256": "b2763acbc6cb48f18bd9326b605e9bf7634a6d3a4ec05355023c8f8c983d0bd5"
   },
   "inference_image": "763104351884.dkr.ecr.us-east-2.amazonaws.com/tensorflow-inference@sha256:6b72c7ed8141dc6450e499b7fbf2c312f5ef8919f1dbf911daa3164fb905a66d",
-  "config_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f/daily-config.json",
-  "config_sha256": "636cb1603f2c36961a876c2423607245e43039186d2b37daafa2411db9509a1f",
+  "config_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b/daily-config.json",
+  "config_sha256": "d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b",
   "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6/binding.json",
   "binding_sha256": "712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6",
   "pipeline_source_revision": "f53b718242cecf1982ab5e8daf243b194d53e444"
