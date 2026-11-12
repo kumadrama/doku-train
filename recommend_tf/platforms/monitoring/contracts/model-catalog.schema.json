@@ -18,6 +18,23 @@
     },
     "release": {
       "type": "object"
+    },
+    "previous_recipe": {
+      "type": "object",
+      "required": [
+        "recipe_sha256",
+        "last_data_cutoff"
+      ],
+      "properties": {
+        "recipe_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "last_data_cutoff": {
+          "type": "string",
+          "format": "date"
+        }
+      }
     }
   }
 }
