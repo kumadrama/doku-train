@@ -56,3 +56,9 @@ Source: 2026-10-30 用户最新指示：第④⑤步继续实施，窗口改为 
 已获得云端实施授权，前文“未执行云端操作”仅记录最初交付状态，以 verification.md 的逐项执行证据为准。实际 rollout 使用独立 Terraform state `envs/prod/tf-endpoint/terraform.tfstate`，不修改共享 PROD root 的未提交环境变更。28+1 配置固定且训练配方不变。首次资源恢复记录和完整运行证据保存在本地忽略目录 `runs/spec028-rollout-20261030/`。
 
 上游适配器代码 `ready_event.py` 打包为不可变 S3 Lambda 制品，由 IaC 绑定摘要和环境。它从 ECS 完成事件取真实任务 ARN，再查询 AWS 核验指定样本任务成功退出和 daily/project-training 命令，忽略 hourly join；按明示 cutoff 构造 29 天 ready。`_SUCCESS` 语义来自 doku-offline 的 `publish_day`：24 个小时源 marker、行数一致、Parquet 校验和行数、源 marker 未变化后 CAS 发布。不是从文件存在或机器时间推断 ready。
+
+### 2026-11-12 生产日训轮数
+
+官方模型 `tf_rerank_ln_lr002_3feat` 的日训配方将 `max_epochs` 从 40 调为 30，沿用四任务 validation loss 选模与 30+1 数据窗口。pipeline 与 ready 使用同一不可变配方，SHA256 为 `d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b`。
+
+Source: 2026-11-12 用户要求缩短每日训练时间并将上限设为 30 轮。
