@@ -44,7 +44,6 @@ def mixed_config(tmp_path):
     cfg["model"]["eval_tasks"] = {}
     for name, head in cfg["model"]["tasks"].items():
         head["loss_weight"] = "1.0 * (datasvr_source == 1)"
-        head["loss_reduction"] = "sum"
         cfg["model"]["eval_tasks"][name] = {
             "metrics": {
                 metric: dict(option, filter="datasvr_source == 1")
@@ -63,6 +62,11 @@ def test_float_times_boolean_source_gate():
 @pytest.mark.parametrize("missing", [False, True])
 def test_mixed_training_and_source_fallback(tmp_path, missing):
     cfg = mixed_config(tmp_path)
+    # Six validation rows (three per source) include a partial final batch.
+    cfg["batch_size"] = 4
+    tasks = cfg["model"]["tasks"]
+    tasks["completion"]["loss_weight"] = "0.5 * (datasvr_source == 1)"
+    tasks["fast_swipe"].update(loss_weight="2.0 * (datasvr_source == 1)", loss_by_weight=True)
     if missing:
         cfg["data_sources"][0]["manifest_uri"] = (tmp_path / "missing.json").as_uri()
     result = train(cfg, tmp_path / "run")
@@ -70,6 +74,33 @@ def test_mixed_training_and_source_fallback(tmp_path, missing):
     assert (tmp_path / "run/training/lineage.json").exists()
     evidence = json.loads((tmp_path / "run/input/sources.json").read_text())
     assert evidence["sources"][0]["status"] == ("skipped" if missing else "ready")
+    resolved = json.loads((tmp_path / "run/resolved-config.json").read_text())
+    assert resolved["model"] == cfg["model"]
+    record = result[0]
+    metrics = record["validation_metrics"]
+    all_rows = 3 if missing else 6
+    for name, expected_scale in [("completion", 0.5 * 3 / all_rows), ("fast_swipe", 2.0)]:
+        logloss = metrics[name]["logloss"]
+        assert logloss["rows"] == 3
+        assert record["validation_loss"][name] == pytest.approx(
+            expected_scale * logloss["value"], rel=1e-5
+        )
+
+
+def test_old_sum_recipes_rejected_before_mixed_preparation_or_training(tmp_path):
+    from recommend_tf.train.comm.training_pipeline import run
+    from recommend_tf.train.experiment import execute
+
+    cfg = mixed_config(tmp_path)
+    cfg["model"]["tasks"]["completion"]["loss_reduction"] = "sum"
+    with pytest.raises(ValueError, match="Unsupported layer settings: .*loss_reduction"):
+        execute(cfg, tmp_path / "manifest-run")
+    assert not (tmp_path / "manifest-run/prepared").exists()
+
+    cfg["prepared_identity"] = "unused"
+    with pytest.raises(ValueError, match="Unsupported layer settings: .*loss_reduction"):
+        run(cfg, tmp_path / "missing-prepared", tmp_path / "prepared-run")
+    assert not (tmp_path / "prepared-run/epoch-0001").exists()
 
 
 def test_all_sources_missing_skip(tmp_path):
@@ -172,11 +203,10 @@ def test_placement_loss_gate_excludes_missing_and_other_sources():
             loss_weight="1.0 * ((datasvr_source == 1) and (placement == 'WATCH_NOW'))",
             loss_type="logloss",
             predict_fn="sigmoid",
-            loss_reduction="sum",
         )
         loss, weights = get_loss(head, tf.zeros([4]), tf.ones([4]), {"item": fields})
         actual_loss, actual_weights = session.run([loss, weights])
         assert actual_weights.tolist() == [1.0, 0.0, 0.0, 0.0]
         import math
 
-        assert actual_loss == pytest.approx(math.log(2))
+        assert actual_loss == pytest.approx(math.log(2) / 4)

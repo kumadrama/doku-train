@@ -340,9 +340,7 @@ def model_fn(features, labels, mode, params):
             for metric, option in metric_head.get("metrics", {}).items()
         }
         denominators[name] = (
-            tf.constant(1.0)
-            if head.get("loss_reduction") == "sum"
-            else tf.math.count_nonzero(weights[name], dtype=tf.float32)
+            tf.math.count_nonzero(weights[name], dtype=tf.float32)
             if head.get("loss_by_weight", False)
             else tf.cast(tf.size(labels[name]), tf.float32)
         )

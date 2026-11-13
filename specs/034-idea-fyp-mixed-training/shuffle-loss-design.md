@@ -6,4 +6,6 @@ Source: Spec 034 Q7/Q10；用户已授权先设计后本地实施。
 
 共享 shuffle buffer 满后随机选择槽位输出，并以新样本引用替换；尾部通过末尾交换移除随机槽位，每条操作 O(1)，不复制样本张量。单来源原有无 seed 行序保持不变。prepared 分片只允许位于 prepared 根目录内部（包括同级 sources 目录），拒绝路径逃逸。
 
-任务新增 loss_reduction=sum 时直接 reduce_sum(weight * losses)，旧任务未配置时保留既有归一化。混训组装层显式设置 sum。指标计算独立于该训练 objective。
+组 batch 后走公共 TF 任务实现。每头的 `weight` 包含来源和任务资格。原有 `loss_by_weight: false` 对所有行的 `weight * loss` 取均值，`true` 以非零权重行数为分母，全零时返回 0。整轮任务损失沿用同一分母跨 batch 加权汇总，短 batch 使用实际行数。训练 objective 沿用各任务 loss 之和加正则。验证指标按各指标声明的 filter 统计。
+
+Source: 2026-11-11 用户要求复用 FYP 损失计算，替代 PR #38 中由组装层强制设置的批内加权求和。

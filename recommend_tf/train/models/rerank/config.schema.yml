@@ -25,7 +25,7 @@ properties:
     additionalProperties:
       type: object
       properties:
-        loss_reduction: {enum: [sum]}
+        loss_by_weight: {type: boolean, default: false}
         metrics: {$ref: '#/definitions/metrics'}
   eval_tasks:
     type: object

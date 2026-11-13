@@ -85,3 +85,11 @@ FYP 实际保留比例明显低于预期的约 1/50，需单独核验输入用�
 - 产物：`s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/runs/doku-exp-idea-fyp-hash-smoke-20261105/live/`。
 
 两天 1 epoch smoke 验收数据路径、用户采样、混训及验证过滤；不作泛化质量或 28 天容量结论。未发布模型或 Endpoint。
+
+## 混训复用 FYP 任务损失
+
+历史 PR #38 的求和语义仅适用于旧镜像。修复后，对同一批样本使用原 FYP 的任务损失函数。通过以下回归检查损失和梯度：
+
+- `test_mixed_loss_and_gradient_use_the_full_batch_denominator` 比对三行样本的手算均值和 logits 梯度，包括一行零权重样本。
+- `test_mixed_training_and_source_fallback` 对照资格内的验证 logloss，分别验证整批行数和非零权重行数两种分母，覆盖短尾 batch 和单个来源缺失。
+- `test_old_sum_recipes_rejected_before_mixed_preparation_or_training` 验证原始和 prepared 入口对显式旧字段报错。

@@ -25,7 +25,7 @@ Source: 2026-11-04 本会话 Q1–Q19 用户决策；原始需求为支持新 Id
 - Idea 主目标仅 read_more、watch_now、vote。
 - FYP 使用现有 TF 精排四个主目标作为 drama 辅助目标，各目标权重为对应原权重的 0.1 倍；实际目标名称在设计中依据基线配置列明。
 - tasks.loss_weight 支持表达式与按来源门控：Idea 样本 drama 权重 0，FYP 样本 Idea 权重 0。
-- 数据 loss 为加权单样本 loss 之和，不除以 batch 大小或有效样本数；不改变与该决定无关的正则合同。
+- 混训复用 FYP 任务 loss。默认每头的加权单样本 loss 之和除以实际 batch 行数。显式配置 loss_by_weight 时按非零权重行数归一化。
 - 接受 Idea 每日 idea-visible-ten-minutes-observed/v1 标签口径，包括每日投影将未观测标签填 0。vote 标签包含成功非重复的 Vote/Notify 操作，watch_now 独立。
 - 上游 placement 原值透传每日 Parquet/特征合同，不新增标签。用户接受本期以卡片类型近似按钮资格：WATCH_NOW 参与 watch_now，REGULAR 参与 vote（含 Notify）。缺失 placement 只参与 read_more，不参与另外两个 Idea 目标。
 - placement 不保证等价于客户端最终按钮类型；本期不采集 primary_action，不使用事后状态重建按钮资格。
@@ -47,7 +47,7 @@ Source: Q18/Q19 用户明确同意，取代本 Spec 范围内来源异常必须�
 ## 验收要求
 
 1. 合成双来源数据验证单流/混训、稳定 source_id、用户取模采样与跨源缺字段默认值。
-2. 验证来源/placement loss 门控和加权求和；验证三个 Idea 目标及 drama 辅助目标。
+2. 验证来源/placement loss 门控、批内归一化与梯度；验证三个 Idea 目标及 drama 辅助目标。
 3. 验证 metric 独立过滤、各自计数/AUC、空样本 null，不混入 FYP 指标。
 4. 固定种子重现 epoch 顺序，无丢样本/重复样本，无跨 split 泄漏，有界读取与 shuffle；记录吞吐和内存证据。
 5. 验证来源缺失/读取失败/校验失败/过滤为空的静默跳过、全部为空、验证集为空、测试集为空。
