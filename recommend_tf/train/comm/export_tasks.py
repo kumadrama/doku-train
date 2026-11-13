@@ -29,3 +29,10 @@ def export_outputs(config, units):
             raise ValueError(f"missing export output unit for {name}")
         outputs[name] = unit
     return outputs
+
+
+def publication_outputs(config, binding):
+    units = binding.get("outputs", {})
+    if "export_tasks" in config:
+        return export_outputs(config, units)
+    return units

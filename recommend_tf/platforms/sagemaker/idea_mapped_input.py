@@ -15,7 +15,11 @@ def next_ready(s3, state, source, config):
     if active:
         return active["ready"]
     history = state.value["history"]
-    if history and history[-1]["stage"] != "deployed":
+    if (
+        history
+        and history[-1]["stage"] != "deployed"
+        and not (history[-1]["stage"] == "rolled_back" and history[-1].get("rollback_target"))
+    ):
         raise ValueError("previous release failed; retry its frozen ready explicitly")
     last = state.value["high_water"] or source["bootstrap_cutoff"]
     cutoff = (date.fromisoformat(last) + timedelta(days=1)).isoformat()

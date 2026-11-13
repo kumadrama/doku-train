@@ -15,7 +15,7 @@ Source: 用户 2026-11-13 的上线决定及实验 08 训练产物。
 `model.tasks` 中，列表至少包含一项并且名称唯一。训练仍构建全部任务，选轮仍读取
 原有选模配置。缺少此字段的历史配置继续使用发布 binding 的 outputs 选取输出。
 单位沿用 binding；新增 sigmoid 输出可直接使用 probability，其他输出须提供单位。
-发布探测以实际导出的签名校验响应。已上传的旧发布可按原探测合同继续。
+上传前对照配方核对签名的输出名与单位。Endpoint 探测从同一配方解析预期任务，恢复旧发布也按此核对。监控只报告公开任务及其单位，训练指标覆盖全部训练任务。
 
 Idea 适配器按发布进度确定下一验证日并冻结 mapped Manifest。增长窗口计算、训练入口、
 训练任务恢复、按选定 checkpoint 导出、校验、发布、
@@ -31,3 +31,5 @@ drama_interest_ids、not_interested_drama_ids 两个 list<int64>。训练直接�
 data_source.freeze 选择 ready_manifest 或 idea_mapped；后者保存每个日期的 Manifest URI 和摘要。
 online_config.first_day 将固定窗口截短至首个训练日；冻结配方显式记录实际天数。
 相同的 prepare_job 和发布状态机负责两路日训。Endpoint、状态 URI、上传路径和作业前缀由绑定指定。
+
+显式回滚使用独立发布操作。自动触发遇到进行中的显式回滚时等待，显式回滚成功后从原发布高水位的下一日继续。由探测失败引发的回滚仍需显式重试。

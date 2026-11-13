@@ -385,7 +385,13 @@ def test_executor_takeover_requires_stopped_task():
     assert state.value["active"]["executor"] == "new"
 
 
-def test_explicit_rollback_keeps_high_water():
+def test_explicit_rollback_keeps_high_water(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from recommend_tf.inference.tests.test_official_pipeline import binding as execution_binding
+    from recommend_tf.platforms.sagemaker import daily_pipeline
+    from recommend_tf.platforms.sagemaker.idea_mapped_input import next_ready
     from recommend_tf.platforms.sagemaker.publish_model import request_rollback, rollback_step
 
     state, sm, binding = deployment_fixture()
@@ -402,12 +408,35 @@ def test_explicit_rollback_keeps_high_water():
     state.finish(current)
     sm.endpoint = {"EndpointStatus": "InService", "EndpointConfigName": "new"}
     request_rollback(state, sm, "fixture", "older", "rollback-op")
+    worker = execution_binding()
+    worker["data_source"] = {"freeze": "idea_mapped", "uri": "s3://bucket/mapped"}
+    config = {"online_config": {"training_date": 1, "validation_date": 1}}
+    for name, body in (("config", config), ("binding", worker)):
+        (tmp_path / name).write_text(json.dumps(body))
+    args = SimpleNamespace(
+        config=tmp_path / "config",
+        binding=tmp_path / "binding",
+        ready=None,
+        bootstrap_evidence=None,
+        rollback_version=None,
+    )
+    monkeypatch.setattr("boto3.Session", Mock())
+    monkeypatch.setattr(daily_pipeline, "ReleaseState", lambda *_: state)
+    assert daily_pipeline.execute(args) == "rollback_in_progress"
     assert rollback_step(sm, state, binding) == "pending"
     sm.endpoint = {"EndpointStatus": "InService", "EndpointConfigName": "old"}
     assert rollback_step(sm, state, binding) == "rolled_back"
     state.finish(state.value["active"])
     assert state.value["high_water"] == "2026-10-07"
     assert state.value["online"]["model_version"] == "older"
+    s3 = S3()
+    for day in ("2026-10-07", "2026-10-08"):
+        s3.put_object(
+            Bucket="bucket", Key=f"mapped/date={day}/_SUCCESS", Body=b'{"manifest_uri":"test"}'
+        )
+    s3.list_objects_v2 = lambda Bucket, Prefix, MaxKeys: {"Contents": [{"Key": Prefix}]}
+    ready = next_ready(s3, state, worker["data_source"], config)
+    assert ready["cutoff"] == "2026-10-08"
     with pytest.raises(ValueError, match="equal/older"):
         state.claim("stale", "2026-10-06")
 
@@ -484,6 +513,21 @@ def test_prepare_job_freezes_input_and_is_content_idempotent(tmp_path):
         first["Environment"]["DOKU_CONFIG_SHA256"]
         == hashlib.sha256(s3.objects["bucket", "work/op/daily/config.json"][0]).hexdigest()
     )
+
+    config["export_tasks"] = ["completion"]
+    assert len(config["model"]["tasks"]) == 7
+    binding.update(
+        model_name="synthetic_rerank",
+        environment="test",
+        region="us-east-2",
+        outputs={"completion": "probability", "watch_seconds": "seconds"},
+        deployment={"endpoint_name": "synthetic"},
+        monitoring={"metric_mapping": {"completion": "auc", "watch_seconds": "mse"}},
+    )
+    subset, _ = prepare_job(s3, config, ready, binding, "subset", tmp_path / "subset")
+    context = json.loads(subset["Environment"]["DOKU_MONITORING_CONTEXT"])
+    assert context["outputs"] == {"completion": "probability"}
+    assert context["monitoring"]["metric_mapping"] == {"completion": "auc"}
 
 
 def test_failure_run_cannot_export(tmp_path):

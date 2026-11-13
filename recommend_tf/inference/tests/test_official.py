@@ -27,6 +27,9 @@ def fixture(root):
                 "input_stage": "organized_padded_features",
                 "response_order": "request_order",
                 "inputs": {"item": {}},
+                "output_units": dict.fromkeys(
+                    ["completion", "fast_swipe", "immersive_click", "watch_seconds"], "unit"
+                ),
                 "outputs": dict.fromkeys(
                     ["completion", "fast_swipe", "immersive_click", "watch_seconds"], {}
                 ),

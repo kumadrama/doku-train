@@ -14,7 +14,7 @@ from recommend_tf.train.comm.artifact_integrity import checksum
 from recommend_tf.train.comm.datasvr.daily_contracts import digest
 from recommend_tf.train.comm.datasvr.daily_dataset import freeze
 from recommend_tf.train.comm.early_stop import validate_early_stop
-from recommend_tf.train.comm.export_tasks import export_outputs
+from recommend_tf.train.comm.export_tasks import export_outputs, publication_outputs
 
 from .publish_model import (
     ReleaseState,
@@ -143,11 +143,14 @@ def prepare_job(s3, config, ready, binding, operation, work):
         }
     )
     if binding.get("monitoring"):
+        from recommend_tf.platforms.monitoring.report_metrics import monitoring_outputs
+
+        outputs, mapping = monitoring_outputs(config, binding)
         context = {key: binding[key] for key in ("model_name", "environment", "region")}
-        context["outputs"] = binding.get("outputs") or export_outputs(config, {})
+        context["outputs"] = outputs
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
-        context["monitoring"] = {"metric_mapping": binding["monitoring"].get("metric_mapping", {})}
+        context["monitoring"] = {"metric_mapping": mapping}
         request["Environment"]["DOKU_MONITORING_CONTEXT"] = json.dumps(context, sort_keys=True)
     for name in ("DOKU_SOURCE_SHA256", "DOKU_LOCK_SHA256"):
         if not request["Environment"].get(name):
@@ -195,6 +198,7 @@ def step(
         state,
         binding,
         work=work,
+        config=config,
         evidence=bootstrap_evidence,
         policy=policy,
         selection_options=validate_early_stop(config) if binding.get("verify_selection") else None,
@@ -209,6 +213,7 @@ def advance_release(
     binding,
     *,
     work,
+    config,
     evidence=None,
     policy=None,
     broadcast_feat=None,
@@ -263,16 +268,16 @@ def advance_release(
             ):
                 raise ValueError("daily selection differs from the configured validation objective")
             active.update(selected_epoch=selection["epoch"], score=selection["score"])
+        expected = publication_outputs(config, binding)
+        if publication_outputs(run_config, binding) != expected:
+            active.update(stage="export_contract_failed", error_type="RunOutputsMismatch")
+            state.save()
+            return active["stage"]
         if binding.get("monitoring"):
             try:
                 from recommend_tf.platforms.monitoring.report_metrics import report
 
-                report_binding = (
-                    binding
-                    if binding.get("outputs")
-                    else {**binding, "outputs": export_outputs(run_config, {})}
-                )
-                report(s3, run, report_binding, run_uri=active["run_uri"])
+                report(s3, run, binding, run_uri=active["run_uri"])
             except Exception as error:
                 print(
                     json.dumps(
@@ -286,7 +291,7 @@ def advance_release(
                 )
         output = work / "package"
         options = work / "outputs.json"
-        options.write_text(json.dumps(binding.get("outputs", {})))
+        options.write_text(json.dumps(expected))
         subprocess.run(
             [
                 sys.executable,
@@ -307,11 +312,18 @@ def advance_release(
         export_digest = checksum(output / "manifest.json")
         if active.get("export_manifest_sha256", export_digest) != export_digest:
             raise ValueError("retry produced a different export; retain original evidence")
+        signature = json.loads((output / "signature.json").read_text())
+        if (
+            set(signature.get("outputs", {})) != set(expected)
+            or signature.get("output_units") != expected
+        ):
+            active.update(stage="export_contract_failed", error_type="SignatureOutputsMismatch")
+            state.save()
+            return active["stage"]
         active.update(
             stage="exported",
             model_version=manifest["model_version"],
             export_manifest_sha256=export_digest,
-            export_tasks=list(json.loads((output / "signature.json").read_text())["outputs"]),
         )
         state.save()
         active["model_uri"] = publish_package(
@@ -335,9 +347,7 @@ def advance_release(
                 client,
                 endpoint,
                 version,
-                {**binding["probe"], "tasks": active["export_tasks"]}
-                if "export_tasks" in active
-                else binding["probe"],
+                {**binding["probe"], "tasks": list(publication_outputs(config, binding))},
                 inference_protocol=official.protocol(binding["deployment"]),
             ),
         )
@@ -512,12 +522,14 @@ def execute(args):
                 binding["runtime_policy"],
             )
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
-        if ready is None:
+        if ready is None and binding.get("data_source", {}).get("freeze") != "idea_mapped":
+            raise ValueError("this source requires a pinned ready envelope")
+        if ready is None and not args.rollback_version:
             from .idea_mapped_input import next_ready
 
             source = binding["data_source"]
-            if source["freeze"] != "idea_mapped":
-                raise ValueError("this source requires a pinned ready envelope")
+            if (state.value["active"] or {}).get("rollback_target"):
+                return "rollback_in_progress"
             ready = next_ready(s3, state, source, config)
             if ready is None:
                 return "caught_up"

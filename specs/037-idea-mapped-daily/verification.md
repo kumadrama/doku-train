@@ -23,3 +23,10 @@
 - 用实际发布指针执行 freeze 并通过 PublishedDataset 打开冻结窗口，得到 10 天 train、1 天 validation。训练角色对实际不可变分片的 GetObject 和对应 Bucket Key 的 KMS Decrypt 策略模拟均为 allowed。
 - ECS 实例任务 6c52f161eacc40fe9ddb46aea12c164f 从公共入口启动，退出码为 0。Terraform 两次 apply 合计新增一条训练读权限、更新两个目标。通过 DescribeRule 和 ListTargetsByRule 回读，两个触发器均已启用并指向 doku-prod-idea-mapped-daily:2。DescribeEndpoint 返回 InService。确认发布进度为 2026-11-12，active 为空。
 - 本次 make check 通过。公共训练测试 329 项通过、3 项跳过，TF 训练测试 224 项通过，推理测试 8 项通过。启用后独立 stack 再次执行 terraform plan -detailed-exitcode，返回 0，无待应用差异。
+
+## 公共发布合同与显式回滚回归
+
+- test_official_pipeline 测试模拟应导出四头的 FYP 包漏掉 completion，验证发布在首次 S3 上传前终止。恢复记录故意保存过时的头列表，Endpoint 探测仍核对配方的四头。
+- test_prepare_job_freezes_input_and_is_content_idempotent 用七头训练配方仅发布 completion，验证 SageMaker 的监控上下文只包含该头及其指标映射。test_monitoring_tracks_only_published_tasks_and_preserves_training_metrics 验证密封训练产物重放得到相同的任务选择，原始逐头指标可完整读取。
+- test_explicit_rollback_keeps_high_water 覆盖自动触发遇到显式回滚、完成回滚及发现下一成熟日。失败发布引发的回滚仍保留显式重试语义。
+- 对归档的 FYP 30+1 天生产 Manifest 离线调用 prepare_job，修复版生成的 SageMaker 请求及六份冻结文件的摘要与 cadf34e 的验证记录完全相同。
