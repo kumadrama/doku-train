@@ -22,3 +22,4 @@
 - 上游 [PR 64](https://github.com/kumadrama/doku-rec-offline/pull/64) 和[生产回刷作业](https://github.com/kumadrama/doku-rec-offline/actions/runs/43429615668)。对 2026-11-02 至 11-12 的 11 个 UTC 日逐行回读，共 698,823 行。用原始 map 的有序 keys 对照两列 list<int64>（包括 null 和空列表），其余列逐列调用 Arrow equals。核对新旧 Manifest 摘要和各分片行数。
 - 用实际发布指针执行 freeze 并通过 PublishedDataset 打开冻结窗口，得到 10 天 train、1 天 validation。训练角色对实际不可变分片的 GetObject 和对应 Bucket Key 的 KMS Decrypt 策略模拟均为 allowed。
 - ECS 实例任务 6c52f161eacc40fe9ddb46aea12c164f 从公共入口启动，退出码为 0。Terraform 两次 apply 合计新增一条训练读权限、更新两个目标。通过 DescribeRule 和 ListTargetsByRule 回读，两个触发器均已启用并指向 doku-prod-idea-mapped-daily:2。DescribeEndpoint 返回 InService。确认发布进度为 2026-11-12，active 为空。
+- 本次 make check 通过。公共训练测试 329 项通过、3 项跳过，TF 训练测试 224 项通过，推理测试 8 项通过。启用后独立 stack 再次执行 terraform plan -detailed-exitcode，返回 0，无待应用差异。
