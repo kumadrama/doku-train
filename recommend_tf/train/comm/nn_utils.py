@@ -48,9 +48,7 @@ def get_loss(head, logits, labels, features):
         losses = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
     else:
         raise ValueError("Unsupported loss type")
-    if head.get("loss_reduction") == "sum":
-        loss = tf.reduce_sum(weight * losses)
-    elif head.get("loss_by_weight", False):
+    if head.get("loss_by_weight", False):
         loss = tf.cond(
             tf.equal(tf.size(losses), 0),
             lambda: 0.0,

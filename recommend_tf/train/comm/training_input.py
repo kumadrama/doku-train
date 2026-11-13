@@ -45,8 +45,6 @@ def train(
 
             config = deepcopy(config)
             config.pop("export_tasks", None)
-            for task in config["model"]["tasks"].values():
-                task["loss_reduction"] = "sum"
             config["dtypes"] = {
                 k: "str" if v == "string" else v for k, v in config["dtypes"].items()
             }

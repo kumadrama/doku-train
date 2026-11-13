@@ -19,13 +19,13 @@ model:
   tasks:
     idea_read_more:
       loss_weight: '1.0 * (datasvr_source == 1)'
-      loss_reduction: sum
+      loss_by_weight: false
     idea_watch_now:
       loss_weight: '1.0 * ((datasvr_source == 1) and (placement == "WATCH_NOW"))'
-      loss_reduction: sum
+      loss_by_weight: false
     idea_vote:
       loss_weight: '1.0 * ((datasvr_source == 1) and (placement == "REGULAR"))'
-      loss_reduction: sum
+      loss_by_weight: false
   eval_tasks:
     idea_read_more:
       metrics:

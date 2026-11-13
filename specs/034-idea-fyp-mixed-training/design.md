@@ -21,7 +21,7 @@ Source: 已确认 requirements.md；2026-11-04 用户明确授权先写设计然
 
 ## Loss 与评估
 
-任务新增显式 loss_reduction=sum，未配置时保留原单源语义。多源配置要求使用 sum；来源资格与 placement 通过 loss_weight 表达式控制，标签占位不自动有效。正则保持现有语义。
+组装层只准备输入。来源和目标资格由任务的 `loss_weight` 门控。所有来源统一调用原有 FYP 损失函数、整轮汇总、正则化和优化器。当前实验的 `loss_by_weight: false` 使用实际 batch 行数作分母，短尾 batch 按实际行数计入全轮。旧实验的配置和镜像共同记录其历史求和语义。新实验使用修复版训练代码并删除旧任务字段 `loss_reduction`。
 
 模型配置新增 eval_tasks，覆盖已有任务的指标配置，不创建额外模型头。metric.filter 独立于 loss_weight，图中求布尔 mask，聚合器按每项指标分别记录有效行数与 AUC 样本，不共享分母或 AUC 缓存。
 
@@ -33,7 +33,7 @@ placement 来自上游每日投影 string 字段：WATCH_NOW 对应 watch_now，
 
 ## 验证
 
-合成数据覆盖双源、缺字段、来源失败回滚、空 split、固定 seed、每 epoch 行数守恒、指标独立过滤和 sum loss；运行 TF 回归与 make check。专项实施说明见 evaluation-design.md、input-design.md、shuffle-loss-design.md（随实施补齐）。
+合成数据覆盖双源、缺字段、来源失败回滚、空 split、固定 seed、每 epoch 行数守恒、指标独立过滤和门控后的任务 loss 及梯度；运行 TF 回归与 make check。专项实施说明见 evaluation-design.md、input-design.md、shuffle-loss-design.md（随实施补齐）。
 
 ### 实施接口补充
 

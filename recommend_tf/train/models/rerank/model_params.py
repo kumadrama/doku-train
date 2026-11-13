@@ -26,7 +26,6 @@ def layer(value, target=False):
             "loss_type",
             "loss_weight",
             "loss_by_weight",
-            "loss_reduction",
             "predict_fn",
             "soft_label",
             "metrics",
@@ -65,8 +64,6 @@ def layer(value, target=False):
         cfg.setdefault("from", "features")
         cfg.setdefault("loss_weight", "1.0")
         cfg.setdefault("loss_by_weight", False)
-        if "loss_reduction" in cfg and cfg["loss_reduction"] != "sum":
-            raise ValueError("loss_reduction only supports explicit sum")
         if cfg["num_outputs"] < 1:
             raise ValueError("num_outputs must be positive")
     return cfg

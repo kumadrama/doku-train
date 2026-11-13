@@ -1,4 +1,4 @@
-"""Mixed sampling preserves finite populations and explicit summed objective."""
+"""Mixed sampling preserves finite populations and the Finder objective."""
 
 import json
 
@@ -48,15 +48,16 @@ def test_buffer_handles_empty_and_unshuffled_order():
     assert [x for batch in batches(range(15), 4, None, 8) for x in batch] == list(range(15))
 
 
-def test_sum_loss_uses_source_weights_without_division():
+def test_mixed_loss_and_gradient_use_the_full_batch_denominator():
     with tf.Graph().as_default(), tf.Session() as sess:
-        head = dict(
-            loss_weight="weights", loss_type="logloss", predict_fn="sigmoid", loss_reduction="sum"
-        )
+        head = dict(loss_weight="weights", loss_type="logloss", predict_fn="sigmoid")
+        logits = tf.zeros([3])
         loss, _ = get_loss(
             head,
-            tf.constant([0.0, 0.0, 0.0]),
+            logits,
             tf.constant([1.0, 0.0, 1.0]),
             {"item": {"weights": tf.constant([1.0, 0.0, 0.1])}},
         )
-        assert np.isclose(sess.run(loss), np.log(2) * 1.1)
+        actual_loss, gradient = sess.run([loss, tf.gradients(loss, logits)[0]])
+        np.testing.assert_allclose(actual_loss, np.log(2) * 1.1 / 3, rtol=1e-6)
+        np.testing.assert_allclose(gradient, np.array([-0.5, 0, -0.05]) / 3, rtol=1e-6)

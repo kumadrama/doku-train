@@ -118,7 +118,7 @@ Source: [Spec 012 修订](../../specs/012-daily-contract-evolution/design.md)，
 
 Source: specs/034-idea-fyp-mixed-training/requirements.md、design.md。
 TF envelope 新增 data_sources，逐来源冻结版本化 Manifest/合同；使用稳定 source_id 注入 datasvr_source。
-源失败静默排除并记录证据；无训练数据则 skipped，不声明成功产物。任务 loss 支持显式 sum；
+源失败静默排除并记录证据；无训练数据则 skipped，不声明成功产物。混训直接复用单源任务的 loss 归一化与整轮分母；
 eval_tasks 的逐指标 filter 与 loss_weight 分离。卡片 placement 仅作为用户接受的资格近似。
 未部署；配置片段及限制见 Spec 034/config-example.md。
 

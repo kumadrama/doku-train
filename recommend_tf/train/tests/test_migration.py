@@ -611,7 +611,6 @@ def test_graph_metric_filter_is_independent_of_loss_weight():
 
     cfg = config()
     cfg["tasks"] = {"a": cfg["tasks"]["a"]}
-    cfg["tasks"]["a"]["loss_reduction"] = "sum"
     cfg["eval_tasks"] = {"a": {"metrics": {"auc": {"func": "auc", "filter": "scene == 47"}}}}
     with tf.Graph().as_default(), tf.Session() as sess:
         params = parameters(cfg, {"drama": {"dtype": "int64", "keys": [0, 1]}})
@@ -634,4 +633,4 @@ def test_graph_metric_filter_is_independent_of_loss_weight():
         )
         assert values["a"]["auc"]["filter"].tolist() == [True, False]
         assert weights["a"].tolist() == [0.0, 1.0]
-        assert denominator["a"] == 1.0
+        assert denominator["a"] == 2.0
