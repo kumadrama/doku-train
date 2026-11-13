@@ -7,6 +7,7 @@ from pathlib import Path
 
 from recommend_tf.train.comm.artifact_integrity import checksum, verify_run
 from recommend_tf.train.comm.epoch_metrics import read_selected_metrics
+from recommend_tf.train.comm.export_tasks import publication_outputs
 from recommend_tf.train.comm.model_identity import model_name, recipe_sha256
 
 
@@ -16,6 +17,16 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(canonical(value)).hexdigest()
+
+
+def monitoring_outputs(config, binding):
+    outputs = publication_outputs(config, binding)
+    mapping = binding.get("monitoring", {}).get("metric_mapping", {})
+    if "export_tasks" in config:
+        # A binding may also describe other trained heads that are not published.
+        unpublished = config["model"]["tasks"].keys() - outputs.keys()
+        mapping = {name: metric for name, metric in mapping.items() if name not in unpublished}
+    return outputs, mapping
 
 
 def observation(
@@ -63,10 +74,10 @@ def observation(
     if type(completed) is not int or completed <= 0:
         raise ValueError("invalid original completion time")
     tasks = []
-    mapping = binding.get("monitoring", {}).get("metric_mapping", {})
-    if not set(mapping) <= binding["outputs"].keys():
+    outputs, mapping = monitoring_outputs(config, binding)
+    if not set(mapping) <= outputs.keys():
         raise ValueError("display mapping contains an unknown primary task")
-    for task, unit in sorted(binding["outputs"].items()):
+    for task, unit in sorted(outputs.items()):
         kind = {"probability": "auc", "seconds": "mse"}.get(unit)
         metrics = summary["metrics"][task]
         candidates = [name for name, metric in metrics.items() if metric["func"] == kind]

@@ -70,6 +70,9 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
         root = Path(directory)
         values = {}
         for name in ("config", "ready", "binding"):
+            if name == "ready" and not args.ready_uri:
+                values[name] = {}
+                continue
             values[name] = download_json(
                 s3, getattr(args, name + "_uri"), getattr(args, name + "_sha256"), root / name
             )
@@ -105,7 +108,7 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
             and (binding.get("legacy_ready_config_sha256") != args.config_sha256)
         ):
             raise ValueError("legacy ready recipe not explicitly allowed")
-        validate_binding(binding)
+        validate_binding(binding, values["config"])
         cluster_name = cluster.rsplit("/", 1)[-1]
         if binding["region"] != args.region or binding["ecs_cluster"] not in {
             cluster,
@@ -130,7 +133,10 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
         try:
             result = invoke(
                 SimpleNamespace(
-                    **{name: str(root / name) for name in values},
+                    **{
+                        name: str(root / name) if name != "ready" or args.ready_uri else None
+                        for name in values
+                    },
                     executor_arn=arn,
                     bootstrap_run=args.bootstrap_run,
                     bootstrap_evidence=evidence,
@@ -154,12 +160,12 @@ def main():
         parser.add_argument(
             "--" + name + "-uri",
             default=os.environ.get("DOKU_" + name.upper() + "_URI"),
-            required=not os.environ.get("DOKU_" + name.upper() + "_URI"),
+            required=name != "ready" and not os.environ.get("DOKU_" + name.upper() + "_URI"),
         )
         parser.add_argument(
             "--" + name + "-sha256",
             default=os.environ.get("DOKU_" + name.upper() + "_SHA256"),
-            required=not os.environ.get("DOKU_" + name.upper() + "_SHA256"),
+            required=name != "ready" and not os.environ.get("DOKU_" + name.upper() + "_SHA256"),
         )
     parser.add_argument("--bootstrap-run")
     parser.add_argument("--bootstrap-evidence-uri")
@@ -169,11 +175,13 @@ def main():
     args = parser.parse_args()
     import boto3
 
-    run(
-        args,
-        s3=boto3.Session(region_name=args.region).client("s3"),
-        metadata_uri=os.environ["ECS_CONTAINER_METADATA_URI_V4"],
-    )
+    if bool(args.ready_uri) != bool(args.ready_sha256):
+        parser.error("ready URI and digest must be supplied together")
+    s3 = boto3.Session(region_name=args.region).client("s3")
+    while True:
+        result = run(args, s3=s3, metadata_uri=os.environ["ECS_CONTAINER_METADATA_URI_V4"])
+        if args.ready_uri or result != "deployed":
+            return result
 
 
 if __name__ == "__main__":

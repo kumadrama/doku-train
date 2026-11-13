@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .comm.artifact_integrity import checksum, files, reserve_output, verify_run
 from .comm.datasvr.prepared import digest, organize, tensor_batch
+from .comm.export_tasks import export_outputs
 from .models.rerank.export_adapter import export
 from .models.rerank.model_params import parameters
 
@@ -66,7 +67,7 @@ def synthetic_batches(config, vocabs, feature_contract):
     return batches
 
 
-def execute(run_dir, output, *, outputs, evidence=None):
+def execute(run_dir, output, *, outputs=None, evidence=None, broadcast_feat=None):
     root, output = Path(run_dir).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError(output)
@@ -113,6 +114,7 @@ def execute(run_dir, output, *, outputs, evidence=None):
             k: v
             for k, v in config.items()
             if k not in ("dataset_config", "histories", "item_filter", "online_config")
+            and (k != "export_tasks" or k in runtime)
         },
         "prepared_identity": runtime["prepared_identity"],
     }:
@@ -124,12 +126,7 @@ def execute(run_dir, output, *, outputs, evidence=None):
         or digest({"config": runtime, "vocabs": vocabs, "source": source}) != record["identity"]
     ):
         raise ValueError("checkpoint/config/feature state identity mismatch")
-    if (
-        len(outputs) != 4
-        or not set(outputs) <= config["model"]["tasks"].keys()
-        or any(not isinstance(v, str) or not v for v in outputs.values())
-    ):
-        raise ValueError("exactly four configured outputs with explicit units are required")
+    outputs = export_outputs(config, outputs if outputs is not None else {})
     required = {
         status_name,
         "experiment-config.json",
@@ -174,6 +171,8 @@ def execute(run_dir, output, *, outputs, evidence=None):
         for k in ("features", "labels")
     ):
         raise ValueError("frozen input record differs from sealed input")
+    if broadcast_feat is not None:
+        runtime = {**runtime, "model": {**runtime["model"], "broadcast_feat": broadcast_feat}}
     exporter_source = exporter_identity()
     feature_contract = json.loads((root / "input/contracts/features.json").read_text())
     labels = json.loads((root / "input/contracts/labels.json").read_text())["labels"]
@@ -187,6 +186,7 @@ def execute(run_dir, output, *, outputs, evidence=None):
                 if k.startswith(f"training/{expected_name}/model.")
             },
             "outputs": outputs,
+            **({"broadcast_feat": broadcast_feat} if broadcast_feat else {}),
             "exporter_source_digest": exporter_source,
         }
     )
@@ -281,8 +281,10 @@ def execute(run_dir, output, *, outputs, evidence=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ("run", "output", "outputs"):
+    for name in ("run", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--outputs", help="Output units and legacy task selection (JSON file)")
+    parser.add_argument("--broadcast-feat")
     parser.add_argument(
         "--evidence", help="Audited checksum inventory for historical unsealed runs"
     )
@@ -292,7 +294,8 @@ def main():
             execute(
                 args.run,
                 args.output,
-                outputs=json.loads(Path(args.outputs).read_text()),
+                outputs=json.loads(Path(args.outputs).read_text()) if args.outputs else None,
+                broadcast_feat=args.broadcast_feat,
                 evidence=json.loads(Path(args.evidence).read_text()) if args.evidence else None,
             )
         )

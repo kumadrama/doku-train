@@ -106,7 +106,7 @@ class ReleaseState:
         )
         self.etag = result["ETag"]
 
-    def claim(self, operation, cutoff):
+    def claim(self, operation, cutoff, *, ready=None):
         date.fromisoformat(cutoff)
         active = self.value["active"]
         if active:
@@ -121,6 +121,8 @@ class ReleaseState:
         if self.value["high_water"] and cutoff <= self.value["high_water"]:
             raise ValueError("automatic release cannot replace equal/older data cutoff")
         active = {"operation": operation, "cutoff": cutoff, "stage": "claimed"}
+        if ready is not None:
+            active["ready"] = ready
         self.value["active"] = active
         self.save()
         return active
@@ -254,7 +256,7 @@ def deploy_step(client, runtime, state, binding, *, probe):
     if binding["artifact_contract"] != "doku-tf-inference/v1":
         raise ValueError("serving image contract is not confirmed")
     name = (
-        "tf-"
+        binding.get("resource_prefix", "tf-")
         + hashlib.sha256(
             (
                 endpoint
@@ -409,6 +411,8 @@ def verify_probe(runtime, endpoint, version, probe, *, inference_protocol=offici
         body = json.load(stream)
     if serving_protocol == official.PROTOCOL:
         outputs = body.get("outputs")
+        if isinstance(outputs, list) and len(probe["tasks"]) == 1:
+            outputs = {probe["tasks"][0]: outputs}
         if not isinstance(outputs, dict) or set(outputs) != set(probe["tasks"]):
             raise ValueError("Endpoint output contract differs")
         if any(

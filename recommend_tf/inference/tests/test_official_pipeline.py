@@ -82,6 +82,8 @@ class OfficialPipelineTest(unittest.TestCase):
 
     def test_completed_run_uses_official_package_environment_and_probe(self):
         options = binding()
+        # An existing probe binding can have different names from the exported signature.
+        options["probe"]["tasks"] = ["old_task"]
         state = SimpleNamespace(
             value={
                 "active": {
@@ -113,6 +115,28 @@ class OfficialPipelineTest(unittest.TestCase):
                 self.assertEqual(args[1:3], ["-m", "recommend_tf.train.export_model"])
                 shutil.copytree(source, Path(args[args.index("--output") + 1]))
 
+            def incomplete_export(args, **kwargs):
+                export(args, **kwargs)
+                signature_path = Path(args[args.index("--output") + 1]) / "signature.json"
+                signature = json.loads(signature_path.read_text())
+                del signature["outputs"]["completion"]
+                signature_path.write_text(json.dumps(signature))
+
+            with (
+                tempfile.TemporaryDirectory() as failed_work,
+                patch.object(daily_pipeline, "fetch_run", side_effect=fetch),
+                patch.object(daily_pipeline.subprocess, "run", side_effect=incomplete_export),
+            ):
+                failed = SimpleNamespace(value=copy.deepcopy(state.value), save=Mock())
+                self.assertEqual(
+                    daily_pipeline.step(
+                        s3, sm, runtime, failed, {}, {}, options, work=Path(failed_work)
+                    ),
+                    "export_contract_failed",
+                )
+                self.assertFalse(s3.objects)
+                sm.create_model.assert_not_called()
+
             with (
                 patch.object(daily_pipeline, "fetch_run", side_effect=fetch),
                 patch.object(daily_pipeline.subprocess, "run", side_effect=export),
@@ -132,6 +156,7 @@ class OfficialPipelineTest(unittest.TestCase):
                 "EndpointStatus": "InService",
                 "EndpointConfigName": state.value["active"]["endpoint_config"],
             }
+            state.value["active"]["export_tasks"] = ["obsolete_journal_head"]
             runtime.invoke_endpoint.return_value = {
                 "Body": io.BytesIO(
                     json.dumps({"outputs": dict.fromkeys(options["outputs"], [0.5])}).encode()

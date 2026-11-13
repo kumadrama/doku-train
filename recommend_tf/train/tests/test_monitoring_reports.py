@@ -130,3 +130,19 @@ def test_preseal_event_equals_postseal_report_without_scanning_prepared(tmp_path
     (tmp_path / "COMMITTED.json").unlink()
     actual = observation(tmp_path, binding, run_uri="s3://synthetic/run", evidence=evidence)
     assert actual == expected
+
+
+def test_monitoring_tracks_only_published_tasks_and_preserves_training_metrics(tmp_path):
+    binding = fixture(tmp_path)
+    binding["monitoring"] = {"metric_mapping": {"click": "quality", "watch": "error"}}
+    path = tmp_path / "experiment-config.json"
+    config = json.loads(path.read_text())
+    config["export_tasks"] = ["click"]
+    path.write_text(json.dumps(config))
+    metrics = tmp_path / "training/epoch-metrics/0002.json"
+    before = metrics.read_bytes()
+    seal_run(tmp_path, "daily-status.json")
+    event = observation(tmp_path, binding, run_uri="s3://synthetic/run")
+    assert [(t["task"], t["unit"]) for t in event["tasks"]] == [("click", "probability")]
+    assert metrics.read_bytes() == before
+    assert set(json.loads(before)["validation_metrics"]) == {"click", "watch"}

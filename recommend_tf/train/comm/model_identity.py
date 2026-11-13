@@ -19,7 +19,7 @@ def recipe_sha256(config):
     # Preserve unknown fields conservatively: a new algorithm option must change identity.
     # Only these transport/runtime fields are excluded; model and all training options remain.
     recipe = copy.deepcopy(config)
-    for key in ("model_name", "prepared_identity"):
+    for key in ("model_name", "prepared_identity", "export_tasks"):
         recipe.pop(key, None)
     dataset = recipe.get("dataset_config", {})
     for key in ("dataset", "execution"):

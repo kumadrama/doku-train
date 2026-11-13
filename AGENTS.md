@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 037：Idea mapped 独立 Endpoint 及日更](specs/037-idea-mapped-daily/design.md)、[生产验收](specs/037-idea-mapped-daily/verification.md)
+
 - [Spec 036：原模型名的 30 轮日训切换](specs/036-daily-30-same-model/requirements.md)、[设计](specs/036-daily-30-same-model/design.md) — 需求及设计已确认；[任务](specs/036-daily-30-same-model/tasks.md)、[验证](specs/036-daily-30-same-model/verification.md)。
 
 - [Spec 035：TF 训练耗时优化需求](specs/035-tf-training-time-optimization/requirements.md)、[设计](specs/035-tf-training-time-optimization/design.md) — 需求与设计已确认，Q11授权本地计时/基准工具；[任务](specs/035-tf-training-time-optimization/tasks.md)、[验证](specs/035-tf-training-time-optimization/verification.md)。用户随后授权两epoch资源与代码实验；12个初始及1个组合两epoch实验完成，b4096完整40轮一致性通过；完整流程50%及重复验收仍为后续目标；不发布线上模型。

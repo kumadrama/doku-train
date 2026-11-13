@@ -8,6 +8,7 @@ from . import timing
 from .datasvr.prepared import digest, prepare
 from .datasvr.published_dataset import PublishedDataset
 from .early_stop import validate_early_stop
+from .export_tasks import validate_export_tasks
 from .learning_rate import validate_schedules
 from .model_identity import model_name
 from .runtime_budget import MemoryBudget
@@ -26,6 +27,7 @@ def train(
     frozen_input=None,
     on_created=None,
 ):
+    validate_export_tasks(config)
     validate_early_stop(config)
     validate_schedules(config["model"], config["max_epochs"])
     root = Path(root)
@@ -42,6 +44,7 @@ def train(
             from .datasvr.mixed_input import prepare_sources
 
             config = deepcopy(config)
+            config.pop("export_tasks", None)
             for task in config["model"]["tasks"].values():
                 task["loss_reduction"] = "sum"
             config["dtypes"] = {
@@ -100,7 +103,8 @@ def train(
         runtime = {
             k: v
             for k, v in config.items()
-            if k not in ("dataset_config", "histories", "item_filter", "online_config")
+            if k
+            not in ("dataset_config", "histories", "item_filter", "online_config", "export_tasks")
         }
         runtime["prepared_identity"] = identity
         (root / "resolved-config.json").write_text(json.dumps(runtime, sort_keys=True))
