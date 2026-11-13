@@ -150,6 +150,8 @@ class OfficialTest(unittest.TestCase):
             runtime.invoke_endpoint.call_args.kwargs["CustomAttributes"],
             official.custom_attributes("a" * 64),
         )
+        runtime.invoke_endpoint.return_value = {"Body": io.BytesIO(b'{"outputs":[0.5]}')}
+        verify_probe(runtime, "synthetic", "a" * 64, probe, inference_protocol=official.PROTOCOL)
         for outputs in (
             {"other": [1]},
             {"completion": []},

@@ -1,13 +1,13 @@
-"""Convert TensorFlow Serving column outputs into ordered four-task rows."""
+"""Convert TensorFlow Serving column outputs into signature-declared prediction rows."""
 
 import math
 
-from .artifact_loader import TASKS
 
-
-def format_response(result, version, size):
+def format_response(result, version, size, tasks):
     outputs = result.get("outputs")
-    if not isinstance(outputs, dict) or set(outputs) != TASKS:
+    if isinstance(outputs, list) and len(tasks) == 1:
+        outputs = {next(iter(tasks)): outputs}
+    if not tasks or not isinstance(outputs, dict) or set(outputs) != set(tasks):
         raise ValueError("model output tasks differ")
     if any(not isinstance(v, list) or len(v) != size for v in outputs.values()):
         raise ValueError("model output batch differs")

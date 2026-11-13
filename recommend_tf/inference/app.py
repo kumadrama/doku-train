@@ -104,7 +104,9 @@ def handler(artifact, backend, limits):
                     return self.send(400, {"error": "invalid_request"})
                 try:
                     result = backend.call("/versions/1:predict", payload)
-                    result = format_response(result, artifact["version"], size)
+                    result = format_response(
+                        result, artifact["version"], size, artifact["signature"]["outputs"]
+                    )
                 except Exception:
                     return self.send(503, {"error": "inference_failed"})
                 return self.send(200, result)

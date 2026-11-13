@@ -1,4 +1,5 @@
 import copy
+import json
 
 import numpy as np
 import pytest
@@ -76,7 +77,10 @@ def test_raw_request_matches_training_tensors_and_savedmodel(tmp_path):
             },
         )
     response = format_response(
-        {"outputs": {k: v.tolist() for k, v in result.items()}}, artifact["version"], size
+        {"outputs": {k: v.tolist() for k, v in result.items()}},
+        artifact["version"],
+        size,
+        artifact["signature"]["outputs"],
     )
     assert len(response["predictions"]) == 3 and response["model_version"] == artifact["version"]
     bad = copy.deepcopy(request)
@@ -90,9 +94,9 @@ def test_raw_request_matches_training_tensors_and_savedmodel(tmp_path):
 
 def test_response_rejects_nonfinite_and_batch_mismatch():
     with pytest.raises(ValueError):
-        format_response({"outputs": {k: [float("nan")] for k in TASKS}}, "v1", 1)
+        format_response({"outputs": {k: [float("nan")] for k in TASKS}}, "v1", 1, TASKS)
     with pytest.raises(ValueError):
-        format_response({"outputs": {k: [1.0] for k in TASKS}}, "v1", 2)
+        format_response({"outputs": {k: [1.0] for k in TASKS}}, "v1", 2, TASKS)
 
 
 def test_weighted_history_defaults_and_order():
@@ -162,3 +166,36 @@ def test_weighted_history_defaults_and_order():
                 max_batch=4,
                 max_history=10,
             )
+
+
+def test_export_only_selected_task_preserves_training_heads(tmp_path):
+    config, _ = fixture(tmp_path)
+    config["export_tasks"] = ["completion"]
+    execute(config, tmp_path / "run")
+    export(tmp_path / "run", tmp_path / "package")
+    artifact = load(tmp_path / "package")
+    assert artifact["signature"]["output_units"] == {"completion": "probability"}
+    assert set(artifact["signature"]["outputs"]) == {"completion"}
+    runtime = json.loads((tmp_path / "run/resolved-config.json").read_text())
+    assert runtime["model"]["tasks"] == config["model"]["tasks"]
+    assert len(runtime["model"]["tasks"]) == 7
+    checkpoint = tf.train.list_variables(str(tmp_path / "run/training/epoch-0001/model"))
+    for task in runtime["model"]["tasks"]:
+        assert any(f"/{task}/" in name for name, _ in checkpoint), task
+    assert "export_tasks" not in runtime
+    with tf.Graph().as_default(), tf.Session() as session:
+        meta = tf.saved_model.loader.load(session, ["serve"], str(tmp_path / "package/saved_model"))
+        assert set(meta.signature_def["serving_default"].outputs) == {"completion"}
+    assert format_response({"outputs": [0.25]}, "v1", 1, ["completion"])["predictions"] == [
+        {"completion": 0.25}
+    ]
+    with pytest.raises(ValueError, match="tasks differ"):
+        format_response({"outputs": {"aux": [0.25]}}, "v1", 1, ["completion"])
+
+
+@pytest.mark.parametrize("names", [[], ["a", "a"], ["typo"], "a", None])
+def test_invalid_export_task_selection(names):
+    from recommend_tf.train.comm.export_tasks import export_outputs
+
+    with pytest.raises(ValueError, match="export_tasks"):
+        export_outputs({"model": {"tasks": {"a": {}}}, "export_tasks": names}, {})

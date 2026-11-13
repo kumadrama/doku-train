@@ -13,6 +13,8 @@ from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum
 from recommend_tf.train.comm.datasvr.daily_contracts import digest
 from recommend_tf.train.comm.datasvr.daily_dataset import freeze
+from recommend_tf.train.comm.early_stop import validate_early_stop
+from recommend_tf.train.comm.export_tasks import export_outputs
 
 from .publish_model import (
     ReleaseState,
@@ -60,9 +62,20 @@ def fetch_run(s3, prefix, target, limit, evidence=None):
     (target / "COMMITTED.json").write_bytes(body)
 
 
+def freeze_input(config, ready, target, binding, s3):
+    source = binding.get("data_source", {"freeze": "ready_manifest"})
+    if source["freeze"] == "ready_manifest":
+        return freeze(config, ready, target)
+    if source["freeze"] == "idea_mapped":
+        from .idea_mapped_input import freeze as freeze_mapped
+
+        return freeze_mapped(s3, config, ready, source, target)
+    raise ValueError("unknown data_source.freeze")
+
+
 def prepare_job(s3, config, ready, binding, operation, work):
     frozen = work / "frozen"
-    resolved = freeze(config, ready, frozen)
+    resolved = freeze_input(config, ready, frozen, binding, s3)
     prefix = binding["work_prefix"].rstrip("/") + "/" + operation
     manifest_uri = prefix + "/daily/input/manifest.json"
     resolved["dataset_config"]["dataset"] = {"manifest_uri": manifest_uri}
@@ -93,7 +106,15 @@ def prepare_job(s3, config, ready, binding, operation, work):
         raise ValueError("daily training requires CPU")
     if "@sha256:" not in request["AlgorithmSpecification"]["TrainingImage"]:
         raise ValueError("training image must be immutable")
-    request["TrainingJobName"] = "doku-daily-" + operation[:40]
+    name_prefix = binding.get("job_name_prefix", "doku-daily-")
+    request["TrainingJobName"] = name_prefix + operation[: min(40, 63 - len(name_prefix))]
+    run_uri = (
+        (binding["runs_prefix"].rstrip("/") + "/" + request["TrainingJobName"] + "/live")
+        if "runs_prefix" in binding
+        else prefix + "/run"
+    )
+    if "runs_prefix" in binding:
+        request["OutputDataConfig"]["S3OutputPath"] = run_uri.rsplit("/", 1)[0] + "/artifacts/"
     if any(c["ChannelName"] == "daily" for c in request.get("InputDataConfig", [])):
         raise ValueError("daily channel is reserved")
     request.setdefault("InputDataConfig", []).append(
@@ -117,12 +138,13 @@ def prepare_job(s3, config, ready, binding, operation, work):
             "DOKU_FROZEN_INPUT": "/opt/ml/input/data/daily/input",
             "DOKU_CUTOFF": ready["cutoff"],
             "DOKU_RUN_ROOT": "/opt/ml/work/run",
-            "DOKU_ARTIFACT_URI": prefix + "/run",
+            "DOKU_ARTIFACT_URI": run_uri,
             "DOKU_KMS_KEY": binding["kms_key"],
         }
     )
     if binding.get("monitoring"):
-        context = {key: binding[key] for key in ("model_name", "environment", "region", "outputs")}
+        context = {key: binding[key] for key in ("model_name", "environment", "region")}
+        context["outputs"] = binding.get("outputs") or export_outputs(config, {})
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
         context["monitoring"] = {"metric_mapping": binding["monitoring"].get("metric_mapping", {})}
@@ -130,7 +152,7 @@ def prepare_job(s3, config, ready, binding, operation, work):
     for name in ("DOKU_SOURCE_SHA256", "DOKU_LOCK_SHA256"):
         if not request["Environment"].get(name):
             raise ValueError("training image provenance required: " + name)
-    return request, prefix + "/run"
+    return request, run_uri
 
 
 def step(
@@ -166,6 +188,33 @@ def step(
                 return "input_failed"
             active.update(stage="training", training_request=request, run_uri=run_uri)
         state.save()
+    return advance_release(
+        s3,
+        sm,
+        runtime,
+        state,
+        binding,
+        work=work,
+        evidence=bootstrap_evidence,
+        policy=policy,
+        selection_options=validate_early_stop(config) if binding.get("verify_selection") else None,
+    )
+
+
+def advance_release(
+    s3,
+    sm,
+    runtime,
+    state,
+    binding,
+    *,
+    work,
+    evidence=None,
+    policy=None,
+    broadcast_feat=None,
+    selection_options=None,
+):
+    active = state.value["active"]
     if active["stage"] == "training":
         request = active["training_request"]
         observed = describe(sm, "describe_training_job", TrainingJobName=request["TrainingJobName"])
@@ -193,7 +242,7 @@ def step(
         state.save()
     if active["stage"] in {"trained", "exported"}:
         run = work / "run"
-        fetch_run(s3, active["run_uri"], run, binding["download_limit_bytes"], bootstrap_evidence)
+        fetch_run(s3, active["run_uri"], run, binding["download_limit_bytes"], evidence)
         run_config = json.loads((run / "experiment-config.json").read_text())
         if run_config["dataset_config"]["split"]["validation_to"] != active["cutoff"]:
             raise ValueError("release cutoff differs from the selected run validation cutoff")
@@ -204,11 +253,26 @@ def step(
             active["stage"] = "no_selected_model"
             state.save()
             return active["stage"]
+        if selection_options is not None:
+            status = json.loads((run / "daily-status.json").read_text())
+            selection = json.loads((run / "training/selection.json").read_text())
+            if (
+                status["cutoff"] != active["cutoff"]
+                or status["selection"] != selection
+                or any(selection.get(key) != selection_options[key] for key in ("metric", "weight"))
+            ):
+                raise ValueError("daily selection differs from the configured validation objective")
+            active.update(selected_epoch=selection["epoch"], score=selection["score"])
         if binding.get("monitoring"):
             try:
                 from recommend_tf.platforms.monitoring.report_metrics import report
 
-                report(s3, run, binding, run_uri=active["run_uri"])
+                report_binding = (
+                    binding
+                    if binding.get("outputs")
+                    else {**binding, "outputs": export_outputs(run_config, {})}
+                )
+                report(s3, run, report_binding, run_uri=active["run_uri"])
             except Exception as error:
                 print(
                     json.dumps(
@@ -222,7 +286,7 @@ def step(
                 )
         output = work / "package"
         options = work / "outputs.json"
-        options.write_text(json.dumps(binding["outputs"]))
+        options.write_text(json.dumps(binding.get("outputs", {})))
         subprocess.run(
             [
                 sys.executable,
@@ -234,9 +298,10 @@ def step(
                 str(output),
                 "--outputs",
                 str(options),
+                *(["--broadcast-feat", broadcast_feat] if broadcast_feat else []),
             ],
             check=True,
-            timeout=binding["export_timeout_seconds"],
+            timeout=binding.get("export_timeout_seconds"),
         )
         manifest = json.loads((output / "manifest.json").read_text())
         export_digest = checksum(output / "manifest.json")
@@ -246,6 +311,7 @@ def step(
             stage="exported",
             model_version=manifest["model_version"],
             export_manifest_sha256=export_digest,
+            export_tasks=list(json.loads((output / "signature.json").read_text())["outputs"]),
         )
         state.save()
         active["model_uri"] = publish_package(
@@ -269,7 +335,9 @@ def step(
                 client,
                 endpoint,
                 version,
-                binding["probe"],
+                {**binding["probe"], "tasks": active["export_tasks"]}
+                if "export_tasks" in active
+                else binding["probe"],
                 inference_protocol=official.protocol(binding["deployment"]),
             ),
         )
@@ -294,7 +362,7 @@ def acquire_executor(state, ecs, cluster, task_arn):
     state.save()
 
 
-def validate_binding(binding):
+def validate_binding(binding, config=None):
     for name in (
         "environment",
         "region",
@@ -330,7 +398,9 @@ def validate_binding(binding):
         or deployment["instance_type"].startswith(("ml.p", "ml.g", "ml.inf", "ml.trn"))
     ):
         raise ValueError("explicit positive CPU inference capacity required")
-    if set(binding["probe"]["tasks"]) != set(binding["outputs"]):
+    if config is not None and "export_tasks" in config:
+        export_outputs(config, binding.get("outputs", {}))
+    elif set(binding["probe"]["tasks"]) != set(binding["outputs"]):
         raise ValueError("probe must verify all configured primary tasks")
     if binding["probe"].get("fixture_kind") != "synthetic":
         raise ValueError("deployment probe must be explicitly synthetic")
@@ -368,7 +438,7 @@ def operation_identity(
     )
 
 
-def preflight_ready(state, config, ready, operation, *, skip=False):
+def preflight_ready(state, config, ready, operation, *, skip=False, binding=None, s3=None):
     active = state.value["active"]
     if skip or any(r["operation"] == operation for r in state.value["history"]):
         return
@@ -377,7 +447,7 @@ def preflight_ready(state, config, ready, operation, *, skip=False):
     # A missing day must not strand an Endpoint claim. Completed/resuming jobs
     # use their frozen input and never reread an upstream daily publication.
     with tempfile.TemporaryDirectory(prefix="tf-ready-preflight-") as directory:
-        freeze(config, ready, Path(directory) / "frozen")
+        freeze_input(config, ready, Path(directory) / "frozen", binding or {}, s3)
 
 
 def main():
@@ -403,10 +473,9 @@ def execute(args):
     evidence = (
         json.loads(Path(args.bootstrap_evidence).read_text()) if args.bootstrap_evidence else None
     )
-    config, ready, binding = [
-        json.loads(Path(p).read_text()) for p in (args.config, args.ready, args.binding)
-    ]
-    validate_binding(binding)
+    config, binding = [json.loads(Path(p).read_text()) for p in (args.config, args.binding)]
+    ready = json.loads(Path(args.ready).read_text()) if args.ready else None
+    validate_binding(binding, config)
     if binding.get("monitoring"):
         from recommend_tf.train.comm.model_identity import model_name
 
@@ -443,6 +512,15 @@ def execute(args):
                 binding["runtime_policy"],
             )
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
+        if ready is None:
+            from .idea_mapped_input import next_ready
+
+            source = binding["data_source"]
+            if source["freeze"] != "idea_mapped":
+                raise ValueError("this source requires a pinned ready envelope")
+            ready = next_ready(s3, state, source, config)
+            if ready is None:
+                return "caught_up"
         if binding.get("monitoring", {}).get("catalog_uri"):
             from recommend_tf.train.comm.model_identity import recipe_sha256
 
@@ -489,14 +567,26 @@ def execute(args):
         ):
             return "deferred_publication"
         preflight_ready(
-            state, config, ready, operation, skip=bool(args.bootstrap_run or args.rollback_version)
+            state,
+            config,
+            ready,
+            operation,
+            skip=bool(args.bootstrap_run or args.rollback_version),
+            binding=binding,
+            s3=s3,
         )
         result = (
             request_rollback(
                 state, sm, binding["deployment"]["endpoint_name"], args.rollback_version, operation
             )
             if args.rollback_version
-            else state.claim(operation, ready["cutoff"])
+            else state.claim(
+                operation,
+                ready["cutoff"],
+                ready=ready
+                if binding.get("data_source", {}).get("freeze") == "idea_mapped"
+                else None,
+            )
         )
         if state.value["active"] is None:
             print(json.dumps(result))

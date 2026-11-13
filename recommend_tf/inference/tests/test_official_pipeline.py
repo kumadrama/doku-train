@@ -82,6 +82,8 @@ class OfficialPipelineTest(unittest.TestCase):
 
     def test_completed_run_uses_official_package_environment_and_probe(self):
         options = binding()
+        # An existing probe binding can have different names from the exported signature.
+        options["probe"]["tasks"] = ["old_task"]
         state = SimpleNamespace(
             value={
                 "active": {

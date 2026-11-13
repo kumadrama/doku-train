@@ -28,7 +28,10 @@ def fixture(root):
             },
         )
     expected = format_response(
-        {"outputs": {k: v.tolist() for k, v in outputs.items()}}, artifact["version"], size
+        {"outputs": {k: v.tolist() for k, v in outputs.items()}},
+        artifact["version"],
+        size,
+        artifact["signature"]["outputs"],
     )
     (root / "request.json").write_text(json.dumps(request))
     (root / "expected.json").write_text(json.dumps(expected))

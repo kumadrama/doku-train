@@ -12,8 +12,9 @@ from .published_dataset import PublishedDataset
 
 def window(config, cutoff):
     options = config["online_config"]
-    if set(options) != {"training_date", "validation_date"} or any(
-        type(value) is not int or value <= 0 for value in options.values()
+    if set(options) - {"training_date", "validation_date", "first_day"} or any(
+        type(options.get(k)) is not int or options[k] <= 0
+        for k in ("training_date", "validation_date")
     ):
         raise ValueError("online_config requires positive integer day counts")
     end = date.fromisoformat(cutoff)
@@ -21,6 +22,11 @@ def window(config, cutoff):
     training = [
         validation[0] - timedelta(days=i) for i in reversed(range(1, options["training_date"] + 1))
     ]
+    if "first_day" in options:
+        first = date.fromisoformat(options["first_day"])
+        training = [d for d in training if d >= first]
+        if not training:
+            raise ValueError("window requires a training day before validation")
     return {
         "train": [d.isoformat() for d in training],
         "validation": [d.isoformat() for d in validation],
@@ -35,6 +41,12 @@ def resolve_config(config, cutoff):
             del split[key]
     for name, days in window(config, cutoff).items():
         split.update({f"{name}_dates": days, f"{name}_from": days[0], f"{name}_to": days[-1]})
+    if "first_day" in result["online_config"]:
+        # Frozen recipes are consumed by existing training images as exact day counts.
+        result["online_config"] = {
+            "training_date": len(split["train_dates"]),
+            "validation_date": len(split["validation_dates"]),
+        }
     return result
 
 
@@ -114,6 +126,10 @@ def freeze(config, ready, target):
     )
     merged["row_count"] = sum(p["rows"] for p in merged["partitions"])
     merged["content_sha256"] = digest({k: v for k, v in merged.items() if k != "content_sha256"})
+    return write_window(resolved, ready, target, merged, contract_bytes)
+
+
+def write_window(resolved, ready, target, merged, contract_bytes):
     target = Path(target).resolve()
     target.mkdir(parents=True, exist_ok=False)
     (target / "contracts").mkdir()
