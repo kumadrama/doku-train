@@ -66,7 +66,7 @@ def synthetic_batches(config, vocabs, feature_contract):
     return batches
 
 
-def execute(run_dir, output, *, outputs, evidence=None):
+def execute(run_dir, output, *, outputs, evidence=None, broadcast_feat=None):
     root, output = Path(run_dir).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError(output)
@@ -125,11 +125,11 @@ def execute(run_dir, output, *, outputs, evidence=None):
     ):
         raise ValueError("checkpoint/config/feature state identity mismatch")
     if (
-        len(outputs) != 4
+        not outputs
         or not set(outputs) <= config["model"]["tasks"].keys()
         or any(not isinstance(v, str) or not v for v in outputs.values())
     ):
-        raise ValueError("exactly four configured outputs with explicit units are required")
+        raise ValueError("configured outputs with explicit units are required")
     required = {
         status_name,
         "experiment-config.json",
@@ -174,6 +174,8 @@ def execute(run_dir, output, *, outputs, evidence=None):
         for k in ("features", "labels")
     ):
         raise ValueError("frozen input record differs from sealed input")
+    if broadcast_feat is not None:
+        runtime = {**runtime, "model": {**runtime["model"], "broadcast_feat": broadcast_feat}}
     exporter_source = exporter_identity()
     feature_contract = json.loads((root / "input/contracts/features.json").read_text())
     labels = json.loads((root / "input/contracts/labels.json").read_text())["labels"]
@@ -187,6 +189,7 @@ def execute(run_dir, output, *, outputs, evidence=None):
                 if k.startswith(f"training/{expected_name}/model.")
             },
             "outputs": outputs,
+            **({"broadcast_feat": broadcast_feat} if broadcast_feat else {}),
             "exporter_source_digest": exporter_source,
         }
     )

@@ -32,7 +32,11 @@ def load(root):
         or signature.get("model_version") != manifest["model_version"]
         or signature.get("input_stage") != "organized_padded_features"
         or signature.get("response_order") != "request_order"
-        or set(signature["outputs"]) != TASKS
+        or not signature["outputs"]
+        or (
+            set(signature["outputs"]) != TASKS
+            and set(signature["outputs"]) != {"idea_read_more", "idea_vote", "idea_watch_now"}
+        )
         or not signature["inputs"]
         or not (root / "saved_model/saved_model.pb").is_file()
     ):

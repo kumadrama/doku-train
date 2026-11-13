@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 036：Idea mapped 独立 Endpoint 及日更](specs/036-idea-mapped-daily/design.md)
+
 - [Spec 035：TF 训练耗时优化需求](specs/035-tf-training-time-optimization/requirements.md)、[设计](specs/035-tf-training-time-optimization/design.md) — 需求与设计已确认，Q11授权本地计时/基准工具；[任务](specs/035-tf-training-time-optimization/tasks.md)、[验证](specs/035-tf-training-time-optimization/verification.md)。用户随后授权两epoch资源与代码实验；12个初始及1个组合两epoch实验完成，b4096完整40轮一致性通过；完整流程50%及重复验收仍为后续目标；不发布线上模型。
 
 - [Spec 034：TF Idea/FYP 混训需求](specs/034-idea-fyp-mixed-training/requirements.md) — 需求已确认并授权本地实施；[设计](specs/034-idea-fyp-mixed-training/design.md)、[任务](specs/034-idea-fyp-mixed-training/tasks.md)、[验证](specs/034-idea-fyp-mixed-training/verification.md)。未部署。

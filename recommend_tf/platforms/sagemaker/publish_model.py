@@ -254,7 +254,7 @@ def deploy_step(client, runtime, state, binding, *, probe):
     if binding["artifact_contract"] != "doku-tf-inference/v1":
         raise ValueError("serving image contract is not confirmed")
     name = (
-        "tf-"
+        binding.get("resource_prefix", "tf-")
         + hashlib.sha256(
             (
                 endpoint
