@@ -50,7 +50,7 @@ def observation(
             raise ValueError("historical model identity requires the original config digest")
         name = model_name(historical_identity, required=True)
         identity_source = historical_identity
-    if name != binding["model_name"]:
+    if name != binding.get("model_name", binding.get("monitoring", {}).get("model_name")):
         raise ValueError("configuration and deployment model_name differ")
     summary = read_selected_metrics(root, config)
     epoch = summary["selection"]["epoch"]
@@ -132,6 +132,8 @@ def observation(
             "endpoint_name": binding["deployment"]["endpoint_name"],
         },
     }
+    if status.get("task_family"):
+        event["task_family"] = status["task_family"]
     if status.get("training_job_name"):
         event["training_job_name"] = status["training_job_name"]
     if training_job and "training_completed_at_ms" not in status:
@@ -184,12 +186,27 @@ def put_event(s3, event, options):
 
 
 def report(s3, root, binding, **kwargs):
-    return put_event(s3, observation(root, binding, **kwargs), binding["monitoring"])
+    options = binding["monitoring"]
+    if "task_family" in options:
+        # Replay the immutable training-side event verbatim, including across image upgrades.
+        evidence = verify_run(Path(root), kwargs.get("evidence"))
+        source = "training/monitoring-event.json"
+        if source not in evidence["files"]:
+            return None  # A pre-enrollment run has no event to deliver.
+        event = json.loads((Path(root) / source).read_bytes())
+        if (
+            event["run_uri"] != kwargs["run_uri"]
+            or event["model_name"] != options["model_name"]
+            or event.get("task_family", options["task_family"]) != options["task_family"]
+        ):
+            raise ValueError("sealed observation differs from daily deployment")
+        return put_event(s3, event, options)
+    return put_event(s3, observation(root, binding, **kwargs), options)
 
 
 def release_event(state_uri, record, binding):
     """Called only after the terminal journal record is durable."""
-    name = model_name(binding, required=True)
+    name = model_name(binding if "model_name" in binding else binding["monitoring"], required=True)
     stage = record["stage"]
     status = {"deployed": "published", "rolled_back": "rolled_back"}.get(stage, "failed")
     target = record.get("rollback_target", {}) if stage == "rolled_back" else record
@@ -223,7 +240,10 @@ def release_event(state_uri, record, binding):
 def report_release(s3, state, binding):
     for record in state.value["history"]:
         # Old journals require explicit provenance backfill, not invented timestamps.
-        if "release_revision" in record:
+        if "task_family" in binding["monitoring"]:
+            if "monitoring_event" in record:
+                put_event(s3, record["monitoring_event"], binding["monitoring"])
+        elif "release_revision" in record:
             put_event(s3, release_event(state.uri, record, binding), binding["monitoring"])
 
 

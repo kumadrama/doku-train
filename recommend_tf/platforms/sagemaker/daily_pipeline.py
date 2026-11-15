@@ -146,7 +146,10 @@ def prepare_job(s3, config, ready, binding, operation, work):
         from recommend_tf.platforms.monitoring.report_metrics import monitoring_outputs
 
         outputs, mapping = monitoring_outputs(config, binding)
-        context = {key: binding[key] for key in ("model_name", "environment", "region")}
+        context = {key: binding[key] for key in ("environment", "region")}
+        context["model_name"] = binding.get("model_name") or config["model_name"]
+        if "task_family" in binding["monitoring"]:
+            context["task_family"] = binding["monitoring"]["task_family"]
         context["outputs"] = outputs
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
@@ -489,7 +492,9 @@ def execute(args):
     if binding.get("monitoring"):
         from recommend_tf.train.comm.model_identity import model_name
 
-        if model_name(config, required=True) != binding.get("model_name"):
+        if model_name(config, required=True) != binding.get(
+            "model_name", binding["monitoring"].get("model_name")
+        ):
             raise ValueError("monitoring binding and configuration model_name differ")
     if evidence is not None and not args.bootstrap_run:
         raise ValueError("bootstrap evidence requires bootstrap run")

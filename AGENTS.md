@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 038：TF 日更标准部署](specs/038-tf-daily-deployment/requirements.md)、[设计](specs/038-tf-daily-deployment/design.md)、[任务](specs/038-tf-daily-deployment/tasks.md)、[验证](specs/038-tf-daily-deployment/verification.md)。生产启用后 Idea 从新日更开始上报。
+
 - [Spec 037：Idea mapped 独立 Endpoint 及日更](specs/037-idea-mapped-daily/design.md)、[生产验收](specs/037-idea-mapped-daily/verification.md)
 
 - [Spec 036：原模型名的 30 轮日训切换](specs/036-daily-30-same-model/requirements.md)、[设计](specs/036-daily-30-same-model/design.md) — 需求及设计已确认；[任务](specs/036-daily-30-same-model/tasks.md)、[验证](specs/036-daily-30-same-model/verification.md)。

@@ -146,3 +146,29 @@ def test_monitoring_tracks_only_published_tasks_and_preserves_training_metrics(t
     assert [(t["task"], t["unit"]) for t in event["tasks"]] == [("click", "probability")]
     assert metrics.read_bytes() == before
     assert set(json.loads(before)["validation_metrics"]) == {"click", "watch"}
+
+
+def test_daily_enrollment_replays_only_sealed_training_event(tmp_path):
+    from recommend_tf.platforms.monitoring.report_metrics import report
+
+    binding = fixture(tmp_path)
+    options = {
+        "task_family": "idea-family",
+        "model_name": binding.pop("model_name"),
+        "kms_key": "key",
+        "outbox_uri": "s3://synthetic/outbox",
+    }
+    binding["monitoring"] = options
+    s3 = Store()
+    uri = "s3://synthetic/run"
+    assert report(s3, tmp_path, binding, run_uri=uri) is None
+    assert not s3.objects
+    path = tmp_path / "daily-status.json"
+    path.write_text(json.dumps(dict(json.loads(path.read_bytes()), task_family="idea-family")))
+    seal_run(tmp_path, "daily-status.json")
+    event = observation(tmp_path, binding, run_uri=uri)
+    assert event["task_family"] == "idea-family"
+    (tmp_path / "training/monitoring-event.json").write_text(json.dumps(event))
+    seal_run(tmp_path, "daily-status.json")
+    assert report(s3, tmp_path, binding, run_uri=uri) == report(s3, tmp_path, binding, run_uri=uri)
+    assert list(map(json.loads, s3.objects.values())) == [event]
