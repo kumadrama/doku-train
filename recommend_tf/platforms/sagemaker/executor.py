@@ -47,7 +47,7 @@ def task_identity(metadata_uri, *, opener=None):
     arn = record["TaskARN"]
     if not isinstance(arn, str) or ":ecs:" not in arn or ":task/" not in arn:
         raise ValueError("invalid ECS TaskARN")
-    return arn, record["Cluster"]
+    return arn, record["Cluster"], record["Family"]
 
 
 def download_json(s3, uri, expected, output):
@@ -65,7 +65,7 @@ def download_json(s3, uri, expected, output):
 
 
 def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
-    arn, cluster = identity(metadata_uri)
+    arn, cluster, family = identity(metadata_uri)
     with tempfile.TemporaryDirectory(prefix="tf-executor-") as directory:
         root = Path(directory)
         values = {}
@@ -108,6 +108,9 @@ def run(args, *, s3, metadata_uri, invoke=execute, identity=task_identity):
             and (binding.get("legacy_ready_config_sha256") != args.config_sha256)
         ):
             raise ValueError("legacy ready recipe not explicitly allowed")
+        expected_family = binding.get("monitoring", {}).get("task_family")
+        if expected_family and family != expected_family:
+            raise ValueError("ECS task family differs from the daily deployment")
         validate_binding(binding, values["config"])
         cluster_name = cluster.rsplit("/", 1)[-1]
         if binding["region"] != args.region or binding["ecs_cluster"] not in {

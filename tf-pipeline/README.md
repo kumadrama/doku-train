@@ -9,4 +9,4 @@ Task 发布的 task-target.yml 依赖 doku-tools 的受信 ecs_task_targets bind
 交接期间保留完整 legacy_command；兼容 task 激活后单独切换到只传 region/ready 参数。此后config/binding 来自 task 环境，避免 Terraform 回写应用版本。
 发布必须核对真实 target revision，不能把 RegisterTaskDefinition 当成已激活。
 
-本地使用 `scripts/prepare_tf_release.py` 生成 release/binding/task-definition，禁止手工拼摘要；具体迁移顺序见 [Spec 031](../specs/031-runtime-release-ownership/operations.md)。
+本地使用 `scripts/prepare_tf_release.py` 生成 release/binding/task-definition，禁止手工拼摘要；同时传入已应用的 model_monitoring 输出（`--monitoring-outputs`），见[任务族标准入口](../recommend_tf/README.md#tf-日更任务部署)。具体迁移顺序见 [Spec 031](../specs/031-runtime-release-ownership/operations.md)。

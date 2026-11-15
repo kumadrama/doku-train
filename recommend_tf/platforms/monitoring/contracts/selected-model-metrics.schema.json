@@ -106,6 +106,10 @@
           }
         }
       }
+    },
+    "task_family": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,255}$"
     }
   }
 }

@@ -108,3 +108,21 @@ python -m recommend_tf.platforms.monitoring.backfill_metrics \
 原 `experiment-config.json` 的 `config_sha256` 及 model_name。可加 `--cutoff-from/--cutoff-to`
 限制列表中的数据日期；确认报告后加 `--write` 写监控 outbox。此命令不训练、导出或部署模型，
 也不改旧 run。Spec 030 代码当前仅本地验证，尚未替换生产训练镜像或监控看板。
+
+## TF 日更任务部署
+
+生产任务族在 doku-iac 的 `envs/prod/model_monitoring` 登记。复用任务族的模型使用原任务角色和该族登记的运行、发布日志路径。新增任务族登记一次，由该根模块创建生产者权限和失败报警。域取 FYP 或 Idea。
+
+先发布 doku-monitoring 的指标采集器、看板查询与通知路由，再按基础设施发布流程应用监控登记。取该状态根的 `terraform output -json`，作为下列命令的 `monitoring-outputs.json`。在应用配置前准备好含本次改动的训练与 worker 制品。使用部署 owner 准备的 ECS 任务定义，其中包含实际任务角色、worker 制品和四个日更配置环境变量。
+
+```bash
+python -m scripts.prepare_tf_daily_deployment \
+  --monitoring-outputs monitoring-outputs.json \
+  --task-definition task-definition.json \
+  --config daily-config.json --binding daily-binding.json \
+  --config-prefix "$DAILY_CONFIG_S3_PREFIX" --output prepared-release
+```
+
+输出为原训练配置字节、带监控信息的 binding 和带 SHA256 固定地址的任务定义。命令同时打印两个文件对应的发布 URI 和摘要。由既有发布流程上传不可变文件并核对摘要，再注册任务定义。FYP 的镜像发布命令 `scripts/prepare_tf_release.py` 也接收必填的 `--monitoring-outputs`。FYP 沿用原 ready 目标，Idea 的 mapped 成功事件与定时补偿目标同时指向同一 worker revision。切换前让已运行操作按原冻结请求完成。
+
+启用后只用新的自然日更确认上报。核对选中 epoch 的公开任务指标、模型目录的任务族和 Grafana 对应 row。Idea 历史产物不运行 backfill，指标投递沿用既有重试和补偿。

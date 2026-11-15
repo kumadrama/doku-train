@@ -58,6 +58,8 @@ def main():
                 status_path = root / "daily-status.json"
                 metadata = json.loads(status_path.read_text())
                 metadata["training_job_name"] = context["training_job_name"]
+                if "task_family" in context:
+                    metadata["task_family"] = context["task_family"]
                 status_path.write_text(json.dumps(metadata, sort_keys=True))
                 event = observation(
                     root,

@@ -52,7 +52,7 @@ def test_executor_digest_environment_and_identity(tmp_path):
         seen.append(options.executor_arn)
 
     def identity(_):
-        return "arn:aws:ecs:us-east-1:123:task/test/id", "test"
+        return "arn:aws:ecs:us-east-1:123:task/test/id", "test", "fixture-family"
 
     executor.run(args, s3=s3, metadata_uri="unused", invoke=invoke, identity=identity)
     assert len(seen) == 1

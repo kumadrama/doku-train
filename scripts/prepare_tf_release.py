@@ -32,7 +32,7 @@ def prepare(args):
             raise ValueError("verified training source and lock digests required")
     config_raw = Path(args.config).read_bytes()
     config = json.loads(config_raw)
-    if config.get("model_name") != binding["model_name"]:
+    if config.get("model_name") != binding.get("model_name", config.get("model_name")):
         raise ValueError("recipe/model binding mismatch")
     binding.update(applied)
     binding["training_request"]["AlgorithmSpecification"]["TrainingImage"] = args.training_image
@@ -42,6 +42,23 @@ def prepare(args):
     )
     if args.allow_legacy_ready:
         binding["legacy_ready_config_sha256"] = digest(config_raw)
+    task = json.loads(
+        (
+            Path(__file__).resolve().parents[1] / "tf-pipeline/deploy/prod/task-definition.yml"
+        ).read_text()
+    )
+    if binding.get("environment") == "prod" and not getattr(args, "monitoring_outputs", None):
+        raise ValueError("production daily release requires the applied monitoring registration")
+    if getattr(args, "monitoring_outputs", None):
+        if __package__:
+            from .prepare_tf_daily_deployment import bind_daily
+        else:
+            from prepare_tf_daily_deployment import bind_daily
+
+        registration = json.loads(Path(args.monitoring_outputs).read_text())["tf_daily_deployment"][
+            "value"
+        ]
+        binding = bind_daily(config, binding, task, registration)
     binding_raw = (json.dumps(binding, sort_keys=True, indent=2) + "\n").encode()
     prefix = args.config_prefix.rstrip("/")
     if not prefix.startswith("s3://"):
@@ -67,11 +84,6 @@ def prepare(args):
     (output / "binding.json").write_bytes(binding_raw)
     (output / "daily-config.json").write_bytes(config_raw)
     (output / "release.json").write_text(json.dumps(release, indent=2) + "\n")
-    task = json.loads(
-        (
-            Path(__file__).resolve().parents[1] / "tf-pipeline/deploy/prod/task-definition.yml"
-        ).read_text()
-    )
     container = task["containerDefinitions"][0]
     for entry in container["environment"]:
         key = entry["name"].removeprefix("DOKU_").lower()
@@ -95,6 +107,7 @@ if __name__ == "__main__":
         "output",
     ):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--monitoring-outputs", required=True)
     parser.add_argument("--pipeline-source-revision")
     parser.add_argument("--allow-legacy-ready", action="store_true")
     prepare(parser.parse_args())
