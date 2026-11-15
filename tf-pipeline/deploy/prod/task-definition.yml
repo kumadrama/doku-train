@@ -31,11 +31,11 @@
         },
         {
           "name": "DOKU_BINDING_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6/binding.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/8c84eda333ee02719741367949d46900083fe05d256643cc4bdc5876893a039c/binding.json"
         },
         {
           "name": "DOKU_BINDING_SHA256",
-          "value": "712aabf76aba274c553a362e3ee321a3a28a7e55ff9f2f202058374d980bb0d6"
+          "value": "8c84eda333ee02719741367949d46900083fe05d256643cc4bdc5876893a039c"
         }
       ],
       "logConfiguration": {
