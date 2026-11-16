@@ -41,12 +41,6 @@ def resolve_config(config, cutoff):
             del split[key]
     for name, days in window(config, cutoff).items():
         split.update({f"{name}_dates": days, f"{name}_from": days[0], f"{name}_to": days[-1]})
-    if "first_day" in result["online_config"]:
-        # Frozen recipes are consumed by existing training images as exact day counts.
-        result["online_config"] = {
-            "training_date": len(split["train_dates"]),
-            "validation_date": len(split["validation_dates"]),
-        }
     return result
 
 

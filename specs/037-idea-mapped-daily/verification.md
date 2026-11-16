@@ -32,3 +32,14 @@
 - 对归档的 FYP 30+1 天生产 Manifest 离线调用 prepare_job，修复版生成的 SageMaker 请求及六份冻结文件的摘要与 cadf34e 的验证记录完全相同。
 - 修复提交 29b7d5d 的 `make check` 通过。公共训练测试 329 项通过、3 项跳过，TF 训练测试 225 项通过，推理测试 8 项通过。
 - Idea worker `:3` 的生产 ECS canary 任务 32b5cc62cb3344dca49d8a063052733f 退出码为 0。保存的 Terraform plan 原位更新两个触发目标（0 新增、2 修改、0 删除）。切换后回读两个规则均为 ENABLED，目标均为 `:3`，Endpoint 为 InService，发布高水位为 2026-11-12，active 为空。该 stack 再次运行 `terraform plan -detailed-exitcode` 返回 0。
+
+### 2026-11-17 增长窗口配方复核
+
+生产目录当时仅登记 11 月 14 日。用该日封存的 experiment-config 回放，目录摘要与当日
+实际 12 天训练窗口一致；使用声明的 30 天上限和 11 月 2 日首日计算时，两者只因
+online_config 的展开而产生不同摘要。13、14 日补丁生成的逐日 split 与封存记录一致，
+15 日解析为 13 个训练日和 1 个验证日，三次计算的声明配方摘要完全一致。
+
+运行 `python -m pytest recommend_tf/train/tests/test_idea_daily_input.py -q` 检查增长期、达到上限、
+再次冻结和实际窗口策略变化。历史生产目录迁移应保留 14 日的旧摘要及截止日，
+依照 Spec 036 使用条目原 ETag 条件更新，先核实目录中的日期和旧摘要。
