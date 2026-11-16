@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 from recommend_tf.platforms.sagemaker.idea_mapped_input import next_ready
 from recommend_tf.train.comm.datasvr.daily_dataset import resolve_config, window
+from recommend_tf.train.comm.model_identity import recipe_sha256
 
 
 def test_growing_window_and_frozen_recipe():
@@ -17,7 +18,15 @@ def test_growing_window_and_frozen_recipe():
         periods = window(config, cutoff)
         assert periods["train"][0] == first and len(periods["train"]) == count
         assert periods["validation"] == [cutoff]
-        assert window(resolve_config(config, cutoff), cutoff) == periods
+        frozen = resolve_config(config, cutoff)
+        assert window(frozen, cutoff) == periods
+        assert frozen["dataset_config"]["split"]["train_dates"] == periods["train"]
+        assert resolve_config(frozen, cutoff) == frozen
+        assert recipe_sha256(frozen) == recipe_sha256(config)
+
+    for option in ({"first_day": "2026-11-03"}, {"training_date": 29}):
+        changed = dict(config, online_config={**config["online_config"], **option})
+        assert recipe_sha256(changed) != recipe_sha256(config)
 
 
 def test_reconcile_resumes_frozen_ready_or_waits_for_publication():
