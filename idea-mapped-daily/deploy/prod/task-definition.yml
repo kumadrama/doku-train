@@ -44,7 +44,7 @@
         },
         {
           "name": "DOKU_BINDING_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/7f61dbf8b6222e1917fe52c0c6acdb96617c67a44bec831eb7806b8e60c02cea/binding.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/b2ec157fe3223aa37ca8e2961cc4fa61158a56f64ef961e8d3799b15eceabae8/binding.json"
         },
         {
           "name": "DOKU_CONFIG_URI",
@@ -52,7 +52,7 @@
         },
         {
           "name": "DOKU_BINDING_SHA256",
-          "value": "7f61dbf8b6222e1917fe52c0c6acdb96617c67a44bec831eb7806b8e60c02cea"
+          "value": "b2ec157fe3223aa37ca8e2961cc4fa61158a56f64ef961e8d3799b15eceabae8"
         },
         {
           "name": "ARTIFACT_SHA",

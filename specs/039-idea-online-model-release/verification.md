@@ -18,4 +18,6 @@ S3 bootstrap. Its Dockerfile inherits the exact original runtime and copies the 
 source. Standard CodeBuild issues a main release tag; no experimental tag is relabeled as a release.
 There is no task-target manifest, so registration cannot update the FYP family or activate a trigger.
 The source archive is deterministic and the inference suite verifies its deployment SHA pin.
-The new binding pin remains pending actual IaC output and immutable S3 publication before activation.
+The binding is generated from actual applied Idea outputs and adds only `idea_appconfig`; SHA256
+`b2ec157fe3223aa37ca8e2961cc4fa61158a56f64ef961e8d3799b15eceabae8`. The release state was idle
+at generation. Immutable S3 publication and a fresh idle check still precede activation.

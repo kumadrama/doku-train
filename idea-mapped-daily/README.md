@@ -21,9 +21,8 @@ suite also verifies this pin, so a source-only change cannot silently reuse an o
 Upload the reviewed archive under its SHA-addressed existing Idea release prefix before registering
 the task. Generate the binding from the actual IaC output and existing binding, preserving the
 training/inference images and config; review only the new `idea_appconfig` resource wiring. Update
-`DOKU_BINDING_URI` and `DOKU_BINDING_SHA256` together after its immutable S3 publication. The initial
-manifest retains the previous binding until that production output exists; it must be updated before
-activation. Config content remains unchanged.
+`DOKU_BINDING_URI` and `DOKU_BINDING_SHA256` together after its immutable S3 publication. The manifest pins the binding generated from the applied Idea resource outputs. Config content
+remains unchanged. The matching immutable S3 object must exist before registration or activation.
 
 ## Standard publication
 
