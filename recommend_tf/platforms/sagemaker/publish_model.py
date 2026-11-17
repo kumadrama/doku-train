@@ -133,10 +133,10 @@ class ReleaseState:
                 self.value["high_water"] or result["cutoff"], result["cutoff"]
             )
             self.value["online"] = {
-                key: result[key]
-                for key in ("model_version", "endpoint_config", "cutoff", "endpoint_name")
-                if key in result
+                key: result[key] for key in ("model_version", "endpoint_config", "cutoff")
             }
+            if "endpoint_name" in result:
+                self.value["online"]["endpoint_name"] = result["endpoint_name"]
         if result["stage"] == "rolled_back" and result.get("rollback_target"):
             self.value["online"] = result["rollback_target"]
         result = dict(result)
