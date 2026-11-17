@@ -1,7 +1,7 @@
 {
   "schema_version": "doku-tf-runtime-release/v1",
   "source_revision": "32f8a37b2a0316161a027f866f93afa966dfbc78",
-  "pipeline_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:0ef6238ef753eebdd18248a2a7eccc529c4f875c769a7311beb43db4cbd9c053",
+  "pipeline_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:448e5ed9ee19621017a083b348d0f7450745bbb976961aa52cb610872abe0e1d",
   "training_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:5e9ef04832e66350684c086061ec4c5dd9c748e51df05dd2c28269e9ff20da94",
   "training_provenance": {
     "image_uri": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:5e9ef04832e66350684c086061ec4c5dd9c748e51df05dd2c28269e9ff20da94",
@@ -14,5 +14,5 @@
   "config_sha256": "d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b",
   "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/239ae9ae06032249022557b92632262278d1b1f7d2adf7659ab21326ab3c9b85/binding.json",
   "binding_sha256": "239ae9ae06032249022557b92632262278d1b1f7d2adf7659ab21326ab3c9b85",
-  "pipeline_source_revision": "d9e6aecc256e3e8fed5abf68cfef90a1d7d2f72a"
+  "pipeline_source_revision": "69bc04f3dc0a0f4227e2910d42da4c2e1ac202ef"
 }
