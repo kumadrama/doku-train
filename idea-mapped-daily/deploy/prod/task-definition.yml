@@ -1,0 +1,75 @@
+{
+  "family": "doku-prod-idea-mapped-daily",
+  "taskRoleArn": "doku-prod-idea-mapped-daily-worker",
+  "executionRoleArn": "{{EXECUTION_ROLE}}",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "cpu": "4096",
+  "memory": "8192",
+  "ephemeralStorage": {
+    "sizeInGiB": 40
+  },
+  "containerDefinitions": [
+    {
+      "name": "pipeline",
+      "image": "{{IMAGE}}",
+      "cpu": 0,
+      "portMappings": [],
+      "essential": true,
+      "entryPoint": [
+        "python",
+        "-c"
+      ],
+      "command": [
+        "import boto3,os,sys,tarfile,hashlib\np='/tmp/idea-worker.tgz'\nboto3.client('s3').download_file(os.environ['ARTIFACT_BUCKET'],os.environ['ARTIFACT_KEY'],p)\nif hashlib.sha256(open(p,'rb').read()).hexdigest()!=os.environ['ARTIFACT_SHA']: raise ValueError('worker artifact digest differs')\ndst='/tmp/idea-worker'\nos.makedirs(dst)\nwith tarfile.open(p) as tar:\n for entry in tar:\n  if not entry.isfile() or entry.name.startswith('/') or '..' in entry.name.split('/'): raise ValueError('unsafe archive member')\n  tar.extract(entry,dst)\nos.chdir(dst)\nos.environ['PYTHONPATH']=dst\nos.execv(sys.executable,[sys.executable,'-m','recommend_tf.platforms.sagemaker.executor','--region','us-east-2'])"
+      ],
+      "environment": [
+        {
+          "name": "ARTIFACT_KEY",
+          "value": "ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/779974c7b00818f9612d3d8f6e8ca38acedf40530723b434e6b35abf7a29fabe/worker.tar.gz"
+        },
+        {
+          "name": "DOKU_CONFIG_SHA256",
+          "value": "6dedc497983497c5f4c521ab47935ff87a6086425f5f25c647d995c3fb62ce1b"
+        },
+        {
+          "name": "ARTIFACT_BUCKET",
+          "value": "prod-data-lake-20260901071345278900000001"
+        },
+        {
+          "name": "DOKU_BINDING_URI",
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/7f61dbf8b6222e1917fe52c0c6acdb96617c67a44bec831eb7806b8e60c02cea/binding.json"
+        },
+        {
+          "name": "DOKU_CONFIG_URI",
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/6dedc497983497c5f4c521ab47935ff87a6086425f5f25c647d995c3fb62ce1b/daily-config.json"
+        },
+        {
+          "name": "DOKU_BINDING_SHA256",
+          "value": "7f61dbf8b6222e1917fe52c0c6acdb96617c67a44bec831eb7806b8e60c02cea"
+        },
+        {
+          "name": "ARTIFACT_SHA",
+          "value": "779974c7b00818f9612d3d8f6e8ca38acedf40530723b434e6b35abf7a29fabe"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/doku-prod-idea-mapped-daily",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "pipeline"
+        }
+      },
+      "systemControls": []
+    }
+  ]
+}
