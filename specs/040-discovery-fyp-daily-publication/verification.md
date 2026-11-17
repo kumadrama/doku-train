@@ -15,6 +15,16 @@ python -m pytest -q recommend_tf/inference/tests \
 
 配套 IaC `envs/prod/tf_endpoint/discovery_appconfig.tf` 通过 Terraform validate；mock plan 两项通过，覆盖仅给原 FYP worker 发布两个 Discovery profiles 的权限及错误 profile 身份拒绝。未执行 apply。
 
+## 2026-11-18 发布准备
+
+用户授权 CI 通过后直接合入上线、维持 10%。PR #59 的完整 Train checks 和容器检查已通过；#931 已合入并通过平台 `dj_55f03c1d-bdea-47b6-9630-47ce9fa29e55` 应用，计划与执行均仅新增 Discovery 专用 IAM policy。
+
+原生构建 `doku-train:90610c49-8515-4617-9f6c-fba88bc488e2` 成功，从 main `d9e6aec` 构建 pipeline runtime 并检查 publisher 导入及 SDK deployment CAS。不可变 digest `0ef6238ef753eebdd18248a2a7eccc529c4f875c769a7311beb43db4cbd9c053`。
+
+用实际已应用 IaC 输出运行标准 binding 生成器，新 binding `239ae9ae06032249022557b92632262278d1b1f7d2adf7659ab21326ab3c9b85` 仅追加 `discovery_appconfig`。配方字节、训练/推理镜像、资源、Endpoint 均与正在运行版本一致。任务定义和 ready 生产者必须同步切到这一 binding：ready 的持久化 envelope 显式携带 binding URI，不能仅依赖新任务环境。
+
+ready ZIP 从当前线上已校验 CodeSha256 的原包派生，仅替换 `recommend_tf/platforms/sagemaker/ready_release.json`；其余条目逐字节相等。新 ZIP SHA256 `c210f8ac69108971eb1e1411055acf41fdc3911d9614a6ca527500ce2b84c4fb`。通过原 dkd Lambda 目标激活，不改 handler、环境和规则。
+
 `test_discovery_appconfig.py` 覆盖连续三天更新、定义先于路由、旧列表混读、bootstrap 保留、合同差异拒绝、发布重试和无操作；通过原 daily advance 路径验证只更新原 endpoint，合成探测成功之前不写配置。
 
 `test_idea_publication.py`、`test_idea_appconfig.py` 保证已有发布的 CAS 与重试语义；`test_official_pipeline.py` 及 daily recovery/publication 保证未配置 hook 的流程。

@@ -6,3 +6,5 @@
 首次接管前先部署发布平台与受信 binding，再执行计划。仅代码发布，不修改环境或上游规则。
 
 打包参数必须指定同一 release 的 `--release release.json --config daily-config.json --output ready.zip`。配方原始字节与摘要进入 ZIP；发布后的窗口不再读取 IaC 的旧训练天数。先完成兼容 pipeline 与启动参数切换，再发布本单元。
+
+Discovery 日更发布接线更新时，ready ZIP 内的 release binding 也必须同步更新。持久化 ready envelope 会显式携带 binding URI/SHA，任务环境中的默认值不会覆盖它。2026-11-18 的上线包沿用已上线 ZIP，仅替换 release JSON；配置及 Python 程序保持原字节。
