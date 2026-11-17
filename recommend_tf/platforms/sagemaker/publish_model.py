@@ -135,6 +135,8 @@ class ReleaseState:
             self.value["online"] = {
                 key: result[key] for key in ("model_version", "endpoint_config", "cutoff")
             }
+            if "endpoint_name" in result:
+                self.value["online"]["endpoint_name"] = result["endpoint_name"]
         if result["stage"] == "rolled_back" and result.get("rollback_target"):
             self.value["online"] = result["rollback_target"]
         result = dict(result)
@@ -246,7 +248,9 @@ def ensure_resource(client, kind, request):
                 raise ValueError("existing SageMaker resource has different settings: " + key)
 
 
-def deploy_step(client, runtime, state, binding, *, probe):
+def deploy_step(
+    client, runtime, state, binding, *, probe, create_only=False, completion_stage="deployed"
+):
     """One deployment tick. Caller holds an exclusive executor for this release state."""
     active = state.value["active"]
     endpoint = binding["endpoint_name"]
@@ -291,6 +295,10 @@ def deploy_step(client, runtime, state, binding, *, probe):
         ],
     }
     if active["stage"] == "uploaded":
+        if create_only:
+            current = describe(client, "describe_endpoint", EndpointName=endpoint)
+            if current and current["EndpointConfigName"] != name:
+                raise ValueError("version endpoint exists with a different immutable configuration")
         ensure_resource(client, "model", model)
         ensure_resource(client, "endpoint_config", endpoint_config)
         current = describe(client, "describe_endpoint", EndpointName=endpoint)
@@ -318,19 +326,25 @@ def deploy_step(client, runtime, state, binding, *, probe):
                 probe(runtime, endpoint, active["model_version"])
             except Exception as error:
                 active.update(
-                    stage="rollback_pending" if active["previous_config"] else "deployment_failed",
+                    stage="rollback_pending"
+                    if active["previous_config"] and not create_only
+                    else "deployment_failed",
                     probe_error=type(error).__name__,
                 )
                 state.save()
                 return (
                     rollback_step(client, state, binding)
-                    if active["previous_config"]
+                    if active["previous_config"] and not create_only
                     else "deployment_failed"
                 )
-            active["stage"] = "deployed"
+            active["stage"] = completion_stage
             state.save()
-            return "deployed"
-        if status in {"Failed", "UpdateRollbackFailed"} and active["previous_config"]:
+            return completion_stage
+        if (
+            status in {"Failed", "UpdateRollbackFailed"}
+            and active["previous_config"]
+            and not create_only
+        ):
             active["stage"] = "rollback_pending"
             state.save()
             return rollback_step(client, state, binding)
@@ -375,6 +389,8 @@ def deploy_step(client, runtime, state, binding, *, probe):
         active["attempted"] = True
         state.save()
         try:
+            if current and create_only:
+                raise ValueError("immutable version endpoint cannot be updated")
             if current:
                 client.update_endpoint(**kwargs)
             else:
