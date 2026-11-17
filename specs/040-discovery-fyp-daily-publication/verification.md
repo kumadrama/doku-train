@@ -27,6 +27,8 @@ ready ZIP 从当前线上已校验 CodeSha256 的原包派生，仅替换 `recom
 
 线上初次发布发现 COMPLETE 后 Data 端短暂返回旧内容，已在 PR #61 增加保持同一发布 pending 的保护，34 项定向回归及完整仓库 CI 通过。人工初次引导沿用原 publisher 的持久化 journal，未重复创建部署；最终两个 AI 副本均热切到 `discovery-ea4d23f6e1622690-1caf106ee557`，预热耗时 61/84ms，无 reload 拒绝。实验 SHA 保持 `2155326f…`；12 条真实投递/180 个商品的新模型身份、冻结特征、KMS、Discovery 命名空间和 FYP parser 零接受均通过。该证据为当前日更版本采纳，不等于后续自然日更已完成。
 
+ready 制品上传须声明 `ChecksumAlgorithm=SHA256` 和完整对象 `ChecksumSHA256`。首次 plan 因对象仅有默认 CRC32 校验头而被拒绝，未执行 Lambda apply。已为同一 SHA256/相同 ZIP 字节生成带 FULL_OBJECT SHA256 的新不可变版本，并用 HeadObject 回读校验；发布声明仅更正对象版本。
+
 `test_discovery_appconfig.py` 覆盖连续三天更新、定义先于路由、旧列表混读、bootstrap 保留、合同差异拒绝、发布重试和无操作；通过原 daily advance 路径验证只更新原 endpoint，合成探测成功之前不写配置。
 
 `test_idea_publication.py`、`test_idea_appconfig.py` 保证已有发布的 CAS 与重试语义；`test_official_pipeline.py` 及 daily recovery/publication 保证未配置 hook 的流程。
