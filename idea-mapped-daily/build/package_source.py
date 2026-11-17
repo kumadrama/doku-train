@@ -13,7 +13,11 @@ from pathlib import Path
 def source_archive(root):
     root = Path(root)
     members = {}
-    for path in sorted((root / "recommend_tf").rglob("*")):
+    source = root / "recommend_tf"
+    paths = [source / "__init__.py"]
+    for directory in ("train", "platforms", "inference"):
+        paths.extend((source / directory).rglob("*"))
+    for path in sorted(paths):
         relative = path.relative_to(root)
         if not path.is_file() or "tests" in relative.parts or "__pycache__" in relative.parts:
             continue

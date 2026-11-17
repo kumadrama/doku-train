@@ -43,5 +43,9 @@ class WorkerManifestTests(unittest.TestCase):
             tests.parent.mkdir(parents=True)
             tests.write_text("test = True\n")
             self.assertEqual(before, PACKAGE.source_archive(root)[0])
+            dependency = root / "recommend_tf/.venv/lib/python3.10/site-packages/example.py"
+            dependency.parent.mkdir(parents=True)
+            dependency.write_text("third_party = True\n")
+            self.assertEqual(before, PACKAGE.source_archive(root)[0])
             source.write_text("value = 2\n")
             self.assertNotEqual(before, PACKAGE.source_archive(root)[0])
