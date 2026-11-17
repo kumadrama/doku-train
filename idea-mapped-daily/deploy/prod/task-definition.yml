@@ -32,7 +32,7 @@
       "environment": [
         {
           "name": "ARTIFACT_KEY",
-          "value": "ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/779974c7b00818f9612d3d8f6e8ca38acedf40530723b434e6b35abf7a29fabe/worker.tar.gz"
+          "value": "ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/f8eeb8392a03795cc5e62e2dc89930934a9a2a76c511ca18c46e2346fd1f7d50/worker.tar.gz"
         },
         {
           "name": "DOKU_CONFIG_SHA256",
@@ -56,7 +56,7 @@
         },
         {
           "name": "ARTIFACT_SHA",
-          "value": "779974c7b00818f9612d3d8f6e8ca38acedf40530723b434e6b35abf7a29fabe"
+          "value": "f8eeb8392a03795cc5e62e2dc89930934a9a2a76c511ca18c46e2346fd1f7d50"
         }
       ],
       "mountPoints": [],
