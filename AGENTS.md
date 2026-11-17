@@ -68,6 +68,7 @@ doku-train/
 
 ### 当前文档索引
 
+- 本文件中的协作约束包括[配置驱动与模型代码组织](#配置驱动与模型代码组织)和[模型标准上线流程](#模型标准上线流程)。
 - [Spec 039：Idea 日更在线发布联动](specs/039-idea-online-model-release/requirements.md)、[设计](specs/039-idea-online-model-release/design.md)、[任务](specs/039-idea-online-model-release/tasks.md)、[验证](specs/039-idea-online-model-release/verification.md)。2026-11-17 用户明确授权实施及对应 Idea 角色权限，生产变更仍按可审查计划发布；FYP 不变。
 
 - [Spec 038：TF 日更标准部署](specs/038-tf-daily-deployment/requirements.md)、[设计](specs/038-tf-daily-deployment/design.md)、[任务](specs/038-tf-daily-deployment/tasks.md)、[验证](specs/038-tf-daily-deployment/verification.md)。生产启用后 Idea 从新日更开始上报。
@@ -197,6 +198,14 @@ recommend/train/
 └── train_rerank.py             # 三模型统一精排训练用例
 ```
 
+### 配置驱动与模型代码组织
+
+- 新增训练功能时，先在对应训练栈的配置 schema 中声明配置项及允许值，再实现由该配置驱动的行为。
+  仅纯基础能力（例如不改变训练行为的读写封装）可省略 schema 变更。
+- 需要通过实验验证的选择，尤其是模型结构及其变体，必须能通过实验 YAML 切换，使不同方案可以使用同一份代码进行对比。
+- 各训练栈的 `models/` 承载模型专属实现。新增模型类型时在其下创建独立目录；扩展已有模型时复用原目录和实现。
+  跨模型共用的训练能力放在同一训练栈的 `comm/`。
+
 依赖规则：
 
 - `comm` 不反向依赖任何具体模型；`comm/datasvr` 是历史对应名，不得实现常驻数据服务；
@@ -277,6 +286,14 @@ recommend/train/
 - 未经用户在当前请求中明确授权，不得启动云训练任务、上传模型、修改 S3/调度/IAM、发布模型
   或触碰 PROD。
 - 不使用 shell 字符串拼接执行训练步骤；外部命令使用参数数组并检查退出码。
+
+## 模型标准上线流程
+
+- 上线前按标准流程明确四项配置：所属任务组（TF 日更部署中称为 ECS 任务族）、上线模型名、
+  需要导出的任务（task）列表，以及用于选择导出 checkpoint 的 epoch 策略。
+- 如果模型服务于与现有任务组完全不同的业务场景，Agent 必须主动询问用户是否需要新增任务组。
+- 提议或决定新增任务组时，Agent 必须明确告知用户：现有任务组的线上失败报警和 AUC 监控不能直接复用，
+  新组需要单独接入报警和 AUC 看板。TF 日更的任务族登记与监控接入见 [Spec 038](specs/038-tf-daily-deployment/design.md)。
 
 ## 验证与交付
 
