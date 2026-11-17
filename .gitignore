@@ -30,3 +30,5 @@ credentials*
 *.xgb.zip
 
 /output/
+
+/idea-mapped-daily/build/output/
