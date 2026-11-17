@@ -2,6 +2,8 @@
 
 `daily_pipeline` 导出并冻结已有 canonical artifact，沿用既有 endpoint 更新和精确模型合成探测。可选 `DiscoveryPublication` 共用 Idea 已验证的 AppConfig CAS publisher 和持久化文档 journal；定义先发布，路由后发布，均完成后才推进原有 high_water。未配置 hook 的任务行为保持不变。
 
+生产初次发布确认 AppConfig `COMPLETE` 可能早于 Data 读取端采纳。完成后若仍读到本次冻结的旧内容，且环境最新部署编号仍是本次部署，则返回 pending，沿用原轮询等待；不新建版本或再次部署。第三种内容或外部部署出现时继续报错，保留 CAS 和漂移保护。
+
 资源标识来自 IaC 的 `discovery_online_release_binding`，通过已有 `prepare_tf_daily_deployment.py --online-release-outputs` 合并为不可变 binding。只授现有 FYP worker 对 Discovery 两个 profile 的读、建版本、部署权限；不授在线 AI 额外 S3 权限。
 
 新模型的 feature-config 字节和去版本后的 signature 必须与当前合同相同。生成独立 release 身份并嵌入 manifest、signature、feature-config、feature-state，保留 DAG、warmup、scenes、require_dump 与原预算。定义文档保留旧路由所引用的定义，覆盖两份配置混读窗口；同版本发布无操作。

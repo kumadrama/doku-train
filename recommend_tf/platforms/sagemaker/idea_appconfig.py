@@ -350,7 +350,12 @@ class Publisher:
             return False
         if companion:
             companion()
-        if self.read(profile) != after:
+        observed = self.read(profile)
+        if observed != after:
+            # COMPLETE can precede propagation to AppConfig Data. Only the
+            # known prior content under our unchanged deployment is pending.
+            if observed == before and self.environment_head() == record["deployment"]:
+                return False
             raise ValueError("completed model configuration differs on readback")
         if not record.get("complete"):
             record["complete"] = True

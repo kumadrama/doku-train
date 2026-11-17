@@ -158,6 +158,36 @@ RESOURCES = {
 
 
 class PublisherTests(unittest.TestCase):
+    def test_complete_waits_for_data_propagation_without_republishing(self):
+        api, publisher, state = self.setup()
+        read = api.get_latest_configuration
+        lag = [2]
+
+        def stale_data(**kwargs):
+            if api.starts and lag[0]:
+                lag[0] -= 1
+                return {"Configuration": io.BytesIO(b"before")}
+            return read(**kwargs)
+
+        api.get_latest_configuration = stale_data
+        self.assertFalse(publisher.step(state, "route", "list", b"before", b"after"))
+        self.assertFalse(publisher.step(state, "route", "list", b"before", b"after"))
+        self.assertTrue(publisher.step(state, "route", "list", b"before", b"after"))
+        self.assertEqual(api.starts, 1)
+        self.assertEqual(len(api.versions["list"]), 2)
+
+    def test_prior_content_after_an_external_deployment_still_fails_closed(self):
+        api, publisher, state = self.setup()
+        read = api.get_latest_configuration
+        api.get_latest_configuration = lambda **kwargs: (
+            {"Configuration": io.BytesIO(b"before")} if api.starts else read(**kwargs)
+        )
+        self.assertFalse(publisher.step(state, "route", "list", b"before", b"after"))
+        api.deployments.append({"DeploymentNumber": 12, "State": "COMPLETE"})
+        with self.assertRaisesRegex(ValueError, "differs on readback"):
+            publisher.step(state, "route", "list", b"before", b"after")
+        self.assertEqual(api.starts, 1)
+
     def setup(self):
         api = AppConfig({"list": b"before"})
         publisher = Publisher(api, api, RESOURCES)
