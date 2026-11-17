@@ -166,6 +166,41 @@ def test_family_enrollment_keeps_legacy_operation_and_recipe(tmp_path):
     frozen = args.output / "daily-config.json"
     assert frozen.read_bytes() == args.config.read_bytes()
     assert recipe_sha256(json.loads(frozen.read_bytes())) == recipe_sha256(config)
+
+    # Adding online publication freezes only resource wiring; it keeps the
+    # training recipe, existing task family and endpoint binding intact.
+    resources = dict(
+        application_id="app",
+        environment_id="env",
+        deployment_strategy_id="strategy",
+        model_list_profile="list",
+        models_config_profile="models",
+    )
+    online = {
+        "discovery_online_release_binding": {
+            "value": {
+                "environment": "prod",
+                "region": "region",
+                "discovery_appconfig": resources,
+            }
+        }
+    }
+    args.online_release_outputs = tmp_path / "online.json"
+    args.online_release_outputs.write_text(json.dumps(online))
+    args.output = tmp_path / "with-discovery"
+    prepare_daily(args)
+    discovery_bound = json.loads((args.output / "binding.json").read_bytes())
+    assert discovery_bound.pop("discovery_appconfig") == resources
+    assert discovery_bound == bound
+    assert (args.output / "daily-config.json").read_bytes() == frozen.read_bytes()
+    assert json.loads((args.output / "task-definition.yml").read_bytes())["family"] == "family"
+    online["discovery_online_release_binding"]["value"]["environment"] = "dte"
+    args.online_release_outputs.write_text(json.dumps(online))
+    args.output = tmp_path / "wrong-environment"
+    with pytest.raises(ValueError, match="differs"):
+        prepare_daily(args)
+    assert not args.output.exists()
+    args.online_release_outputs = None
     task["taskRoleArn"] = "another-role"
     args.task_definition.write_text(json.dumps(task))
     with pytest.raises(ValueError, match="role"):

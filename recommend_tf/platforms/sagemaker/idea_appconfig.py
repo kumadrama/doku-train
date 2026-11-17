@@ -155,8 +155,9 @@ class DeploymentRolledBack(ValueError):
 class Publisher:
     """One profile tick with durable intent, CAS and response reconciliation."""
 
-    def __init__(self, control, data, binding):
+    def __init__(self, control, data, binding, *, label_prefix="idea"):
         self.control, self.data, self.binding = control, data, binding
+        self.label_prefix = label_prefix
         metadata = getattr(control, "meta", None)
         if (
             metadata is not None
@@ -175,7 +176,7 @@ class Publisher:
         with response["Configuration"] as stream:
             raw = stream.read(MAX_DOCUMENT_BYTES + 1)
         if not 0 < len(raw) < MAX_DOCUMENT_BYTES:
-            raise ValueError("Idea configuration outside consumer document limit")
+            raise ValueError("model configuration outside consumer document limit")
         return raw
 
     def versions(self, profile, label=None):
@@ -208,7 +209,9 @@ class Publisher:
         )
         items = response["Items"]
         if not items:
-            raise ValueError("Idea requires an existing AppConfig environment deployment")
+            raise ValueError(
+                "model publication requires an existing AppConfig environment deployment"
+            )
         return max(item["DeploymentNumber"] for item in items)
 
     def _deployments(self, label):
@@ -235,7 +238,11 @@ class Publisher:
         active = state.value["active"]
         publications = active["online"].setdefault("publications", {})
         label = (
-            "idea-" + sha256((active["operation"] + slot).encode())[:20] + "-" + sha256(after)[:12]
+            self.label_prefix
+            + "-"
+            + sha256((active["operation"] + slot).encode())[:20]
+            + "-"
+            + sha256(after)[:12]
         )
         record = publications.get(slot)
         if record is None:
@@ -243,10 +250,10 @@ class Publisher:
             if companion:
                 companion()
             if self.read(profile) != before or self.environment_head() != head:
-                raise ValueError("Idea configuration changed outside this release")
+                raise ValueError("model configuration changed outside this release")
             versions = self.versions(profile)
             if not versions:
-                raise ValueError("existing Idea hosted profile required")
+                raise ValueError("existing model hosted profile required")
             record = {
                 "profile": profile,
                 "label": label,
@@ -289,7 +296,9 @@ class Publisher:
                     Content=after,
                     ContentType="application/json",
                     VersionLabel=label,
-                    Description="Idea immutable model publication " + active["operation"],
+                    Description=self.label_prefix
+                    + " immutable model publication "
+                    + active["operation"],
                 )
                 record["version"] = response["VersionNumber"]
             state.save()
@@ -321,7 +330,7 @@ class Publisher:
                     ConfigurationVersion=str(record["version"]),
                     DeploymentStrategyId=self.binding["deployment_strategy_id"],
                     LatestDeploymentNumber=record["environment_head"],
-                    Description="Idea immutable model publication " + label,
+                    Description=self.label_prefix + " immutable model publication " + label,
                 )
                 record["deployment"] = response["DeploymentNumber"]
                 state.save()
@@ -336,13 +345,13 @@ class Publisher:
             raise ValueError("deployment identity differs from recorded intent")
         status = response["State"]
         if status in {"ROLLED_BACK", "REVERTED"}:
-            raise DeploymentRolledBack("Idea configuration deployment rolled back")
+            raise DeploymentRolledBack("model configuration deployment rolled back")
         if status != "COMPLETE":
             return False
         if companion:
             companion()
         if self.read(profile) != after:
-            raise ValueError("completed Idea configuration differs on readback")
+            raise ValueError("completed model configuration differs on readback")
         if not record.get("complete"):
             record["complete"] = True
             record["completed_at_ms"] = time.time_ns() // 1_000_000

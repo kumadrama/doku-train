@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 040：Discovery 复用 FYP 日更与加载](specs/040-discovery-fyp-daily-publication/requirements.md)、[设计](specs/040-discovery-fyp-daily-publication/design.md)、[任务](specs/040-discovery-fyp-daily-publication/tasks.md)、[验证](specs/040-discovery-fyp-daily-publication/verification.md)。沿用现有 FYP 日更任务和 AI AppConfig 加载器；尚未生产启用。
+
 - 本文件中的协作约束包括[配置驱动与模型代码组织](#配置驱动与模型代码组织)和[模型标准上线流程](#模型标准上线流程)。
 - [Spec 039：Idea 日更在线发布联动](specs/039-idea-online-model-release/requirements.md)、[设计](specs/039-idea-online-model-release/design.md)、[任务](specs/039-idea-online-model-release/tasks.md)、[验证](specs/039-idea-online-model-release/verification.md)。2026-11-17 用户明确授权实施及对应 Idea 角色权限，生产变更仍按可审查计划发布；FYP 不变。
 

@@ -70,6 +70,35 @@ def prepare_daily(args):
         "value"
     ]
     binding = bind_daily(config, binding, task, registration)
+    if getattr(args, "online_release_outputs", None):
+        output = json.loads(Path(args.online_release_outputs).read_bytes())[
+            "discovery_online_release_binding"
+        ]["value"]
+        if (output["environment"], output["region"]) != (
+            binding["environment"],
+            binding["region"],
+        ) or "idea_appconfig" in binding:
+            raise ValueError("Discovery publication binding differs from this daily worker")
+        resources = output["discovery_appconfig"]
+        required = {
+            "application_id",
+            "environment_id",
+            "deployment_strategy_id",
+            "model_list_profile",
+            "models_config_profile",
+        }
+        if (
+            set(resources) != required
+            or not all(
+                isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value)
+                for value in resources.values()
+            )
+            or resources["model_list_profile"] == resources["models_config_profile"]
+        ):
+            raise ValueError("invalid Discovery publication resources")
+        if "discovery_appconfig" in binding and binding["discovery_appconfig"] != resources:
+            raise ValueError("Discovery publication resources already differ")
+        binding["discovery_appconfig"] = resources
     prefix = args.config_prefix.rstrip("/")
     if not prefix.startswith("s3://") or not prefix[5:].strip("/"):
         raise ValueError("configuration S3 prefix required")
@@ -112,4 +141,5 @@ if __name__ == "__main__":
         "output",
     ):
         parser.add_argument("--" + field, required=True)
+    parser.add_argument("--online-release-outputs", help="applied IaC Discovery publisher output")
     print(json.dumps(prepare_daily(parser.parse_args()), indent=2))
