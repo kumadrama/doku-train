@@ -226,7 +226,7 @@ def release_event(state_uri, record, binding):
         "endpoint_config": target.get("endpoint_config"),
         "deployment": {
             "region": binding["region"],
-            "endpoint_name": binding["deployment"]["endpoint_name"],
+            "endpoint_name": target.get("endpoint_name", binding["deployment"]["endpoint_name"]),
         },
     }
     if status != "failed" and not event["model_version"]:

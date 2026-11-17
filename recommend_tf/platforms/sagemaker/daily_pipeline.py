@@ -174,6 +174,7 @@ def step(
     bootstrap_run=None,
     bootstrap_evidence=None,
     policy=None,
+    idea_publication=None,
 ):
     active = state.value["active"]
     stage = active["stage"]
@@ -204,6 +205,7 @@ def step(
         config=config,
         evidence=bootstrap_evidence,
         policy=policy,
+        idea_publication=idea_publication,
         selection_options=validate_early_stop(config) if binding.get("verify_selection") else None,
     )
 
@@ -221,6 +223,7 @@ def advance_release(
     policy=None,
     broadcast_feat=None,
     selection_options=None,
+    idea_publication=None,
 ):
     active = state.value["active"]
     if active["stage"] == "training":
@@ -336,16 +339,27 @@ def advance_release(
             binding["kms_key"],
             inference_protocol=official.protocol(binding["deployment"]),
         )
+        if idea_publication:
+            idea_publication.prepare(state, output, work)
         active.update(stage="uploaded", model_version=manifest["model_version"])
         state.save()
+    if idea_publication and active["stage"] in {"idea_endpoint_ready", "deployed"}:
+        return idea_publication.publish(state)
     if active["stage"] in {"uploaded", "deploying"}:
         if active["stage"] == "uploaded" and policy and not policy.allowed("publication"):
             return "deferred_publication"
-        return deploy_step(
+        deployment = binding["deployment"]
+        if idea_publication:
+            from .idea_publication import deployment_for
+
+            deployment = deployment_for(binding, active["model_version"])
+        result = deploy_step(
             sm,
             runtime,
             state,
-            binding["deployment"],
+            deployment,
+            create_only=bool(idea_publication),
+            completion_stage="idea_endpoint_ready" if idea_publication else "deployed",
             probe=lambda client, endpoint, version: verify_probe(
                 client,
                 endpoint,
@@ -354,6 +368,7 @@ def advance_release(
                 inference_protocol=official.protocol(binding["deployment"]),
             ),
         )
+        return "pending" if result == "idea_endpoint_ready" else result
     if active["stage"] == "rollback_pending":
         return rollback_step(sm, state, binding["deployment"])
     return active["stage"]
@@ -526,6 +541,15 @@ def execute(args):
                 ),
                 binding["runtime_policy"],
             )
+        idea_publication = None
+        if "idea_appconfig" in binding:
+            from .idea_publication import IdeaPublication
+
+            if args.rollback_version:
+                raise ValueError(
+                    "Idea version endpoint rollback restores its AppConfig route; do not replace an endpoint"
+                )
+            idea_publication = IdeaPublication.from_session(session, s3, binding)
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
         if ready is None and binding.get("data_source", {}).get("freeze") != "idea_mapped":
             raise ValueError("this source requires a pinned ready envelope")
@@ -628,6 +652,7 @@ def execute(args):
                     bootstrap_run=args.bootstrap_run,
                     bootstrap_evidence=evidence,
                     policy=policy,
+                    idea_publication=idea_publication,
                 )
             if outcome.startswith("deferred_"):
                 # A graceful pause owns no in-flight AWS operation. Release only this
