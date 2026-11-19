@@ -34,3 +34,9 @@ ready 制品上传须声明 `ChecksumAlgorithm=SHA256` 和完整对象 `Checksum
 `test_idea_publication.py`、`test_idea_appconfig.py` 保证已有发布的 CAS 与重试语义；`test_official_pipeline.py` 及 daily recovery/publication 保证未配置 hook 的流程。
 
 上线检查：模型 defs/list 发布完成后，各副本已有 `ai_engine.model_warmed`；实际 Discovery RPC alias 返回新的完整 release/version；同请求多批次身份一致，样本只写 Discovery 前缀。记录端点更新窗口的降级和 RT；实验保持 10%。当前仅代码与本地回放验证，不以测试替代线上采纳验收。
+
+## 2026-11-19 FYP 日更接线
+
+DTE `fyp-daily` 使用 18 条独立可播候选。AI Engine 同时加载 `84eb07ca` 和 `b710e4b2`，旧版、切换、回退各取 10 个 HTTP FYP 页面，以请求 ID 对齐调用日志和 AI Engine 真实打分版本。三轮服务器页面 RT P95 分别为 560、337、444 ms。每次 11 条候选完成打分，其余候选出现缺特征或剧集与剧目关联不一致。恢复 DTE 配置和泳道镜像后，回读确认测试候选、临时端点及专用调用策略已清理。
+
+生产日更接线沿用现有 recipe、训练及预估制品和 EventBridge 任务。发布声明将主分支 `7ef89d5` 的新发布器镜像与仅追加 `fyp_appconfig` 的绑定钉死。Ready ZIP 仅更新同一发布声明。验收时读取实际 task definition、Ready Lambda CodeSha256 和持久化 envelope 参数，核对相同的配置及绑定 SHA，再按旧版和回退 alias 已就绪、全量副本已加载、真实打分版本和 RT 的顺序验证生产切换。
