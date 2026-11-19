@@ -30,4 +30,6 @@ Source: 2026-11-19 用户要求将已完成的美国/空国家实验上线，加
 - ready Lambda 代码 SHA256 与打包制品一致；模型 worker rule、既有 upstream success 和 recovery 规则均 ENABLED，目标指向独立 ready Lambda 和任务定义 revision 20。
 - 训练配方的 30/1 天窗口由 ready release 中的不可变配置解析；日更指标归属 `doku-prod-tf-rerank-daily`，保留六个 `auc_us` 和时长 `mse_us`。
 
+- 首轮日更已通过新模型 EventBridge rule 启动，cutoff `2026-11-18`，训练日期 `2026-10-19` 至 `2026-11-17`，验证日期 `2026-11-18`。SageMaker job `doku-daily-9472383918b6e0f358a26101eae7e103752a78be` 实测为 `InProgress / Training`，其 `DOKU_MONITORING_CONTEXT` 确认模型名和 FYP 任务族一致。此次验收仅确认启动，不声明这轮训练已经完成。
+
 实际生产回执及执行脚本保留在本地 `runs/fyp-us-release-20261119`，包括 `live-verification.json`、`release-state.json`、`applied-outputs.json` 和 `post-apply-plan.log`；不提交权重、实验配置或运行数据。
