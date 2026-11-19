@@ -71,15 +71,7 @@ def prepare_daily(args):
     ]
     binding = bind_daily(config, binding, task, registration)
     if getattr(args, "online_release_outputs", None):
-        output = json.loads(Path(args.online_release_outputs).read_bytes())[
-            "discovery_online_release_binding"
-        ]["value"]
-        if (output["environment"], output["region"]) != (
-            binding["environment"],
-            binding["region"],
-        ) or "idea_appconfig" in binding:
-            raise ValueError("Discovery publication binding differs from this daily worker")
-        resources = output["discovery_appconfig"]
+        outputs = json.loads(Path(args.online_release_outputs).read_bytes())
         required = {
             "application_id",
             "environment_id",
@@ -87,18 +79,32 @@ def prepare_daily(args):
             "model_list_profile",
             "models_config_profile",
         }
-        if (
-            set(resources) != required
-            or not all(
-                isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value)
-                for value in resources.values()
-            )
-            or resources["model_list_profile"] == resources["models_config_profile"]
-        ):
-            raise ValueError("invalid Discovery publication resources")
-        if "discovery_appconfig" in binding and binding["discovery_appconfig"] != resources:
-            raise ValueError("Discovery publication resources already differ")
-        binding["discovery_appconfig"] = resources
+        for consumer in ("discovery", "fyp"):
+            output_key = consumer + "_online_release_binding"
+            if consumer == "fyp" and output_key not in outputs:
+                continue
+            output = outputs[output_key]["value"]
+            if (output["environment"], output["region"]) != (
+                binding["environment"],
+                binding["region"],
+            ) or "idea_appconfig" in binding:
+                raise ValueError(
+                    f"{consumer.title()} publication binding differs from this daily worker"
+                )
+            binding_key = consumer + "_appconfig"
+            resources = output[binding_key]
+            if (
+                set(resources) != required
+                or not all(
+                    isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value)
+                    for value in resources.values()
+                )
+                or resources["model_list_profile"] == resources["models_config_profile"]
+            ):
+                raise ValueError(f"invalid {consumer.title()} publication resources")
+            if binding_key in binding and binding[binding_key] != resources:
+                raise ValueError(f"{consumer.title()} publication resources already differ")
+            binding[binding_key] = resources
     prefix = args.config_prefix.rstrip("/")
     if not prefix.startswith("s3://") or not prefix[5:].strip("/"):
         raise ValueError("configuration S3 prefix required")

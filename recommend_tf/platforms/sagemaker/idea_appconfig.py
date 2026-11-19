@@ -234,9 +234,9 @@ class Publisher:
             request["NextToken"] = response["NextToken"]
         raise ValueError("deployment reconciliation exceeds bounded metadata scan")
 
-    def step(self, state, slot, profile, before, after, *, companion=None):
+    def step(self, state, slot, profile, before, after, *, companion=None, journal_key="online"):
         active = state.value["active"]
-        publications = active["online"].setdefault("publications", {})
+        publications = active[journal_key].setdefault("publications", {})
         label = (
             self.label_prefix
             + "-"
@@ -283,7 +283,7 @@ class Publisher:
                 if companion:
                     companion()
                 if self.read(profile) != before:
-                    raise ValueError("Idea profile changed before hosting")
+                    raise ValueError("model profile changed before hosting")
                 latest = max(v["VersionNumber"] for v in self.versions(profile))
                 if latest != record["latest_version"]:
                     raise ValueError("another hosted version appeared during publication")
@@ -311,7 +311,7 @@ class Publisher:
                 if companion:
                     companion()
                 if self.read(profile) != before:
-                    raise ValueError("Idea profile changed before deployment")
+                    raise ValueError("model profile changed before deployment")
                 latest = max(v["VersionNumber"] for v in self.versions(profile))
                 if latest != record["version"]:
                     raise ValueError("concurrent hosted configuration appeared")

@@ -13,3 +13,11 @@
 回滚时先恢复 bootstrap 的独立 endpoint 路由，再回滚 worker binding / 引擎。若回滚共享日更 endpoint，必须协调恢复对应 AppConfig 版本；不能仅回退某一份配置。
 
 现有 AI 镜像已支持该加载器，不需要为本功能增加加载代码或重发 FYP/Idea AI 服务。共享 Python runtime 的变化要求重新生成 Idea bootstrap source pin，此项为构建一致性，不表示部署 Idea。
+
+## FYP 与 Discovery 联合发布
+
+生产 worker 可增加 `fyp_appconfig`。在首次启用时，发布器保留现有独立端点作为 FYP 回退，并将已验证的新制品定义加入 FYP 模型配置。旧调用端仍可按原 release ID 请求。升级后的调用端可使用模型别名，在推理完成后校验服务、模型和特征合同，并记录实际版本。
+
+后续日更开始时冻结两套 AppConfig 文档。若 FYP 当前路由使用即将更新的官方端点，先通过 AppConfig 切换 FYP 别名到独立回退端点。发布器等待当前 ECS 任务都记录该路由的激活事件，再更新官方端点。合成探测成功后依次发布 Discovery 和 FYP。状态保存各自的 AppConfig 版本和部署编号，重跑时从已记录的阶段恢复。
+
+FYP 的 `training_dump`、特征链和请求预算来自 FYP 配置。新模型必须维持已有特征合同与推理签名。回退在 FYP 模型列表内切换别名，旧版端点持续可用。

@@ -17,7 +17,7 @@ from recommend_tf.inference.tests.test_idea_publication import (
     artifact,
 )
 from recommend_tf.inference.tests.test_official_pipeline import binding
-from recommend_tf.platforms.sagemaker import daily_pipeline
+from recommend_tf.platforms.sagemaker import daily_pipeline, fyp_appconfig
 from recommend_tf.platforms.sagemaker.discovery_appconfig import (
     ALIAS,
     BOOTSTRAP_ALIAS,
@@ -118,6 +118,86 @@ class DiscoveryPublicationTest(unittest.TestCase):
             save=Mock(),
         )
         return model, state
+
+    def test_joint_fyp_publication_waits_for_all_replicas_before_shared_endpoint_rotation(self):
+        route = yaml.safe_load(self.api.live["list"])
+        route["schema_version"] = fyp_appconfig.LIST_SCHEMA
+        route["models"][0].update(
+            model_name=MODEL, service_name=fyp_appconfig.SERVICE, config_name="models-config-dte"
+        )
+        definitions = yaml.safe_load(self.api.live["models"])
+        definitions["models"][ALIAS]["release"].update(
+            service=fyp_appconfig.SERVICE, scenes=["for_you"]
+        )
+        definitions["training_dump"] = {"delivery_stream": "fyp-only"}
+        resources = {
+            **RESOURCES,
+            "model_list_profile": "fyp-list",
+            "models_config_profile": "fyp-models",
+        }
+        api = AppConfig(
+            {
+                **self.api.live,
+                "fyp-list": yaml.safe_dump(route).encode(),
+                "fyp-models": yaml.safe_dump(definitions).encode(),
+            }
+        )
+        s3 = MemoryS3()
+        options = {**self.options, "fyp_appconfig": resources}
+        both = fyp_appconfig.FypAndDiscoveryPublication(
+            s3,
+            Publisher(api, api, RESOURCES, label_prefix="discovery"),
+            options,
+        )
+        both.fyp = fyp_appconfig.FypPublication(
+            s3,
+            Publisher(api, api, resources, label_prefix="fyp"),
+            options,
+            ecs=Mock(),
+            logs=Mock(),
+        )
+        model, state = self.candidate("b")
+        both.prepare(state, model, self.root)
+        self.assertTrue(both.before_endpoint(state))
+        state.value["active"]["stage"] = both.endpoint_ready_stage
+        self.assertEqual(both.publish(state), "deployed")
+        self.assertEqual(both.publish(state), "deployed")
+        self.assertEqual(api.starts, 4)
+        fyp_routes = json.loads(api.live["fyp-list"])["models"]
+        fyp_models = json.loads(api.live["fyp-models"])
+        self.assertEqual(fyp_models["training_dump"], definitions["training_dump"])
+        self.assertEqual(
+            fyp_models["models"][fyp_routes[0]["model_key"]]["release"]["model_version"], "b" * 64
+        )
+        self.assertEqual(fyp_routes[1]["model_name"], fyp_appconfig.ROLLBACK)
+        self.assertEqual(
+            fyp_models["models"][fyp_routes[1]["model_key"]]["release"]["id"], "bootstrap-release"
+        )
+        self.assertEqual(yaml.safe_load(api.live["models"])["inference_dump"], {"enabled": False})
+
+        model, state = self.candidate("c")
+        both.prepare(state, model, self.root)
+        both.fyp.rollback_loaded = Mock(side_effect=[False, True])
+        sm, runtime = Mock(), Mock()
+        args = (s3, sm, runtime, state, options)
+        kwargs = {"work": self.root, "config": {}, "model_publication": both}
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
+        sm.describe_endpoint.assert_not_called()
+        rollback_routes = json.loads(api.live["fyp-list"])["models"]
+        self.assertEqual(rollback_routes[0]["model_key"], rollback_routes[1]["model_key"])
+        self.assertTrue(both.before_endpoint(state))
+        self.assertEqual(api.starts, 5)
+        state.value["active"]["stage"] = both.endpoint_ready_stage
+        self.assertEqual(both.publish(state), "deployed")
+        self.assertEqual(api.starts, 9)
+        next_routes = json.loads(api.live["fyp-list"])["models"]
+        next_models = json.loads(api.live["fyp-models"])["models"]
+        self.assertEqual(
+            next_models[next_routes[0]["model_key"]]["release"]["model_version"], "c" * 64
+        )
+        self.assertEqual(
+            next_models[next_routes[1]["model_key"]]["release"]["model_version"], "a" * 64
+        )
 
     def test_three_daily_models_publish_definitions_then_routes_to_existing_endpoint(self):
         for digit in ("b", "c", "d"):
