@@ -383,20 +383,58 @@ def advance_release(
     return active["stage"]
 
 
-def acquire_executor(state, ecs, cluster, task_arn):
+def stopped_executor_event(logs, binding, task_arn):
+    """Find the exact ECS stop event after DescribeTasks has expired."""
+    pages = logs.get_paginator("filter_log_events").paginate(
+        logGroupName=binding["log_group"],
+        filterPattern=f"{{ $.detail.taskArn = {json.dumps(task_arn)} }}",
+    )
+    for page in pages:
+        for entry in page["events"]:
+            event = json.loads(entry["message"])
+            detail = event.get("detail", {})
+            if (
+                event.get("source") == "aws.ecs"
+                and event.get("detail-type") == "ECS Task State Change"
+                and event.get("id")
+                and detail.get("taskArn") == task_arn
+                and detail.get("clusterArn") == binding["cluster_arn"]
+                and detail.get("group") == binding["task_group"]
+                and detail.get("lastStatus") == "STOPPED"
+            ):
+                return event["id"]
+    return None
+
+
+def acquire_executor(state, ecs, cluster, task_arn, *, logs=None, stop_events=None):
     """A new ECS executor may take over only after AWS confirms the old task stopped."""
     active = state.value["active"]
     old = active.get("executor")
+    recovered_event = None
     if old and old != task_arn:
         response = ecs.describe_tasks(cluster=cluster, tasks=[old])
+        tasks = response.get("tasks", [])
+        failures = response.get("failures", [])
+        stopped = not failures and len(tasks) == 1 and tasks[0]["lastStatus"] == "STOPPED"
         if (
-            response.get("failures")
-            or len(response.get("tasks", [])) != 1
-            or response["tasks"][0]["lastStatus"] != "STOPPED"
+            stop_events
+            and not tasks
+            and len(failures) == 1
+            and failures[0].get("arn") == old
+            and failures[0].get("reason") == "MISSING"
         ):
+            recovered_event = stopped_executor_event(logs, stop_events, old)
+        if not stopped and not recovered_event:
             raise ValueError("previous ECS executor is not confirmed stopped")
     active["executor"] = task_arn
     state.save()
+    if recovered_event:
+        print(
+            json.dumps(
+                {"event": "executor_recovered", "old_executor": old, "ecs_event": recovered_event}
+            ),
+            flush=True,
+        )
 
 
 def validate_binding(binding, config=None):
@@ -411,6 +449,17 @@ def validate_binding(binding, config=None):
     ):
         if not isinstance(binding.get(name), str) or not binding[name]:
             raise ValueError("explicit platform binding required: " + name)
+    if "executor_stop_events" in binding:
+        evidence = binding["executor_stop_events"]
+        if (
+            "idea_appconfig" not in binding
+            or not isinstance(evidence, dict)
+            or any(
+                not isinstance(evidence.get(name), str) or not evidence[name]
+                for name in ("log_group", "cluster_arn", "task_group")
+            )
+        ):
+            raise ValueError("explicit Idea executor stop event binding required")
     for name in (
         "poll_seconds",
         "max_wait_seconds",
@@ -454,6 +503,7 @@ def operation_identity(
         not in {
             "monitoring",
             "runtime_policy",
+            "executor_stop_events",
             "legacy_ready_config_sha256",
             "deferred_uri",
             "poll_seconds",
@@ -659,7 +709,15 @@ def execute(args):
             ):
                 raise RuntimeError("previous attempt failed; explicit retry-id required")
             return result["stage"]
-        acquire_executor(state, ecs, binding["ecs_cluster"], args.executor_arn)
+        stop_events = binding.get("executor_stop_events")
+        acquire_executor(
+            state,
+            ecs,
+            binding["ecs_cluster"],
+            args.executor_arn,
+            logs=session.client("logs") if stop_events else None,
+            stop_events=stop_events,
+        )
         started = time.monotonic()
         while time.monotonic() - started < binding["max_wait_seconds"]:
             with tempfile.TemporaryDirectory(prefix="doku-tf-daily-") as directory:
