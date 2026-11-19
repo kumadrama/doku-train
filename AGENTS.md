@@ -73,6 +73,8 @@ doku-train/
 - 本文件中的协作约束包括[配置驱动与模型代码组织](#配置驱动与模型代码组织)和[模型标准上线流程](#模型标准上线流程)。
 - [Spec 039：Idea 日更在线发布联动](specs/039-idea-online-model-release/requirements.md)、[设计](specs/039-idea-online-model-release/design.md)、[任务](specs/039-idea-online-model-release/tasks.md)、[验证](specs/039-idea-online-model-release/verification.md)。2026-11-17 用户明确授权实施及对应 Idea 角色权限，生产变更仍按可审查计划发布；FYP 不变。
 
+- [FYP 美国/未知国家模型发布](specs/038-tf-daily-deployment/us-country-rollout.md) — 用户 2026-11-19 授权独立模型上线并启用 FYP 任务族日更；首次发布与日更接线已验收。
+
 - [Spec 038：TF 日更标准部署](specs/038-tf-daily-deployment/requirements.md)、[设计](specs/038-tf-daily-deployment/design.md)、[任务](specs/038-tf-daily-deployment/tasks.md)、[验证](specs/038-tf-daily-deployment/verification.md)。生产启用后 Idea 从新日更开始上报。
 
 - [Spec 037：Idea mapped 独立 Endpoint 及日更](specs/037-idea-mapped-daily/design.md)、[生产验收](specs/037-idea-mapped-daily/verification.md)
