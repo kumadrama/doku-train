@@ -194,6 +194,17 @@ def test_family_enrollment_keeps_legacy_operation_and_recipe(tmp_path):
     assert discovery_bound == bound
     assert (args.output / "daily-config.json").read_bytes() == frozen.read_bytes()
     assert json.loads((args.output / "task-definition.yml").read_bytes())["family"] == "family"
+    fyp = {**resources, "model_list_profile": "fyp-list", "models_config_profile": "fyp-models"}
+    online["fyp_online_release_binding"] = {
+        "value": {"environment": "prod", "region": "region", "fyp_appconfig": fyp}
+    }
+    args.online_release_outputs.write_text(json.dumps(online))
+    args.output = tmp_path / "with-fyp-and-discovery"
+    prepare_daily(args)
+    daily_bound = json.loads((args.output / "binding.json").read_bytes())
+    assert daily_bound.pop("fyp_appconfig") == fyp
+    assert daily_bound.pop("discovery_appconfig") == resources
+    assert daily_bound == bound
     online["discovery_online_release_binding"]["value"]["environment"] = "dte"
     args.online_release_outputs.write_text(json.dumps(online))
     args.output = tmp_path / "wrong-environment"

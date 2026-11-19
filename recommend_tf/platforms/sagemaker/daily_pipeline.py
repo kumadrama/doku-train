@@ -351,6 +351,8 @@ def advance_release(
     if active["stage"] in {"uploaded", "deploying"}:
         if active["stage"] == "uploaded" and policy and not policy.allowed("publication"):
             return "deferred_publication"
+        if model_publication and not model_publication.before_endpoint(state):
+            return "pending"
         deployment = binding["deployment"]
         if model_publication:
             deployment = model_publication.deployment(active["model_version"])
@@ -549,8 +551,13 @@ def execute(args):
                 binding["runtime_policy"],
             )
         model_publication = None
+        if "fyp_appconfig" in binding and "discovery_appconfig" not in binding:
+            raise ValueError(
+                "FYP daily publication requires the existing Discovery publication binding"
+            )
         if "idea_appconfig" in binding or "discovery_appconfig" in binding:
             from .discovery_appconfig import DiscoveryPublication
+            from .fyp_appconfig import FypAndDiscoveryPublication
             from .idea_publication import IdeaPublication
 
             if "idea_appconfig" in binding and "discovery_appconfig" in binding:
@@ -559,9 +566,12 @@ def execute(args):
                 raise ValueError(
                     "restore the corresponding AppConfig route for an online-model rollback"
                 )
-            publication = (
-                DiscoveryPublication if "discovery_appconfig" in binding else IdeaPublication
-            )
+            if "fyp_appconfig" in binding:
+                publication = FypAndDiscoveryPublication
+            else:
+                publication = (
+                    DiscoveryPublication if "discovery_appconfig" in binding else IdeaPublication
+                )
             model_publication = publication.from_session(session, s3, binding)
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
         if ready is None and binding.get("data_source", {}).get("freeze") != "idea_mapped":

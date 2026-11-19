@@ -7,6 +7,11 @@ from .publish_model import immutable_put, location
 
 
 class ModelPublication:
+    journal_key = "online"
+
+    def before_endpoint(self, state):
+        return True
+
     def __init__(self, s3, publisher, binding):
         self.s3, self.publisher, self.binding = s3, publisher, binding
         self.resources = binding[self.binding_key]
@@ -29,7 +34,7 @@ class ModelPublication:
 
     def prepare(self, state, artifact, work):
         active = state.value["active"]
-        if active.get("online"):
+        if active.get(self.journal_key):
             return  # Frozen documents are already part of the same durable operation.
         listing = self.publisher.read(self.resources["model_list_profile"])
         models = self.publisher.read(self.resources["models_config_profile"])
@@ -46,6 +51,8 @@ class ModelPublication:
             "after_list": proposed.pop("model_list"),
             "after_models": proposed.pop("models_config"),
         }
+        if "fallback_list" in proposed:
+            docs["fallback_list"] = proposed.pop("fallback_list")
         pins = {}
         for name, raw in docs.items():
             path = Path(work) / (name + ".json")
@@ -55,22 +62,19 @@ class ModelPublication:
                 + "/"
                 + active["operation"]
                 + "/appconfig/"
+                + (self.journal_key + "/" if self.journal_key != "online" else "")
                 + sha256(raw)
                 + "/"
                 + path.name
             )
             immutable_put(self.s3, uri, path, self.binding["kms_key"])
             pins[name] = {"uri": uri, "sha256": sha256(raw)}
-        active["online"] = {**proposed, "documents": pins, "endpoint": endpoint}
-        active["endpoint_name"] = endpoint
+        active[self.journal_key] = {**proposed, "documents": pins, "endpoint": endpoint}
+        if self.journal_key == "online":
+            active["endpoint_name"] = endpoint
         state.save()
 
-    def publish(self, state):
-        """Existing endpoint is ready; definitions first, then the active route."""
-        active = state.value["active"]
-        if active["stage"] not in {self.endpoint_ready_stage, "deployed"}:
-            raise ValueError("model endpoint must pass the existing deployment probe first")
-        journal = active["online"]
+    def read_documents(self, journal):
         docs = {}
         for name, pin in journal["documents"].items():
             bucket, key = location(pin["uri"])
@@ -80,6 +84,16 @@ class ModelPublication:
             if len(raw) >= MAX_DOCUMENT_BYTES or sha256(raw) != pin["sha256"]:
                 raise ValueError("frozen AppConfig content differs")
             docs[name] = raw
+        return docs
+
+    def publish(self, state, *, finalize=True):
+        """Existing endpoint is ready; definitions first, then the active route."""
+        active = state.value["active"]
+        if active["stage"] not in {self.endpoint_ready_stage, "deployed"}:
+            raise ValueError("model endpoint must pass the existing deployment probe first")
+        journal = active[self.journal_key]
+        docs = self.read_documents(journal)
+        live_list = docs.get("fallback_list", docs["before_list"])
 
         def companion(profile, expected):
             if self.publisher.read(profile) != expected:
@@ -91,8 +105,9 @@ class ModelPublication:
         ):
             companion(self.resources["model_list_profile"], docs["before_list"])
             companion(self.resources["models_config_profile"], docs["before_models"])
-            active["stage"] = "deployed"
-            state.save()
+            if finalize:
+                active["stage"] = "deployed"
+                state.save()
             return "deployed"
 
         if not journal.get("models_complete"):
@@ -102,9 +117,8 @@ class ModelPublication:
                 self.resources["models_config_profile"],
                 docs["before_models"],
                 docs["after_models"],
-                companion=lambda: companion(
-                    self.resources["model_list_profile"], docs["before_list"]
-                ),
+                companion=lambda: companion(self.resources["model_list_profile"], live_list),
+                journal_key=self.journal_key,
             ):
                 return "pending"
             journal["models_complete"] = True
@@ -113,13 +127,15 @@ class ModelPublication:
             state,
             "route",
             self.resources["model_list_profile"],
-            docs["before_list"],
+            live_list,
             docs["after_list"],
             companion=lambda: companion(
                 self.resources["models_config_profile"], docs["after_models"]
             ),
+            journal_key=self.journal_key,
         ):
             return "pending"
-        active["stage"] = "deployed"
-        state.save()
+        if finalize:
+            active["stage"] = "deployed"
+            state.save()
         return "deployed"

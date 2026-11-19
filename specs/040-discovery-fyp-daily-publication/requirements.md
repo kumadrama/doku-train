@@ -9,4 +9,13 @@ Source: 2026-11-17 用户要求“复用fyp吧”，承接保证日更模型可�
 - 引擎通过逻辑 alias 选择版本；请求中的后续批次锁定首批实际身份，混用或加载异常走现有降级。
 - 当前线上实验保持 10%，不修改客户端。
 
-当前状态：FYP 日更会更新 `doku-prod-tf-rerank-official`，业务 FYP/Discovery AppConfig 仍固定旧版。本变更是为 Discovery 接通发布联动，不宣称现有 FYP profiles 已经每日自动更新。
+首次改造前，FYP 日更更新 `doku-prod-tf-rerank-official`，业务 FYP 与 Discovery 的 AppConfig 仍指向固定版本。首轮实施先接通了 Discovery 的日更发布。
+
+## FYP 线上日更
+
+Source: 2026-11-19 用户授权修改 `content-rec-svc`，接通 FYP 与 AI Engine 的版本切换，先验证 DTE 双版本、回退和 RT，再发布 `b710e4b2`。
+
+- 显式配置的 FYP 路由请求稳定模型别名，每次请求使用 AI Engine 返回的实际 release 身份进行归因。
+- 在原有训练任务中启用 FYP 模型发布。FYP 与 Discovery 使用同一份通过端点探测的模型制品，各自发布独立配置。
+- FYP 保留独立端点的旧版用于回退。变更共享端点前，需要确认运行副本已经切到可用的回退模型。
+- Discovery 实验保持 10%，保留各业务现有的特征、样本和实验配置。

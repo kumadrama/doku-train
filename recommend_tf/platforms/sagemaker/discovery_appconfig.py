@@ -68,8 +68,7 @@ def active_definition(list_raw, models_raw, environment):
     return listing, models, key, models["models"][key]
 
 
-def candidate_documents(list_raw, models_raw, candidate, model_uri, environment, endpoint):
-    listing, models, old_key, old = active_definition(list_raw, models_raw, environment)
+def next_definition(models, old, candidate, model_uri, endpoint, release_prefix):
     artifact = load(candidate)
     root, version = artifact["root"], artifact["version"]
     previous = old["release"]
@@ -103,7 +102,7 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
             }
         )
     )
-    key = "discovery-" + version[:16] + "-" + identity[:12]
+    key = release_prefix + "-" + version[:16] + "-" + identity[:12]
     directory = "models/" + key
     new = copy.deepcopy(old)
     new["files"] = {}
@@ -139,6 +138,12 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
         "manifest_sha256": manifest_sha,
         "template_sha256": identity,
     }
+    return key, new, proposed
+
+
+def candidate_documents(list_raw, models_raw, candidate, model_uri, environment, endpoint):
+    listing, models, old_key, old = active_definition(list_raw, models_raw, environment)
+    key, new, proposed = next_definition(models, old, candidate, model_uri, endpoint, "discovery")
     if old_key == key:
         return {**proposed, "model_list": list_raw, "models_config": models_raw}
 
@@ -147,7 +152,7 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
     models["models"][key] = new
     route = listing["models"][0]
     bootstrap = next((r for r in listing["models"] if r["model_name"] == BOOTSTRAP_ALIAS), None)
-    if bootstrap is None and previous["endpoint"] != endpoint:
+    if bootstrap is None and old["release"]["endpoint"] != endpoint:
         bootstrap = {**route, "model_name": BOOTSTRAP_ALIAS}
     listing["models"] = [{**route, "model_key": key}]
     if bootstrap is not None:
