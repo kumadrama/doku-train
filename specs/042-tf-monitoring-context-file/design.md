@@ -19,3 +19,7 @@ Source: 已确认需求；`daily_pipeline.prepare_job`、`cloud_train.main`、`R
 仅接受 active training、超长旧 inline 上下文、准确匹配的 STOPPED executor、确定不存在的同名 SageMaker job、原 operation 的 daily File/S3Prefix 输入及正确配置摘要。权限错误不视为不存在。只修改监控传输字段、训练镜像及源码摘要；原配置、样本输入、run URI、job 名、operation 和高水位不变。原请求存入 monitoring_context_repair，journal 通过 ETag 条件更新。竞争失败保留新持有者；可遗留相同内容的不可变上下文，重试安全。
 
 工具不启动训练或发布。修复后原恢复入口对账同一确定性 job 名，沿用原输入。存在任何状态的同名作业均拒绝修复，已成功输出继续按原恢复流程导出发布。
+
+本次限定模型的镜像、接线与验收顺序见[生产恢复计划](deployment-plan.md)。
+
+共享运行时代码进入 Idea 源码包，按仓库打包工具同步本地部署清单的 ARTIFACT_KEY/ARTIFACT_SHA；这只固定当前源码，不代表部署 Idea，未来发布也须使用配套训练镜像。
