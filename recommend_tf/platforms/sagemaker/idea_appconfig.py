@@ -8,6 +8,7 @@ the captured active definition; only immutable model identity is replaced.
 import copy
 import hashlib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -75,9 +76,19 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
     old_release = old["release"]
     if old_release.get("warmup_file") or old_release.get("pipeline_file"):
         raise ValueError("Idea daily template must use its existing feature-chain files")
-    if version == old_release["model_version"]:
-        raise ValueError("candidate is already the active immutable model")
     old_prefix = old_release["artifact_dir"] + "/"
+    old_manifest = old["files"][old_prefix + "manifest.json"]
+    if old_manifest["sha256"] != old_release["manifest_sha256"]:
+        raise ValueError("Idea active manifest differs from its pinned digest")
+    previous_version = json.loads(old_manifest["content"])["model_version"]
+    if (
+        not isinstance(previous_version, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", previous_version)
+        or old_release.get("model_version", previous_version) != previous_version
+    ):
+        raise ValueError("Idea active model version differs from its manifest")
+    if version == previous_version:
+        raise ValueError("candidate is already the active immutable model")
     old_config = old["files"][old_prefix + "feature-config.json"]["content"].encode()
     if old_config != (root / "feature-config.json").read_bytes():
         raise ValueError("daily feature contract changed; review its processing chain first")
@@ -88,7 +99,8 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
     if old_signature != new_signature:
         raise ValueError("daily model signature changed; consumer review required")
     template = copy.deepcopy(old_release)
-    for key in ("id", "artifact_dir", "model_version", "manifest_sha256"):
+    template.pop("model_version", None)
+    for key in ("id", "artifact_dir", "manifest_sha256"):
         template.pop(key)
     template_digest = sha256(
         encode(
@@ -114,10 +126,10 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
             raise ValueError("candidate model file differs from canonical manifest")
         embedded[directory + "/" + relative] = {"sha256": sha256(raw), "content": raw.decode()}
     new["files"] = embedded
+    new["release"].pop("model_version", None)
     new["release"].update(
         id=key,
         artifact_dir=directory,
-        model_version=version,
         manifest_sha256=manifest_sha,
         endpoint=endpoint,
     )
@@ -141,7 +153,7 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
         "models_config": encode(models),
         "previous_release": old_key,
         "candidate_release": key,
-        "previous_version": old_release["model_version"],
+        "previous_version": previous_version,
         "candidate_version": version,
         "manifest_sha256": manifest_sha,
         "template_sha256": template_digest,

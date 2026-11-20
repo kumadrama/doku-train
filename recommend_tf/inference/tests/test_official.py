@@ -155,6 +155,18 @@ class OfficialTest(unittest.TestCase):
         )
         runtime.invoke_endpoint.return_value = {"Body": io.BytesIO(b'{"outputs":[0.5]}')}
         verify_probe(runtime, "synthetic", "a" * 64, probe, inference_protocol=official.PROTOCOL)
+        runtime.invoke_endpoint.return_value = {
+            "Body": io.BytesIO(b'{"outputs":{"completion":[0.5]}}')
+        }
+        verify_probe(
+            runtime,
+            "synthetic",
+            "a" * 64,
+            probe,
+            inference_protocol=official.PROTOCOL,
+            use_endpoint_default=True,
+        )
+        self.assertNotIn("CustomAttributes", runtime.invoke_endpoint.call_args.kwargs)
         for outputs in (
             {"other": [1]},
             {"completion": []},

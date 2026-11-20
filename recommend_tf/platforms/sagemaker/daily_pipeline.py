@@ -387,6 +387,7 @@ def advance_release(
                 version,
                 {**binding["probe"], "tasks": list(publication_outputs(config, binding))},
                 inference_protocol=official.protocol(binding["deployment"]),
+                use_endpoint_default="idea_appconfig" in binding,
             ),
         )
         return (

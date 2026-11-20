@@ -10,3 +10,6 @@ Source: 2026-11-17 用户要求直接复用已经验证的 FYP 发布方式，�
 - 配置更新使用原内容校验、hosted-version CAS、deployment-number CAS 和同一发布 journal，失败不得推进 high_water 或覆盖外部更改。
 - 部署完成表示 Endpoint 合成探测与 AppConfig 发布完成，不等价于每个副本已采纳。AI 现有校验/旧代保留机制继续负责热加载，首次上线和自然日训实际效果由 RPC/日志核验。
 - 首次由外部已授权发布把当前 5d9e 路由迁到独立 Endpoint，并移除旧 mutable selector；后续日训保留的上一版指向独立 Endpoint。
+
+2026-11-20 补充需求为 Idea 优先按 Endpoint 打分，模型定义允许省略 `release.model_version`。
+模型制品、发布记录与执行日志继续保留实际模型身份，后续发布支持读取有版本与省略版本的模型定义。

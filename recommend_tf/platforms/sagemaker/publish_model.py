@@ -408,7 +408,15 @@ def deploy_step(
     return "pending"
 
 
-def verify_probe(runtime, endpoint, version, probe, *, inference_protocol=official.LEGACY_PROTOCOL):
+def verify_probe(
+    runtime,
+    endpoint,
+    version,
+    probe,
+    *,
+    inference_protocol=official.LEGACY_PROTOCOL,
+    use_endpoint_default=False,
+):
     serving_protocol = official.protocol({"inference_protocol": inference_protocol})
     options = {}
     if serving_protocol == official.PROTOCOL:
@@ -416,7 +424,8 @@ def verify_probe(runtime, endpoint, version, probe, *, inference_protocol=offici
             "inputs"
         ):
             raise ValueError("official probe requires prepared tensors")
-        options["CustomAttributes"] = official.custom_attributes(version)
+        if not use_endpoint_default:
+            options["CustomAttributes"] = official.custom_attributes(version)
     response = runtime.invoke_endpoint(
         EndpointName=endpoint,
         ContentType=probe["content_type"],

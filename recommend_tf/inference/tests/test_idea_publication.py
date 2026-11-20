@@ -11,7 +11,12 @@ from unittest.mock import Mock
 from recommend_tf.inference.artifact_loader import checksum
 from recommend_tf.inference.tests.test_official import fixture
 from recommend_tf.inference.tests.test_official_pipeline import binding
-from recommend_tf.platforms.sagemaker.idea_appconfig import Publisher, encode, sha256
+from recommend_tf.platforms.sagemaker.idea_appconfig import (
+    Publisher,
+    candidate_documents,
+    encode,
+    sha256,
+)
 from recommend_tf.platforms.sagemaker.idea_publication import IdeaPublication, deployment_for
 from recommend_tf.platforms.sagemaker.publish_model import deploy_step
 
@@ -366,12 +371,36 @@ class IdeaPublicationTest(unittest.TestCase):
         self.assertEqual(len(json.loads(self.api.live["list"])["models"]), 1)
         candidate = models["models"][route["model_key"]]["release"]
         self.assertEqual(candidate["endpoint"], "idea-v-" + "b" * 12)
+        self.assertNotIn("model_version", candidate)
         self.assertEqual(candidate["max_history"], 1024)
         self.assertEqual(candidate["request_timeout_ms"], 450)
         self.assertEqual(
             models["models"]["old-release"]["release"]["endpoint"], "idea-v-" + "a" * 12
         )
         self.assertEqual(set(models["models"]), {"old-release", route["model_key"]})
+
+        # The next day's publication uses the active manifest for duplicate checks
+        # and records the previous model even without a release-level version.
+        next_model = artifact(self.root / "next", "c" * 64)
+        result = candidate_documents(
+            self.api.live["list"],
+            self.api.live["models"],
+            next_model,
+            "s3://synthetic/models/next.tar.gz",
+            "dte",
+            "idea-v-" + "c" * 12,
+        )
+        self.assertEqual(result["previous_version"], "b" * 64)
+        self.assertEqual(result["candidate_version"], "c" * 64)
+        with self.assertRaisesRegex(ValueError, "already the active immutable model"):
+            candidate_documents(
+                self.api.live["list"],
+                self.api.live["models"],
+                self.new,
+                "s3://synthetic/models/new.tar.gz",
+                "dte",
+                "idea-v-" + "b" * 12,
+            )
 
     def test_release_receipt_records_actual_endpoint_with_legacy_fallback(self):
         from recommend_tf.platforms.monitoring.report_metrics import release_event
