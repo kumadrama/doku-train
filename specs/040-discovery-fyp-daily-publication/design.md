@@ -21,3 +21,11 @@
 后续日更开始时冻结两套 AppConfig 文档。若 FYP 当前路由使用即将更新的官方端点，先通过 AppConfig 切换 FYP 别名到独立回退端点。发布器等待当前 ECS 任务都记录该路由的激活事件，再更新官方端点。合成探测成功后依次发布 Discovery 和 FYP。状态保存各自的 AppConfig 版本和部署编号，重跑时从已记录的阶段恢复。
 
 FYP 的 `training_dump`、特征链和请求预算来自 FYP 配置。新模型必须维持已有特征合同与推理签名。回退在 FYP 模型列表内切换别名，旧版端点持续可用。
+
+## FYP 三路实验模型日更
+
+`inner_watch_lr003`、`inner_watch_w02_lr003` 和 `tf_rerank_ln_lr002_3feat_us_or_unknown` 使用独立的 FYP 发布绑定，其余 FYP 发布流程沿用现有入口。每个版本使用带摘要的 SageMaker Endpoint，只允许创建新端点或恢复同一份已记录的部署。发布器验证完整模型合同和精确版本推理探测后，将新定义加入 `models-config-prod`，确认回读后才切换该模型在 `fyp-model-list-prod` 的别名。候选版本与上一版本的定义都保留供混合读和回滚。
+
+主模型和三路实验模型在创建 AppConfig 发布计划前共用按 ETag 更新的 S3 锁。锁记录发布任务的操作 ID 和 journal 路径，ECS 重启后由同一任务接续；外部配置变更由 AppConfig 发布器的版本和部署编号检查保护。三路待所有 AI Engine 副本报告加载新别名后，才将发布记录标为完成。如果五分钟后还有副本未加载，使用已保存的 AppConfig 文档切回旧别名，等待副本加载旧版本，再记录回滚。模型定义仍可用于排查，训练产物可从现有 journal 追溯。
+
+生产先刷新现有主模型 worker 的绑定，使其使用同一个发布锁，再启用一路实验 worker。每个 worker 经已有 `prepare_tf_daily_deployment.py --online-release-outputs` 从已应用的 IaC 输出生成绑定并接入原 EventBridge 目标。日更的 Ready Lambda ZIP 与任务定义必须使用相同的配置及绑定 SHA 和 URI。Ready event 和恢复队列读取已经冻结的请求，换绑前须核对 journal 和未完成的请求。试跑需核对 AppConfig 两次部署的次序、AI Engine 实际业务请求版本及完整失败计数。所有旧 Endpoint 在实际路由和排空核对前继续保留。每次试跑前核对 SageMaker 配额和当前容量，为候选版本预留容量，定期清查已经退出使用的版本 Endpoint。

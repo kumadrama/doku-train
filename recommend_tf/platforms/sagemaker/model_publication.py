@@ -1,9 +1,56 @@
 """Freeze and publish model documents with the existing AppConfig CAS journal."""
 
+import json
 from pathlib import Path
 
 from .idea_appconfig import MAX_DOCUMENT_BYTES, Publisher, sha256
-from .publish_model import immutable_put, location
+from .publish_model import immutable_put, location, read
+
+
+class PublicationLock:
+    """One durable owner for coordinated FYP profile writes across workers."""
+
+    def __init__(self, s3, uri, kms_key):
+        self.s3, self.uri, self.kms_key = s3, uri, kms_key
+        self.bucket, self.key = location(uri)
+
+    def write(self, owner, etag=None):
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket,
+                Key=self.key,
+                Body=json.dumps(owner, sort_keys=True).encode(),
+                ServerSideEncryption="aws:kms",
+                SSEKMSKeyId=self.kms_key,
+                **({"IfMatch": etag} if etag else {"IfNoneMatch": "*"}),
+            )
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code not in {"ConditionalRequestConflict", "409", "PreconditionFailed", "412"}:
+                raise
+            return False
+        return True
+
+    def change(self, state, *, release=False):
+        active = state.value["active"]
+        locked = active.get("fyp_publication_locked", False)
+        owner = {"operation": active["operation"], "journal": state.uri}
+        if release and not locked:
+            return True
+        if not locked and self.write(owner):
+            active["fyp_publication_locked"] = True
+            state.save()
+            return True
+        body, etag = read(self.s3, self.uri)
+        current = json.loads(body)
+        if release:
+            return current != owner or self.write(None, etag)
+        if current != owner and (current is not None or not self.write(owner, etag)):
+            return False
+        if not locked:
+            active["fyp_publication_locked"] = True
+            state.save()
+        return True
 
 
 class ModelPublication:
@@ -15,9 +62,17 @@ class ModelPublication:
     def __init__(self, s3, publisher, binding):
         self.s3, self.publisher, self.binding = s3, publisher, binding
         self.resources = binding[self.binding_key]
+        lock_uri = binding.get("fyp_publication_lock_uri")
+        self.lock = PublicationLock(s3, lock_uri, binding["kms_key"]) if lock_uri else None
         self.deployment("0" * 64)
         if self.resources["model_list_profile"] == self.resources["models_config_profile"]:
             raise ValueError("model list and definitions require separate profiles")
+
+    def acquire(self, state):
+        return self.lock is None or self.lock.change(state)
+
+    def release(self, state):
+        return self.lock is None or self.lock.change(state, release=True)
 
     @classmethod
     def from_session(cls, session, s3, binding):
@@ -70,7 +125,7 @@ class ModelPublication:
             immutable_put(self.s3, uri, path, self.binding["kms_key"])
             pins[name] = {"uri": uri, "sha256": sha256(raw)}
         active[self.journal_key] = {**proposed, "documents": pins, "endpoint": endpoint}
-        if self.journal_key == "online":
+        if self.journal_key == "online" or self.create_only:
             active["endpoint_name"] = endpoint
         state.save()
 

@@ -16,6 +16,7 @@ from recommend_tf.train.comm.datasvr.daily_dataset import freeze
 from recommend_tf.train.comm.early_stop import validate_early_stop
 from recommend_tf.train.comm.export_tasks import export_outputs, publication_outputs
 
+from .monitoring_context import attach_context, validate_environment
 from .publish_model import (
     ReleaseState,
     contains,
@@ -154,10 +155,13 @@ def prepare_job(s3, config, ready, binding, operation, work):
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
         context["monitoring"] = {"metric_mapping": mapping}
-        request["Environment"]["DOKU_MONITORING_CONTEXT"] = json.dumps(context, sort_keys=True)
+        attach_context(
+            s3, request, context, prefix=prefix + "/daily", work=work, kms_key=binding["kms_key"]
+        )
     for name in ("DOKU_SOURCE_SHA256", "DOKU_LOCK_SHA256"):
         if not request["Environment"].get(name):
             raise ValueError("training image provenance required: " + name)
+    validate_environment(request)
     return request, run_uri
 
 
@@ -232,6 +236,7 @@ def advance_release(
         if observed is None:
             if policy and not policy.allowed("training"):
                 return "deferred_training"
+            validate_environment(request)
             sm.create_training_job(**request)
             return "pending"
         # Reconcile deterministic names against the actual submitted configuration.
@@ -252,6 +257,11 @@ def advance_release(
             active["training_completed_at_ms"] = int(observed["TrainingEndTime"].timestamp() * 1000)
         state.save()
     if active["stage"] in {"trained", "exported"}:
+        if model_publication and model_publication.lock:
+            if policy and not policy.allowed("publication"):
+                return "deferred_publication"
+            if not model_publication.acquire(state):
+                return "pending"
         run = work / "run"
         fetch_run(s3, active["run_uri"], run, binding["download_limit_bytes"], evidence)
         run_config = json.loads((run / "experiment-config.json").read_text())
@@ -347,11 +357,17 @@ def advance_release(
         model_publication.endpoint_ready_stage,
         "deployed",
     }:
+        if active["stage"] == "deployed" and model_publication.lock:
+            return "deployed"
+        if not model_publication.acquire(state):
+            return "pending"
         return model_publication.publish(state)
     if active["stage"] in {"uploaded", "deploying"}:
         if active["stage"] == "uploaded" and policy and not policy.allowed("publication"):
             return "deferred_publication"
-        if model_publication and not model_publication.before_endpoint(state):
+        if model_publication and (
+            not model_publication.acquire(state) or not model_publication.before_endpoint(state)
+        ):
             return "pending"
         deployment = binding["deployment"]
         if model_publication:
@@ -605,19 +621,30 @@ def execute(args):
             raise ValueError(
                 "FYP daily publication requires the existing Discovery publication binding"
             )
-        if "idea_appconfig" in binding or "discovery_appconfig" in binding:
+        if any(
+            key in binding
+            for key in ("idea_appconfig", "discovery_appconfig", "fyp_split_appconfig")
+        ):
             from .discovery_appconfig import DiscoveryPublication
-            from .fyp_appconfig import FypAndDiscoveryPublication
+            from .fyp_appconfig import FypAndDiscoveryPublication, SplitFypPublication
             from .idea_publication import IdeaPublication
 
-            if "idea_appconfig" in binding and "discovery_appconfig" in binding:
-                raise ValueError("a daily job can publish one consumer's AppConfig")
+            if (
+                sum(
+                    key in binding
+                    for key in ("idea_appconfig", "discovery_appconfig", "fyp_split_appconfig")
+                )
+                > 1
+            ):
+                raise ValueError("a daily job can use only one AppConfig publication path")
             if args.rollback_version:
                 raise ValueError(
                     "restore the corresponding AppConfig route for an online-model rollback"
                 )
             if "fyp_appconfig" in binding:
                 publication = FypAndDiscoveryPublication
+            elif "fyp_split_appconfig" in binding:
+                publication = SplitFypPublication
             else:
                 publication = (
                     DiscoveryPublication if "discovery_appconfig" in binding else IdeaPublication
@@ -746,6 +773,9 @@ def execute(args):
                 print(json.dumps({"operation": operation, "status": outcome}), flush=True)
                 return outcome
             if outcome != "pending":
+                if model_publication and not model_publication.release(state):
+                    time.sleep(binding["poll_seconds"])
+                    continue
                 state.finish(state.value["active"], binding if binding.get("monitoring") else None)
                 if binding.get("monitoring"):
                     try:

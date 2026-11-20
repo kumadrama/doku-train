@@ -1,14 +1,28 @@
 """Follow the FYP daily artifact while retaining an independently served rollback."""
 
 import json
+import re
+import time
+
+from recommend_tf.inference import official
 
 from .discovery_appconfig import MODEL, DiscoveryPublication, decode, next_definition
-from .idea_appconfig import MODELS_SCHEMA, encode
+from .idea_appconfig import MODELS_SCHEMA, DeploymentRolledBack, encode
 from .model_publication import ModelPublication
 
 SERVICE = "fyp_episode_rank"
 ROLLBACK = MODEL + "__rollback"
 LIST_SCHEMA = "ai-engine/fyp-model-list/v1"
+SPLIT_MODELS = {
+    "inner_watch_lr003",
+    "inner_watch_w02_lr003",
+    "tf_rerank_ln_lr002_3feat_us_or_unknown",
+}
+
+
+def split_endpoint_prefix(base):
+    # Keep room for the version under the SageMaker 63-character limit.
+    return base[:48] + "-v"
 
 
 def active_definition(list_raw, models_raw, environment):
@@ -22,14 +36,14 @@ def active_definition(list_raw, models_raw, environment):
     return listing, models, route["model_key"], definition
 
 
-def route_definition(route, models, environment):
+def route_definition(route, models, environment, model_name=MODEL):
     definition = models["models"][route["model_key"]]
     release = definition["release"]
     if (
         route["service_name"] != SERVICE
         or route["config_name"] != "models-config-" + environment
         or release["service"] != SERVICE
-        or release["model"] != MODEL
+        or release["model"] != model_name
         or release["scenes"] != ["for_you"]
         or release.get("require_dump") is not True
         or definition.get("model_call", {}).get("type") != "sagemaker-tfs/v1"
@@ -156,7 +170,7 @@ class FypPublication(ModelPublication):
         record = journal["publications"]["protect"]
         return self.rollback_loaded(record["created_at_ms"], journal["fallback_release"])
 
-    def rollback_loaded(self, since, release):
+    def rollback_loaded(self, since, release, *, model_name=MODEL):
         environment = self.binding["environment"]
         cluster = self.binding["ecs_cluster"]
         service_name = self.resources.get("ecs_service", "doku-ai-engine")
@@ -187,9 +201,146 @@ class FypPublication(ModelPublication):
                 row = json.loads(event["message"])
                 latest[task] = (
                     event["timestamp"],
-                    row.get("model_routes", {}).get(SERVICE, {}).get(MODEL),
+                    row.get("model_routes", {}).get(SERVICE, {}).get(model_name),
                 )
         return all(latest.get(task, (0, None))[1] == release for task in tasks)
+
+
+class SplitFypPublication(FypPublication):
+    """Publish one FYP experiment alias against its own immutable endpoint."""
+
+    binding_key = "fyp_split_appconfig"
+    journal_key = "fyp_split_online"
+    endpoint_ready_stage = "fyp_split_endpoint_ready"
+    create_only = True
+    readiness_timeout_seconds = 300
+
+    def deployment(self, version):
+        model = self.binding.get("model_name")
+        environment = self.binding["environment"]
+        base = self.binding["deployment"]
+        if (
+            model not in SPLIT_MODELS
+            or environment not in {"dte", "prod"}
+            or self.lock is None
+            or official.protocol(base) != official.PROTOCOL
+            or base["endpoint_name"] != f"doku-{environment}-fyp-{model.replace('_', '-')}"
+        ):
+            raise ValueError("split FYP publication requires a supported model and shared lock")
+        endpoint = split_endpoint_prefix(base["endpoint_name"]) + version[:12]
+        if len(endpoint) > 63 or not re.fullmatch(r"[a-f0-9]{64}", version):
+            raise ValueError("exact version and valid split FYP endpoint required")
+        return {**base, "endpoint_name": endpoint}
+
+    def active_definition(self, list_raw, models_raw, environment):
+        listing = decode(list_raw, LIST_SCHEMA, environment)
+        models = decode(models_raw, MODELS_SCHEMA, environment)
+        name = self.binding["model_name"]
+        aliases = [row for row in listing["models"] if row["model_name"] == name]
+        if len(aliases) != 1:
+            raise ValueError("split FYP requires exactly one active alias")
+        alias = aliases[0]
+        old = route_definition(alias, models, environment, model_name=name)
+        if old["release"]["id"] != alias["model_key"]:
+            raise ValueError("split FYP alias points to a different immutable definition")
+        return listing, models, alias["model_key"], old
+
+    def candidate_documents(
+        self, list_raw, models_raw, candidate, model_uri, environment, endpoint
+    ):
+        listing, models, _, old = self.active_definition(list_raw, models_raw, environment)
+        key, definition, report = next_definition(
+            models, old, candidate, model_uri, endpoint, "fyp-daily"
+        )
+        retained = {route["model_key"] for route in listing["models"]}
+        fixed_endpoint = self.binding["deployment"]["endpoint_name"]
+        for name, previous in list(models["models"].items()):
+            release = previous["release"]
+            if (
+                name not in retained
+                and release["model"] == self.binding["model_name"]
+                and release["service"] == SERVICE
+                and (
+                    (
+                        name.startswith("fyp-daily-")
+                        and release["endpoint"].startswith(split_endpoint_prefix(fixed_endpoint))
+                    )
+                    or (
+                        release["endpoint"] == old["release"]["endpoint"] == fixed_endpoint
+                        and release["model_version"] != old["release"]["model_version"]
+                    )
+                )
+            ):
+                del models["models"][name]
+        models["models"][key] = definition
+        for route in listing["models"]:
+            if route["model_name"] == self.binding["model_name"]:
+                route["model_key"] = key
+        return {**report, "model_list": encode(listing), "models_config": encode(models)}
+
+    def publish(self, state):
+        active = state.value["active"]
+        journal = active[self.journal_key]
+        docs = self.read_documents(journal)
+        deployments = journal.get("publications", {})
+        route = deployments.get("route", {})
+        model_profile = self.resources["models_config_profile"]
+        list_profile = self.resources["model_list_profile"]
+
+        def verify_definitions():
+            if self.publisher.read(model_profile) != docs["after_models"]:
+                raise ValueError("FYP model definitions changed before rollback")
+
+        if not route.get("complete"):
+            try:
+                if super().publish(state, finalize=False) != "deployed":
+                    return "pending"
+            except DeploymentRolledBack:
+                if self.publisher.read(list_profile) != docs["before_list"]:
+                    raise
+                active["stage"] = "cutover_rolled_back"
+                state.save()
+                return active["stage"]
+            route = journal["publications"]["route"]
+
+        now = time.time_ns() // 1_000_000
+        if not journal.get("rollback_requested_at_ms"):
+            verify_definitions()
+            if self.publisher.read(list_profile) != docs["after_list"]:
+                raise ValueError("FYP alias changed before cutover verification")
+            if self.rollback_loaded(
+                route["created_at_ms"],
+                journal["candidate_release"],
+                model_name=self.binding["model_name"],
+            ):
+                active["stage"] = "deployed"
+                state.save()
+                return active["stage"]
+            if now - route["completed_at_ms"] < self.readiness_timeout_seconds * 1000:
+                return "pending"
+            journal["rollback_requested_at_ms"] = now
+            state.save()
+
+        if not self.publisher.step(
+            state,
+            "rollback",
+            list_profile,
+            docs["after_list"],
+            docs["before_list"],
+            companion=verify_definitions,
+            journal_key=self.journal_key,
+        ):
+            return "pending"
+        rollback = journal["publications"]["rollback"]
+        if not self.rollback_loaded(
+            rollback["created_at_ms"],
+            journal["previous_release"],
+            model_name=self.binding["model_name"],
+        ):
+            return "pending"
+        active["stage"] = "cutover_rolled_back"
+        state.save()
+        return active["stage"]
 
 
 class FypAndDiscoveryPublication(DiscoveryPublication):

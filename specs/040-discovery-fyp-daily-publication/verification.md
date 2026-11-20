@@ -40,3 +40,9 @@ ready 制品上传须声明 `ChecksumAlgorithm=SHA256` 和完整对象 `Checksum
 DTE `fyp-daily` 使用 18 条独立可播候选。AI Engine 同时加载 `84eb07ca` 和 `b710e4b2`，旧版、切换、回退各取 10 个 HTTP FYP 页面，以请求 ID 对齐调用日志和 AI Engine 真实打分版本。三轮服务器页面 RT P95 分别为 560、337、444 ms。每次 11 条候选完成打分，其余候选出现缺特征或剧集与剧目关联不一致。恢复 DTE 配置和泳道镜像后，回读确认测试候选、临时端点及专用调用策略已清理。
 
 生产日更接线沿用现有 recipe、训练及预估制品和 EventBridge 任务。发布声明将主分支 `7ef89d5` 的新发布器镜像与仅追加 `fyp_appconfig` 的绑定钉死。Ready ZIP 仅更新同一发布声明。验收时读取实际 task definition、Ready Lambda CodeSha256 和持久化 envelope 参数，核对相同的配置及绑定 SHA，再按旧版和回退 alias 已就绪、全量副本已加载、真实打分版本和 RT 的顺序验证生产切换。
+
+## 2026-11-20 三路实验自动切流
+
+- 32 个推理和发布测试以及 7 个绑定和运行策略测试通过。测试覆盖三个别名、独立 Endpoint、AppConfig 发布顺序、配置读取等待、发布锁恢复以及副本加载超时后的回滚。Terraform validate 和四个 mock plan 测试通过。
+- 使用生产正在服务的三份模型制品与 AppConfig 做只读合同回放。首轮使用实际模型版本，随后三轮仅在本地换版本元数据，验证连续发布的配置容量。四轮模型定义大小分别为 1,336,006、1,682,576、1,682,576、1,682,576 字节，均在 2 MiB 内。
+- 上线后仍须通过真实 Endpoint 探测、所有副本的 `model_generation_ready` 事件和线上打分版本验收。测试结果覆盖配置和发布行为，生产实流量验收在 worker 激活后执行。

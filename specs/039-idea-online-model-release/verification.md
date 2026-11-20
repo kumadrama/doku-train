@@ -21,3 +21,9 @@ The source archive is deterministic and the inference suite verifies its deploym
 The binding is generated from actual applied Idea outputs and adds only `idea_appconfig`; SHA256
 `b2ec157fe3223aa37ca8e2961cc4fa61158a56f64ef961e8d3799b15eceabae8`. The release state was idle
 at generation. Immutable S3 publication and a fresh idle check still precede activation.
+
+## 日更发布恢复
+
+运行 `python -m pytest -q recommend_tf/inference/tests`。测试覆盖 AppConfig COMPLETE 后数据面短暂读到旧配置、外部改动拒绝、ECS 原任务详情过期后的接管，以及错误任务、集群、任务族和状态的拒绝。重新打包后运行 `python3 idea-mapped-daily/build/package_source.py` 校验启动清单的归档摘要。
+
+生产验收回读 Idea 专用日志权限、两个触发器的同一新任务版本，以及现有发布水位。下一次自然日训结束后对账 AppConfig 的模型定义与路由、发布水位和新端点的实际评分日志。

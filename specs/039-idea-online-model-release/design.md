@@ -20,6 +20,10 @@ Source: 用户 2026-11-17 的收敛指示；已执行的 FYP 生产发布材料 
 
 hosted-version 使用 LatestVersionNumber CAS；StartDeployment 使用 LatestDeploymentNumber CAS。唯一版本 label 用于响应丢失后查回，不重复分配部署。固定 worker SDK 必须声明该字段，否则在训练/发布前拒绝。当前仓库锁定 botocore 1.43.120 已核验支持。
 
+AppConfig 部署标记 COMPLETE 后，如果数据面仍返回冻结的上一版内容且部署号未变，保留 pending 并在同一操作内继续回读。数据面返回本次冻结内容后，才继续下一步。其他配置内容仍按外部更改处理。
+
+原 worker 退出后，后续 Idea 定时或日包触发的 worker 接续同一发布记录。如果 ECS 已清理原任务详情，使用专用失败日志组中与原任务 ARN、集群和任务族匹配的 ECS STOPPED 事件确认停止。读取失败或缺少匹配事件时拒绝接管。启动绑定加入的日志资源定位不参与发布操作身份计算，既有 ETag 条件写继续保护并发接管。
+
 并发外部改配置、签名变化或 AppConfig 自动回滚都会保留活动 journal 并拒绝标为成功。上一版 Endpoint 一直保留；AI 热加载拒绝时继续使用原 generation。回滚使用 FYP 既有配置路由恢复流程，禁止用旧的 --rollback-version 原地替换某个版本 Endpoint。
 
 模型定义发布完成不冒充业务已全量采纳。首次由发布者做实际 RPC 与自然流量验收；后续自然日训后继续核对模型版本、真实打分和快照。旧 Endpoint 的退役仍沿用受审查的发布流程，本适配不自动删除资源。
