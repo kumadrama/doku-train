@@ -50,3 +50,7 @@ Source: 用户确认看板使用普通 `auc` / `mse`，授权修复日更配置�
 - 补报事件 `c3477c5f9d35601099749d3bfbf377c0c2b15621c1c4e16f7b442983fb87896c` 已取得 delivered ACK；目录包含四项任务，归属 FYP 任务族。六份指标源元数据均与原 COMMITTED 摘要一致，原密封产物未修改。
 - 既有监控 Lambda 同步 Grafana 成功，dashboard version 63。通过 Grafana API 读取实际四个 panel target 后执行其 CloudWatch 查询，均 Complete 且各返回 1 点（数据日 11/18）：completion 0.7933、fast_swipe 0.7318、immersive_click 0.7855、watch_seconds MSE 741.8798。
 - 回执与核验脚本在本地 `runs/fyp-us-metrics-fix-20261120/`；未启动新训练或更换线上模型。
+
+## 2026-11-20 日更启动参数恢复
+
+指标映射使 inline 监控上下文超过 SageMaker 单值 512 字符限制。已按 [Spec 042](../042-tf-monitoring-context-file/verification.md) 部署文件传递修复、升级该模型 worker 至 revision 22，并修复原 journal 恢复 cutoff 2026-11-19 的同名训练。16:05:55 UTC+8 已启动，训练入口摘要校验通过。未重新生成样本；当前只验收恢复启动，不声称本轮训练或新模型发布完成。
