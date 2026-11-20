@@ -61,6 +61,56 @@ def bind_daily(config, binding, task, registration):
     )
 
 
+def bind_online(binding, outputs, model_name):
+    split = outputs.get("fyp_split_online_release_binding", {}).get("value", {})
+    consumers = (
+        ("fyp_split",) if model_name in split.get("model_names", []) else ("discovery", "fyp")
+    )
+    required = {
+        "application_id",
+        "environment_id",
+        "deployment_strategy_id",
+        "model_list_profile",
+        "models_config_profile",
+    }
+    for consumer in consumers:
+        output_key = consumer + "_online_release_binding"
+        if consumer == "fyp" and output_key not in outputs:
+            continue
+        output = outputs[output_key]["value"]
+        if (output["environment"], output["region"]) != (
+            binding["environment"],
+            binding["region"],
+        ) or "idea_appconfig" in binding:
+            raise ValueError(
+                f"{consumer.title()} publication binding differs from this daily worker"
+            )
+        binding_key = consumer + "_appconfig"
+        resources = output[binding_key]
+        if (
+            set(resources) != required
+            or not all(
+                isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value)
+                for value in resources.values()
+            )
+            or resources["model_list_profile"] == resources["models_config_profile"]
+        ):
+            raise ValueError(f"invalid {consumer.title()} publication resources")
+        if binding_key in binding and binding[binding_key] != resources:
+            raise ValueError(f"{consumer.title()} publication resources already differ")
+        binding[binding_key] = resources
+        lock = output.get("fyp_publication_lock_uri")
+        if consumer == "fyp_split" and not lock:
+            raise ValueError("split FYP publication requires the shared lock URI")
+        if lock:
+            if not re.fullmatch(r"s3://[A-Za-z0-9.-]+/[A-Za-z0-9/_.=-]+", lock):
+                raise ValueError("invalid FYP publication lock URI")
+            if binding.get("fyp_publication_lock_uri", lock) != lock:
+                raise ValueError("FYP publication lock URI differs from the worker binding")
+            binding["fyp_publication_lock_uri"] = lock
+    return binding
+
+
 def prepare_daily(args):
     config_raw = Path(args.config).read_bytes()
     config = json.loads(config_raw)
@@ -72,39 +122,7 @@ def prepare_daily(args):
     binding = bind_daily(config, binding, task, registration)
     if getattr(args, "online_release_outputs", None):
         outputs = json.loads(Path(args.online_release_outputs).read_bytes())
-        required = {
-            "application_id",
-            "environment_id",
-            "deployment_strategy_id",
-            "model_list_profile",
-            "models_config_profile",
-        }
-        for consumer in ("discovery", "fyp"):
-            output_key = consumer + "_online_release_binding"
-            if consumer == "fyp" and output_key not in outputs:
-                continue
-            output = outputs[output_key]["value"]
-            if (output["environment"], output["region"]) != (
-                binding["environment"],
-                binding["region"],
-            ) or "idea_appconfig" in binding:
-                raise ValueError(
-                    f"{consumer.title()} publication binding differs from this daily worker"
-                )
-            binding_key = consumer + "_appconfig"
-            resources = output[binding_key]
-            if (
-                set(resources) != required
-                or not all(
-                    isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value)
-                    for value in resources.values()
-                )
-                or resources["model_list_profile"] == resources["models_config_profile"]
-            ):
-                raise ValueError(f"invalid {consumer.title()} publication resources")
-            if binding_key in binding and binding[binding_key] != resources:
-                raise ValueError(f"{consumer.title()} publication resources already differ")
-            binding[binding_key] = resources
+        bind_online(binding, outputs, config["model_name"])
     prefix = args.config_prefix.rstrip("/")
     if not prefix.startswith("s3://") or not prefix[5:].strip("/"):
         raise ValueError("configuration S3 prefix required")
@@ -147,5 +165,5 @@ if __name__ == "__main__":
         "output",
     ):
         parser.add_argument("--" + field, required=True)
-    parser.add_argument("--online-release-outputs", help="applied IaC Discovery publisher output")
+    parser.add_argument("--online-release-outputs", help="applied IaC AppConfig publisher outputs")
     print(json.dumps(prepare_daily(parser.parse_args()), indent=2))

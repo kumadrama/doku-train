@@ -119,6 +119,118 @@ class DiscoveryPublicationTest(unittest.TestCase):
         )
         return model, state
 
+    def split(self, name):
+        options = {
+            **self.options,
+            "model_name": name,
+            "fyp_split_appconfig": RESOURCES,
+            "fyp_publication_lock_uri": "s3://synthetic/control/fyp-lock.json",
+        }
+        endpoint = "doku-dte-fyp-" + name.replace("_", "-")
+        options["deployment"] = {**options["deployment"], "endpoint_name": endpoint}
+        listing = yaml.safe_load(self.base["list"])
+        listing["schema_version"] = fyp_appconfig.LIST_SCHEMA
+        routes = listing["models"]
+        routes.append(
+            {
+                "model_name": name,
+                "model_key": "split-old",
+                "service_name": fyp_appconfig.SERVICE,
+                "config_name": "models-config-dte",
+            }
+        )
+        definitions = yaml.safe_load(self.base["models"])
+        prior = copy.deepcopy(definitions["models"][ALIAS])
+        prior["release"].update(
+            id="split-old",
+            model=name,
+            endpoint=endpoint,
+            service=fyp_appconfig.SERVICE,
+            scenes=["for_you"],
+        )
+        definitions["models"]["split-old"] = prior
+        stale = copy.deepcopy(prior)
+        stale["release"].update(id="split-unserved", model_version="c" * 64)
+        definitions["models"]["split-unserved"] = stale
+        api = AppConfig(
+            {
+                "list": yaml.safe_dump(listing).encode(),
+                "models": yaml.safe_dump(definitions).encode(),
+            }
+        )
+        driver = fyp_appconfig.SplitFypPublication(
+            MemoryS3(),
+            Publisher(api, api, RESOURCES, label_prefix="fyp"),
+            options,
+            ecs=Mock(),
+            logs=Mock(),
+        )
+        return api, driver
+
+    def test_split_cutover_preserves_other_aliases_and_waits_for_replica_load(self):
+        model, template = self.candidate("b")
+        for name in sorted(fyp_appconfig.SPLIT_MODELS):
+            with self.subTest(name=name):
+                api, driver = self.split(name)
+                original = yaml.safe_load(api.live["list"])
+                state = SimpleNamespace(
+                    uri="s3://synthetic/control/" + name,
+                    value=copy.deepcopy(template.value),
+                    save=Mock(),
+                )
+                self.assertTrue(driver.acquire(state))
+                driver.prepare(state, model, self.root)
+                self.assertTrue(driver.create_only)
+                endpoint = driver.deployment("b" * 64)["endpoint_name"]
+                self.assertLessEqual(len(endpoint), 63)
+                self.assertTrue(endpoint.endswith("-v" + "b" * 12))
+                self.assertEqual(api.starts, 0)
+                state.value["active"]["stage"] = driver.endpoint_ready_stage
+                driver.rollback_loaded = Mock(side_effect=[False, True])
+                self.assertEqual(driver.publish(state), "pending")
+                self.assertEqual(driver.publish(state), "deployed")
+                self.assertTrue(driver.release(state))
+                self.assertEqual(
+                    [row["ConfigurationProfileId"] for row in api.deployments[1:]],
+                    ["models", "list"],
+                )
+                routes = json.loads(api.live["list"])["models"]
+                self.assertEqual(routes[0], original["models"][0])
+                models = json.loads(api.live["models"])["models"]
+                self.assertEqual(models[routes[1]["model_key"]]["release"]["endpoint"], endpoint)
+                self.assertNotEqual(models["split-old"]["release"]["endpoint"], endpoint)
+                self.assertNotIn("split-unserved", models)
+
+    def test_split_readiness_timeout_restores_old_route_once(self):
+        api, driver = self.split("inner_watch_lr003")
+        old_routes = api.live["list"]
+        model, state = self.candidate("b")
+        driver.prepare(state, model, self.root)
+        state.value["active"]["stage"] = driver.endpoint_ready_stage
+        driver.readiness_timeout_seconds = 0
+        driver.rollback_loaded = Mock(side_effect=[False, False, True])
+        self.assertEqual(driver.publish(state), "pending")
+        self.assertEqual(api.live["list"], old_routes)
+        self.assertEqual(driver.publish(state), "cutover_rolled_back")
+        self.assertEqual(api.starts, 3)
+
+    def test_shared_publication_lock_is_exclusive_and_resumes_its_owner(self):
+        _, driver = self.split("inner_watch_lr003")
+        _, first = self.candidate("b")
+        _, second = self.candidate("c")
+        first.uri = "s3://synthetic/control/first.json"
+        second.uri = "s3://synthetic/control/second.json"
+        self.assertTrue(driver.acquire(first))
+        self.assertFalse(driver.acquire(second))
+        self.assertTrue(driver.release(second))
+        self.assertFalse(driver.acquire(second))
+        resumed = SimpleNamespace(uri=first.uri, value=copy.deepcopy(first.value), save=Mock())
+        self.assertTrue(driver.acquire(resumed))
+        self.assertTrue(driver.release(resumed))
+        self.assertTrue(driver.acquire(second))
+        self.assertTrue(driver.release(resumed))
+        self.assertTrue(driver.acquire(second))
+
     def test_joint_fyp_publication_waits_for_all_replicas_before_shared_endpoint_rotation(self):
         route = yaml.safe_load(self.api.live["list"])
         route["schema_version"] = fyp_appconfig.LIST_SCHEMA
