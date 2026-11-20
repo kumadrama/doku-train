@@ -32,7 +32,7 @@
       "environment": [
         {
           "name": "ARTIFACT_KEY",
-          "value": "ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/07f8211f81a4d9f713252adc847530f074c40c9bc5dfb3821be76b7d3bd89fbc/worker.tar.gz"
+          "value": "ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/cdcb03c16e663f68387ac4ac3d69a8acc8ea15bb526bb6ab315d8c781390d6ad/worker.tar.gz"
         },
         {
           "name": "DOKU_CONFIG_SHA256",
@@ -44,7 +44,7 @@
         },
         {
           "name": "DOKU_BINDING_URI",
-          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/e619d494ba2f9c12f8297c3b0910193d5e288b0936a9b1cce27a9fa3fda33491/binding.json"
+          "value": "s3://prod-data-lake-20260901071345278900000001/ml/sagemaker-experiments/environment=prod/idea-mapped-daily/releases/2ae7108fa96ca1b41cf6d0796623ad28a7c173d3189c399e61eb3e2a08fdcbe5/binding.json"
         },
         {
           "name": "DOKU_CONFIG_URI",
@@ -52,11 +52,11 @@
         },
         {
           "name": "DOKU_BINDING_SHA256",
-          "value": "e619d494ba2f9c12f8297c3b0910193d5e288b0936a9b1cce27a9fa3fda33491"
+          "value": "2ae7108fa96ca1b41cf6d0796623ad28a7c173d3189c399e61eb3e2a08fdcbe5"
         },
         {
           "name": "ARTIFACT_SHA",
-          "value": "07f8211f81a4d9f713252adc847530f074c40c9bc5dfb3821be76b7d3bd89fbc"
+          "value": "cdcb03c16e663f68387ac4ac3d69a8acc8ea15bb526bb6ab315d8c781390d6ad"
         }
       ],
       "mountPoints": [],

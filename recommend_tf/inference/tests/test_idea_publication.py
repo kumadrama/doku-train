@@ -11,7 +11,12 @@ from unittest.mock import Mock
 from recommend_tf.inference.artifact_loader import checksum
 from recommend_tf.inference.tests.test_official import fixture
 from recommend_tf.inference.tests.test_official_pipeline import binding
-from recommend_tf.platforms.sagemaker.idea_appconfig import Publisher, encode, sha256
+from recommend_tf.platforms.sagemaker.idea_appconfig import (
+    Publisher,
+    candidate_documents,
+    encode,
+    sha256,
+)
 from recommend_tf.platforms.sagemaker.idea_publication import IdeaPublication, deployment_for
 from recommend_tf.platforms.sagemaker.publish_model import deploy_step
 
@@ -366,12 +371,36 @@ class IdeaPublicationTest(unittest.TestCase):
         self.assertEqual(len(json.loads(self.api.live["list"])["models"]), 1)
         candidate = models["models"][route["model_key"]]["release"]
         self.assertEqual(candidate["endpoint"], "idea-v-" + "b" * 12)
+        self.assertNotIn("model_version", candidate)
         self.assertEqual(candidate["max_history"], 1024)
         self.assertEqual(candidate["request_timeout_ms"], 450)
         self.assertEqual(
             models["models"]["old-release"]["release"]["endpoint"], "idea-v-" + "a" * 12
         )
         self.assertEqual(set(models["models"]), {"old-release", route["model_key"]})
+
+        # The next day's publication uses the active manifest for duplicate checks
+        # and records the previous model even without a release-level version.
+        next_model = artifact(self.root / "next", "c" * 64)
+        result = candidate_documents(
+            self.api.live["list"],
+            self.api.live["models"],
+            next_model,
+            "s3://synthetic/models/next.tar.gz",
+            "dte",
+            "idea-v-" + "c" * 12,
+        )
+        self.assertEqual(result["previous_version"], "b" * 64)
+        self.assertEqual(result["candidate_version"], "c" * 64)
+        with self.assertRaisesRegex(ValueError, "already the active immutable model"):
+            candidate_documents(
+                self.api.live["list"],
+                self.api.live["models"],
+                self.new,
+                "s3://synthetic/models/new.tar.gz",
+                "dte",
+                "idea-v-" + "b" * 12,
+            )
 
     def test_release_receipt_records_actual_endpoint_with_legacy_fallback(self):
         from recommend_tf.platforms.monitoring.report_metrics import release_event
@@ -393,6 +422,31 @@ class IdeaPublicationTest(unittest.TestCase):
         self.assertEqual(
             event["deployment"]["endpoint_name"], options["deployment"]["endpoint_name"]
         )
+
+    def test_fixed_endpoint_validates_route_without_publication(self):
+        endpoint = "doku-dte-idea-mapped"
+        self.options["idea_appconfig"]["fixed_endpoint"] = True
+        self.options["deployment"]["endpoint_name"] = endpoint
+        driver = IdeaPublication(MemoryS3(), self.publisher, self.options)
+        self.assertFalse(driver.create_only)
+        for version in ("a" * 64, "b" * 64):
+            self.assertEqual(driver.deployment(version)["endpoint_name"], endpoint)
+        with self.assertRaisesRegex(ValueError, "has not been migrated"):
+            driver.prepare(self.state, self.new, self.root)
+        config = json.loads(self.api.live["models"])
+        definition = config["models"]["old-release"]
+        definition["release"]["endpoint"] = endpoint
+        definition["release"].pop("model_version")
+        self.api.live["models"] = encode(config)
+        driver.prepare(self.state, self.new, self.root)
+        self.assertTrue(driver.before_endpoint(self.state))
+        self.assertEqual(self.state.value["active"]["endpoint_name"], endpoint)
+        self.assertEqual(self.api.starts, 0)
+        self.assertFalse(driver.s3.data)
+        definition["release"]["batch_size"] += 1
+        self.api.live["models"] = encode(config)
+        with self.assertRaisesRegex(ValueError, "route changed after export"):
+            driver.before_endpoint(self.state)
 
     def test_reentry_does_not_repeat_hot_publication(self):
         self.driver.prepare(self.state, self.new, self.root)
@@ -434,6 +488,50 @@ class IdeaPublicationTest(unittest.TestCase):
 
 
 class VersionEndpointTest(unittest.TestCase):
+    def test_fixed_endpoint_keeps_rollback_config_and_never_creates_endpoint(self):
+        options = {**binding()["deployment"], "endpoint_name": "doku-dte-idea-mapped"}
+        state = SimpleNamespace(
+            value={
+                "active": {
+                    "stage": "uploaded",
+                    "model_version": "b" * 64,
+                    "model_uri": "s3://synthetic/model.tar.gz",
+                },
+                "online": {"endpoint_config": "last-success"},
+            },
+            save=Mock(),
+        )
+        sm = Mock()
+        sm.describe_model.return_value = None
+        sm.describe_endpoint_config.return_value = None
+        sm.describe_endpoint.return_value = None
+        with self.assertRaisesRegex(ValueError, "differs from the last successful deployment"):
+            deploy_step(sm, None, state, options, probe=Mock(), require_existing=True)
+        sm.create_model.assert_not_called()
+        previous = {"EndpointStatus": "InService", "EndpointConfigName": "last-success"}
+        sm.describe_endpoint.return_value = previous
+        probe = Mock(side_effect=ValueError("wrong version"))
+        self.assertEqual(
+            deploy_step(sm, None, state, options, probe=probe, require_existing=True), "pending"
+        )
+        active = state.value["active"]
+        self.assertEqual(active["previous_config"], "last-success")
+        self.assertEqual(
+            sm.update_endpoint.call_args.kwargs["EndpointName"], options["endpoint_name"]
+        )
+        sm.describe_endpoint.return_value = {
+            "EndpointStatus": "InService",
+            "EndpointConfigName": active["endpoint_config"],
+        }
+        self.assertEqual(
+            deploy_step(sm, None, state, options, probe=probe, require_existing=True), "pending"
+        )
+        sm.update_endpoint.assert_called_with(
+            EndpointName=options["endpoint_name"],
+            EndpointConfigName="last-success",
+        )
+        sm.create_endpoint.assert_not_called()
+
     def test_create_only_never_updates_other_endpoint_or_rolls_it_back(self):
         options = binding()["deployment"]
         state = SimpleNamespace(

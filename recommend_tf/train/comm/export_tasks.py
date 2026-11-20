@@ -1,5 +1,7 @@
 """Resolve the public prediction heads independently of training and selection."""
 
+MODEL_VERSION_OUTPUT = "__doku_model_version"
+
 
 def validate_export_tasks(config):
     if "export_tasks" not in config:

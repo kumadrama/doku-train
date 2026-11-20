@@ -22,6 +22,12 @@ The binding is generated from actual applied Idea outputs and adds only `idea_ap
 `b2ec157fe3223aa37ca8e2961cc4fa61158a56f64ef961e8d3799b15eceabae8`. The release state was idle
 at generation. Immutable S3 publication and a fresh idle check still precede activation.
 
+## Idea 默认 Endpoint 与配置版本
+
+- `python -m unittest discover -s recommend_tf/inference/tests` 32 项通过。覆盖默认模型探测、显式版本旧定义兼容、省略版本之后继续生成下一次发布、拒绝重复候选，以及 worker 源码归档摘要。
+- AI Engine 执行 `GOWORK=off go test ./...` 和 `GOWORK=off go vet ./...` 均通过。Idea 合同测试校验省略配置版本后的 manifest 身份，打分测试校验调用只发 Endpoint 和标准推理输入。
+- 生产当前 Idea Endpoint 合成探测为 2 条样本、3 个输出。带版本头与默认模型两次调用均返回 HTTP 200，每个输出值相等。
+
 ## 日更发布恢复
 
 运行 `python -m pytest -q recommend_tf/inference/tests`。测试覆盖 AppConfig COMPLETE 后数据面短暂读到旧配置、外部改动拒绝、ECS 原任务详情过期后的接管，以及错误任务、集群、任务族和状态的拒绝。重新打包后运行 `python3 idea-mapped-daily/build/package_source.py` 校验启动清单的归档摘要。

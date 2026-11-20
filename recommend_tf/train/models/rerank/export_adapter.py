@@ -6,6 +6,7 @@ import random
 import numpy as np
 import tensorflow.compat.v1 as tf
 
+from ...comm.export_tasks import MODEL_VERSION_OUTPUT
 from .model_params import parameters
 from .rerank_model import model_fn
 
@@ -55,7 +56,18 @@ def reachable_inputs(outputs, inputs):
     }
 
 
-def export(config, vocabs, checkpoint, output, batches, tasks, forbidden, namespace):
+def export(
+    config,
+    vocabs,
+    checkpoint,
+    output,
+    batches,
+    tasks,
+    forbidden,
+    namespace,
+    *,
+    include_serving_version=False,
+):
     tf.disable_eager_execution()
     options = tf.ConfigProto(
         device_count={"GPU": 0},
@@ -95,8 +107,11 @@ def export(config, vocabs, checkpoint, output, batches, tasks, forbidden, namesp
             session.run([tf.global_variables_initializer(), tf.tables_initializer()])
             saver.restore(session, str(checkpoint / "model"))
             builder = tf.saved_model.builder.SavedModelBuilder(str(output))
+            serving_outputs = dict(outputs)
+            if include_serving_version:
+                serving_outputs[MODEL_VERSION_OUTPUT] = tf.constant([namespace], dtype=tf.string)
             signature = tf.saved_model.signature_def_utils.predict_signature_def(
-                signature_inputs, outputs
+                signature_inputs, serving_outputs
             )
             builder.add_meta_graph_and_variables(
                 session,
@@ -161,4 +176,8 @@ def export(config, vocabs, checkpoint, output, batches, tasks, forbidden, namesp
                 if not np.isfinite(actual[name]).all():
                     raise ValueError("nonfinite exported predictions")
                 np.testing.assert_allclose(actual[name], expected[name], rtol=1e-6, atol=1e-7)
+            if include_serving_version and actual[MODEL_VERSION_OUTPUT].tolist() != [
+                namespace.encode()
+            ]:
+                raise ValueError("exported serving model version differs")
     return schema
