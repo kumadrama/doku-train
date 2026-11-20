@@ -216,3 +216,58 @@ def test_family_enrollment_keeps_legacy_operation_and_recipe(tmp_path):
     args.task_definition.write_text(json.dumps(task))
     with pytest.raises(ValueError, match="role"):
         prepare_daily(args)
+
+
+def test_split_worker_binding_uses_fyp_profiles_and_the_official_lock():
+    from scripts.prepare_tf_daily_deployment import bind_online
+
+    registration = {"environment": "prod", "region": "us-east-2"}
+    resources = {
+        "application_id": "app",
+        "environment_id": "env",
+        "deployment_strategy_id": "strategy",
+        "model_list_profile": "list",
+        "models_config_profile": "definitions",
+    }
+    lock = "s3://doku-prod/control/publisher.json"
+    split = "inner_watch_lr003"
+    outputs = {
+        "fyp_split_online_release_binding": {
+            "value": {
+                **registration,
+                "model_names": [split],
+                "fyp_split_appconfig": resources,
+                "fyp_publication_lock_uri": lock,
+            }
+        },
+        "fyp_online_release_binding": {
+            "value": {
+                **registration,
+                "fyp_appconfig": resources,
+                "fyp_publication_lock_uri": lock,
+            }
+        },
+        "discovery_online_release_binding": {
+            "value": {
+                **registration,
+                "discovery_appconfig": {
+                    **resources,
+                    "model_list_profile": "discovery-list",
+                    "models_config_profile": "discovery-models",
+                },
+            }
+        },
+    }
+    split_binding = bind_online(dict(registration), outputs, split)
+    assert split_binding == {
+        **registration,
+        "fyp_split_appconfig": resources,
+        "fyp_publication_lock_uri": lock,
+    }
+    official = bind_online(dict(registration), outputs, "tf_rerank_ln_lr002_3feat")
+    assert official["fyp_appconfig"] == resources
+    assert official["fyp_publication_lock_uri"] == lock
+    assert "fyp_split_appconfig" not in official
+    outputs["fyp_split_online_release_binding"]["value"].pop("fyp_publication_lock_uri")
+    with pytest.raises(ValueError, match="shared lock"):
+        bind_online(dict(registration), outputs, split)
