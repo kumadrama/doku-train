@@ -16,6 +16,7 @@ from recommend_tf.train.comm.datasvr.daily_dataset import freeze
 from recommend_tf.train.comm.early_stop import validate_early_stop
 from recommend_tf.train.comm.export_tasks import export_outputs, publication_outputs
 
+from .monitoring_context import attach_context, validate_environment
 from .publish_model import (
     ReleaseState,
     contains,
@@ -154,10 +155,13 @@ def prepare_job(s3, config, ready, binding, operation, work):
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
         context["monitoring"] = {"metric_mapping": mapping}
-        request["Environment"]["DOKU_MONITORING_CONTEXT"] = json.dumps(context, sort_keys=True)
+        attach_context(
+            s3, request, context, prefix=prefix + "/daily", work=work, kms_key=binding["kms_key"]
+        )
     for name in ("DOKU_SOURCE_SHA256", "DOKU_LOCK_SHA256"):
         if not request["Environment"].get(name):
             raise ValueError("training image provenance required: " + name)
+    validate_environment(request)
     return request, run_uri
 
 
@@ -232,6 +236,7 @@ def advance_release(
         if observed is None:
             if policy and not policy.allowed("training"):
                 return "deferred_training"
+            validate_environment(request)
             sm.create_training_job(**request)
             return "pending"
         # Reconcile deterministic names against the actual submitted configuration.

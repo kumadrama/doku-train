@@ -525,7 +525,8 @@ def test_prepare_job_freezes_input_and_is_content_idempotent(tmp_path):
         monitoring={"metric_mapping": {"completion": "auc", "watch_seconds": "mse"}},
     )
     subset, _ = prepare_job(s3, config, ready, binding, "subset", tmp_path / "subset")
-    context = json.loads(subset["Environment"]["DOKU_MONITORING_CONTEXT"])
+    context = json.loads(s3.objects["bucket", "work/subset/daily/monitoring-context.json"][0])
+    assert "DOKU_MONITORING_CONTEXT" not in subset["Environment"]
     assert context["outputs"] == {"completion": "probability"}
     assert context["monitoring"]["metric_mapping"] == {"completion": "auc"}
 

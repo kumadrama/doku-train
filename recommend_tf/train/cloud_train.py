@@ -43,18 +43,19 @@ def main():
     )
     try:
         if os.environ.get("DOKU_MODE") == "daily":
+            from .comm.monitoring_context import read_context
             from .daily_train_model import execute as daily_execute
 
+            context = read_context(os.environ)
+
             def monitoring_source(root):
-                context = os.environ.get("DOKU_MONITORING_CONTEXT")
-                if not context:
+                if context is None:
                     return
                 from recommend_tf.platforms.monitoring.report_metrics import (
                     observation,
                     source_evidence,
                 )
 
-                context = json.loads(context)
                 status_path = root / "daily-status.json"
                 metadata = json.loads(status_path.read_text())
                 metadata["training_job_name"] = context["training_job_name"]

@@ -9,3 +9,5 @@
 Source: 2026-11-15 用户确认，Spec 030 选模事件合同，Spec 037 Idea 映射日更与两个生产部署 binding。
 
 2026-11-19 同任务族新增美国/未知国家模型，发布配置与验证见 [发布记录](us-country-rollout.md)。
+
+2026-11-20 监控上下文交付与超长冻结请求恢复改用 [Spec 042](../042-tf-monitoring-context-file/design.md)。新请求使用不可变文件与摘要；部署须同时升级训练与编排镜像。
