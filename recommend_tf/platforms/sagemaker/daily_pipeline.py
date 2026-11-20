@@ -256,6 +256,9 @@ def advance_release(
         if "TrainingEndTime" in observed:
             active["training_completed_at_ms"] = int(observed["TrainingEndTime"].timestamp() * 1000)
         state.save()
+    fixed_idea = binding.get("idea_appconfig", {}).get("fixed_endpoint") is True
+    if fixed_idea and model_publication is None:
+        raise ValueError("fixed Idea deployment requires the compatibility guard")
     if active["stage"] in {"trained", "exported"}:
         if model_publication and model_publication.lock:
             if policy and not policy.allowed("publication"):
@@ -320,6 +323,7 @@ def advance_release(
                 "--outputs",
                 str(options),
                 *(["--broadcast-feat", broadcast_feat] if broadcast_feat else []),
+                *(["--include-serving-version"] if fixed_idea else []),
             ],
             check=True,
             timeout=binding.get("export_timeout_seconds"),
@@ -357,7 +361,7 @@ def advance_release(
         model_publication.endpoint_ready_stage,
         "deployed",
     }:
-        if active["stage"] == "deployed" and model_publication.lock:
+        if active["stage"] == "deployed" and (fixed_idea or model_publication.lock):
             return "deployed"
         if not model_publication.acquire(state):
             return "pending"
@@ -379,8 +383,9 @@ def advance_release(
             deployment,
             create_only=model_publication.create_only if model_publication else False,
             completion_stage=model_publication.endpoint_ready_stage
-            if model_publication
+            if model_publication and not fixed_idea
             else "deployed",
+            require_existing=fixed_idea,
             probe=lambda client, endpoint, version: verify_probe(
                 client,
                 endpoint,
@@ -388,6 +393,7 @@ def advance_release(
                 {**binding["probe"], "tasks": list(publication_outputs(config, binding))},
                 inference_protocol=official.protocol(binding["deployment"]),
                 use_endpoint_default="idea_appconfig" in binding,
+                require_serving_version=fixed_idea,
             ),
         )
         return (

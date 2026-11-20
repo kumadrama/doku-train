@@ -68,11 +68,9 @@ def active_definition(list_raw, models_raw, environment):
     return listing, models, key, definition
 
 
-def candidate_documents(list_raw, models_raw, candidate, model_uri, environment, endpoint):
-    """Build bounded old/new definitions while preserving the current template."""
-    listing, models, old_key, old = active_definition(list_raw, models_raw, environment)
+def compatible_candidate(old, candidate):
     artifact = load(candidate)
-    root, version = artifact["root"], artifact["version"]
+    root = artifact["root"]
     old_release = old["release"]
     if old_release.get("warmup_file") or old_release.get("pipeline_file"):
         raise ValueError("Idea daily template must use its existing feature-chain files")
@@ -87,8 +85,6 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
         or old_release.get("model_version", previous_version) != previous_version
     ):
         raise ValueError("Idea active model version differs from its manifest")
-    if version == previous_version:
-        raise ValueError("candidate is already the active immutable model")
     old_config = old["files"][old_prefix + "feature-config.json"]["content"].encode()
     if old_config != (root / "feature-config.json").read_bytes():
         raise ValueError("daily feature contract changed; review its processing chain first")
@@ -98,6 +94,18 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
     new_signature.pop("model_version", None)
     if old_signature != new_signature:
         raise ValueError("daily model signature changed; consumer review required")
+    return artifact, previous_version
+
+
+def candidate_documents(list_raw, models_raw, candidate, model_uri, environment, endpoint):
+    """Build bounded old/new definitions while preserving the current template."""
+    listing, models, old_key, old = active_definition(list_raw, models_raw, environment)
+    artifact, previous_version = compatible_candidate(old, candidate)
+    root, version = artifact["root"], artifact["version"]
+    if version == previous_version:
+        raise ValueError("candidate is already the active immutable model")
+    old_release = old["release"]
+    old_prefix = old_release["artifact_dir"] + "/"
     template = copy.deepcopy(old_release)
     template.pop("model_version", None)
     for key in ("id", "artifact_dir", "manifest_sha256"):

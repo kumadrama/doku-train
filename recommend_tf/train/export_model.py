@@ -67,7 +67,15 @@ def synthetic_batches(config, vocabs, feature_contract):
     return batches
 
 
-def execute(run_dir, output, *, outputs=None, evidence=None, broadcast_feat=None):
+def execute(
+    run_dir,
+    output,
+    *,
+    outputs=None,
+    evidence=None,
+    broadcast_feat=None,
+    include_serving_version=False,
+):
     root, output = Path(run_dir).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError(output)
@@ -187,6 +195,7 @@ def execute(run_dir, output, *, outputs=None, evidence=None, broadcast_feat=None
             },
             "outputs": outputs,
             **({"broadcast_feat": broadcast_feat} if broadcast_feat else {}),
+            **({"include_serving_version": True} if include_serving_version else {}),
             "exporter_source_digest": exporter_source,
         }
     )
@@ -206,6 +215,7 @@ def execute(run_dir, output, *, outputs=None, evidence=None, broadcast_feat=None
             outputs,
             set(labels) - set(config["dataset_config"]["features"]),
             version,
+            include_serving_version=include_serving_version,
         )
         signature.update(
             version="doku-tf-signature/v1",
@@ -285,6 +295,7 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--outputs", help="Output units and legacy task selection (JSON file)")
     parser.add_argument("--broadcast-feat")
+    parser.add_argument("--include-serving-version", action="store_true")
     parser.add_argument(
         "--evidence", help="Audited checksum inventory for historical unsealed runs"
     )
@@ -296,6 +307,7 @@ def main():
                 args.output,
                 outputs=json.loads(Path(args.outputs).read_text()) if args.outputs else None,
                 broadcast_feat=args.broadcast_feat,
+                include_serving_version=args.include_serving_version,
                 evidence=json.loads(Path(args.evidence).read_text()) if args.evidence else None,
             )
         )

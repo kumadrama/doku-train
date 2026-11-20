@@ -28,4 +28,15 @@ hosted-version 使用 LatestVersionNumber CAS；StartDeployment 使用 LatestDep
 如果需要回退到尚不支持省略版本的 AI Engine 镜像，先恢复带 `release.model_version` 的有效定义，
 再回退镜像。可从对应定义的已校验 manifest 恢复显式版本。
 
+## 固定 Endpoint
+
+当 Idea binding 声明 `fixed_endpoint: true` 时，日更使用 binding 的 Endpoint 名称。
+新模型复用原 `primary` variant 与 SageMaker 蓝绿更新。只有实时路由、上一版 EndpointConfig
+及候选签名匹配才提交。发布完成需要默认模型探测回读候选实际版本。失败由 SageMaker 告警
+或既有发布器恢复上一份 EndpointConfig。
+
+当前 Idea 线上定义作为稳定特征合同。固定模式在日更期间读取 AppConfig 校验合同和路由，
+更新只发生在 SageMaker 和 release journal。导出产物的额外模型版本字段用于实际打分和样本归因。
+固定模式的上线顺序是 AI Engine、Endpoint 专属权限和告警、日更 worker 与其两个触发器。
+
 [AppConfig StartDeployment CAS](https://docs.aws.amazon.com/appconfig/2019-10-09/APIReference/API_StartDeployment.html)

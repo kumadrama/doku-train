@@ -186,6 +186,15 @@ def test_export_only_selected_task_preserves_training_heads(tmp_path):
     with tf.Graph().as_default(), tf.Session() as session:
         meta = tf.saved_model.loader.load(session, ["serve"], str(tmp_path / "package/saved_model"))
         assert set(meta.signature_def["serving_default"].outputs) == {"completion"}
+    tagged_path = tmp_path / "tagged-package"
+    export(tmp_path / "run", tagged_path, include_serving_version=True)
+    tagged = load(tagged_path)
+    assert tagged["version"] != artifact["version"]
+    assert tagged["signature"]["outputs"] == artifact["signature"]["outputs"]
+    with tf.Graph().as_default(), tf.Session() as session:
+        meta = tf.saved_model.loader.load(session, ["serve"], str(tagged_path / "saved_model"))
+        version = meta.signature_def["serving_default"].outputs["__doku_model_version"]
+        assert session.run(version.name).tolist() == [tagged["version"].encode()]
     assert format_response({"outputs": [0.25]}, "v1", 1, ["completion"])["predictions"] == [
         {"completion": 0.25}
     ]

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum, files
+from recommend_tf.train.comm.export_tasks import MODEL_VERSION_OUTPUT
 
 
 def location(uri):
@@ -249,7 +250,15 @@ def ensure_resource(client, kind, request):
 
 
 def deploy_step(
-    client, runtime, state, binding, *, probe, create_only=False, completion_stage="deployed"
+    client,
+    runtime,
+    state,
+    binding,
+    *,
+    probe,
+    create_only=False,
+    completion_stage="deployed",
+    require_existing=False,
 ):
     """One deployment tick. Caller holds an exclusive executor for this release state."""
     active = state.value["active"]
@@ -295,8 +304,17 @@ def deploy_step(
         ],
     }
     if active["stage"] == "uploaded":
-        if create_only:
+        if create_only or require_existing:
             current = describe(client, "describe_endpoint", EndpointName=endpoint)
+        if require_existing:
+            expected = (state.value.get("online") or {}).get("endpoint_config")
+            if (
+                not current
+                or current["EndpointStatus"] != "InService"
+                or current["EndpointConfigName"] != expected
+            ):
+                raise ValueError("fixed Idea Endpoint differs from the last successful deployment")
+        elif create_only:
             if current and current["EndpointConfigName"] != name:
                 raise ValueError("version endpoint exists with a different immutable configuration")
         ensure_resource(client, "model", model)
@@ -368,6 +386,8 @@ def deploy_step(
             return "pending"
         if status not in {None, "InService"}:
             raise ValueError("ambiguous deployment state requires reconciliation")
+        if require_existing and current is None:
+            raise ValueError("fixed Idea Endpoint disappeared during deployment")
         if (current["EndpointConfigName"] if current else None) != active["previous_config"]:
             raise ValueError("Endpoint changed outside this release; refusing to overwrite")
         if active.get("attempted"):
@@ -416,6 +436,7 @@ def verify_probe(
     *,
     inference_protocol=official.LEGACY_PROTOCOL,
     use_endpoint_default=False,
+    require_serving_version=False,
 ):
     serving_protocol = official.protocol({"inference_protocol": inference_protocol})
     options = {}
@@ -436,6 +457,10 @@ def verify_probe(
         body = json.load(stream)
     if serving_protocol == official.PROTOCOL:
         outputs = body.get("outputs")
+        if require_serving_version and (
+            not isinstance(outputs, dict) or outputs.pop(MODEL_VERSION_OUTPUT, None) != [version]
+        ):
+            raise ValueError("Endpoint returned an unexpected serving model version")
         if isinstance(outputs, list) and len(probe["tasks"]) == 1:
             outputs = {probe["tasks"][0]: outputs}
         if not isinstance(outputs, dict) or set(outputs) != set(probe["tasks"]):

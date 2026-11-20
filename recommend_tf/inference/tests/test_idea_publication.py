@@ -423,6 +423,31 @@ class IdeaPublicationTest(unittest.TestCase):
             event["deployment"]["endpoint_name"], options["deployment"]["endpoint_name"]
         )
 
+    def test_fixed_endpoint_validates_route_without_publication(self):
+        endpoint = "doku-dte-idea-mapped"
+        self.options["idea_appconfig"]["fixed_endpoint"] = True
+        self.options["deployment"]["endpoint_name"] = endpoint
+        driver = IdeaPublication(MemoryS3(), self.publisher, self.options)
+        self.assertFalse(driver.create_only)
+        for version in ("a" * 64, "b" * 64):
+            self.assertEqual(driver.deployment(version)["endpoint_name"], endpoint)
+        with self.assertRaisesRegex(ValueError, "has not been migrated"):
+            driver.prepare(self.state, self.new, self.root)
+        config = json.loads(self.api.live["models"])
+        definition = config["models"]["old-release"]
+        definition["release"]["endpoint"] = endpoint
+        definition["release"].pop("model_version")
+        self.api.live["models"] = encode(config)
+        driver.prepare(self.state, self.new, self.root)
+        self.assertTrue(driver.before_endpoint(self.state))
+        self.assertEqual(self.state.value["active"]["endpoint_name"], endpoint)
+        self.assertEqual(self.api.starts, 0)
+        self.assertFalse(driver.s3.data)
+        definition["release"]["batch_size"] += 1
+        self.api.live["models"] = encode(config)
+        with self.assertRaisesRegex(ValueError, "route changed after export"):
+            driver.before_endpoint(self.state)
+
     def test_reentry_does_not_repeat_hot_publication(self):
         self.driver.prepare(self.state, self.new, self.root)
         self.state.value["active"]["stage"] = "idea_endpoint_ready"
@@ -463,6 +488,50 @@ class IdeaPublicationTest(unittest.TestCase):
 
 
 class VersionEndpointTest(unittest.TestCase):
+    def test_fixed_endpoint_keeps_rollback_config_and_never_creates_endpoint(self):
+        options = {**binding()["deployment"], "endpoint_name": "doku-dte-idea-mapped"}
+        state = SimpleNamespace(
+            value={
+                "active": {
+                    "stage": "uploaded",
+                    "model_version": "b" * 64,
+                    "model_uri": "s3://synthetic/model.tar.gz",
+                },
+                "online": {"endpoint_config": "last-success"},
+            },
+            save=Mock(),
+        )
+        sm = Mock()
+        sm.describe_model.return_value = None
+        sm.describe_endpoint_config.return_value = None
+        sm.describe_endpoint.return_value = None
+        with self.assertRaisesRegex(ValueError, "differs from the last successful deployment"):
+            deploy_step(sm, None, state, options, probe=Mock(), require_existing=True)
+        sm.create_model.assert_not_called()
+        previous = {"EndpointStatus": "InService", "EndpointConfigName": "last-success"}
+        sm.describe_endpoint.return_value = previous
+        probe = Mock(side_effect=ValueError("wrong version"))
+        self.assertEqual(
+            deploy_step(sm, None, state, options, probe=probe, require_existing=True), "pending"
+        )
+        active = state.value["active"]
+        self.assertEqual(active["previous_config"], "last-success")
+        self.assertEqual(
+            sm.update_endpoint.call_args.kwargs["EndpointName"], options["endpoint_name"]
+        )
+        sm.describe_endpoint.return_value = {
+            "EndpointStatus": "InService",
+            "EndpointConfigName": active["endpoint_config"],
+        }
+        self.assertEqual(
+            deploy_step(sm, None, state, options, probe=probe, require_existing=True), "pending"
+        )
+        sm.update_endpoint.assert_called_with(
+            EndpointName=options["endpoint_name"],
+            EndpointConfigName="last-success",
+        )
+        sm.create_endpoint.assert_not_called()
+
     def test_create_only_never_updates_other_endpoint_or_rolls_it_back(self):
         options = binding()["deployment"]
         state = SimpleNamespace(
