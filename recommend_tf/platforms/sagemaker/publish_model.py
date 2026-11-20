@@ -12,7 +12,6 @@ from urllib.parse import urlsplit
 
 from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum, files
-from recommend_tf.train.comm.export_tasks import MODEL_VERSION_OUTPUT
 
 
 def location(uri):
@@ -457,10 +456,13 @@ def verify_probe(
         body = json.load(stream)
     if serving_protocol == official.PROTOCOL:
         outputs = body.get("outputs")
-        if require_serving_version and (
-            not isinstance(outputs, dict) or outputs.pop(MODEL_VERSION_OUTPUT, None) != [version]
-        ):
-            raise ValueError("Endpoint returned an unexpected serving model version")
+        if require_serving_version:
+            from recommend_tf.train.comm.export_tasks import MODEL_VERSION_OUTPUT
+
+            if not isinstance(outputs, dict) or outputs.pop(MODEL_VERSION_OUTPUT, None) != [
+                version
+            ]:
+                raise ValueError("Endpoint returned an unexpected serving model version")
         if isinstance(outputs, list) and len(probe["tasks"]) == 1:
             outputs = {probe["tasks"][0]: outputs}
         if not isinstance(outputs, dict) or set(outputs) != set(probe["tasks"]):
