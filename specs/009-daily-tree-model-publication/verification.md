@@ -226,3 +226,7 @@ DTE AppConfig 部署 186（version 5）临时开启 publication/redis，部署 1
 两环境 current、manifest SHA、无 pending operation、PROD 未改动、DTE 旧版本保留和
 开关恢复均通过；`task_status.py dte` 读取任务 STOPPED/exit 0 及 Redis 实际合同摘要验证日志。
 本次只改变 DTE 模型引用，不包含后续日更自动同步或消费者部署。
+
+## 2026-11-21 Redis 单包容量恢复
+
+Source: 用户授权恢复分发，不重训。单包预算 256 MiB → 384 MiB，仅 AppConfig 内容更新。今日既有产物分发和验证见 [执行记录](../042-tf-monitoring-context-file/rollout-20261121.md)。
