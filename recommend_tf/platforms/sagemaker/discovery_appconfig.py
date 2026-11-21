@@ -70,17 +70,21 @@ def active_definition(list_raw, models_raw, environment):
     return listing, models, key, models["models"][key]
 
 
-def next_definition(models, old, candidate, model_uri, endpoint, release_prefix):
+def serving_identity_signature(manifest_path):
+    with manifest_path.open() as manifest:
+        return json.load(manifest).get("verification", {}).get("serving_version_signature")
+
+
+def next_definition(
+    models, old, candidate, model_uri, endpoint, release_prefix, *, endpoint_identity
+):
     artifact = load(candidate)
     root, version = artifact["root"], artifact["version"]
     previous = old["release"]
     caller = old.get("model_call", {}).get("type")
     legacy_caller = "sagemaker-tfs/v1"
-    discovery = release_prefix == "discovery"
-    if previous.get("pipeline_file") or (
-        caller != legacy_caller and not (discovery and caller == ENDPOINT_CALLER)
-    ):
-        raise ValueError("Discovery daily model requires its existing TF Serving feature chain")
+    if previous.get("pipeline_file") or caller not in {legacy_caller, ENDPOINT_CALLER}:
+        raise ValueError("daily model requires its existing TF Serving feature chain")
     old_prefix = previous["artifact_dir"] + "/"
     if (
         old["files"][old_prefix + "feature-config.json"]["content"].encode()
@@ -97,21 +101,19 @@ def next_definition(models, old, candidate, model_uri, endpoint, release_prefix)
     manifest_path = root / "manifest.json"
     manifest_sha = checksum(manifest_path)
     model_call = old["model_call"]
-    if discovery:
-        manifest = json.loads(manifest_path.read_bytes())
-        identified = (
-            manifest.get("verification", {}).get("serving_version_signature")
-            == DISCOVERY_SERVING_SIGNATURE
-        )
-        if caller == ENDPOINT_CALLER and not identified:
-            raise ValueError("fixed Discovery Endpoint requires the model identity signature")
-        if identified:
-            model_call = {**model_call, "type": ENDPOINT_CALLER}
+    identified = (
+        endpoint_identity
+        and serving_identity_signature(manifest_path) == DISCOVERY_SERVING_SIGNATURE
+    )
+    if caller == ENDPOINT_CALLER and not identified:
+        raise ValueError("fixed Endpoint requires the model identity signature")
+    if identified:
+        model_call = {**model_call, "type": ENDPOINT_CALLER}
     previous_version = previous.get("model_version")
     if previous_version is None:
         embedded = old["files"][old_prefix + "manifest.json"]
-        if embedded["sha256"] != previous["manifest_sha256"]:
-            raise ValueError("Discovery contract manifest differs from its pinned digest")
+        if sha256(embedded["content"].encode()) != previous["manifest_sha256"]:
+            raise ValueError("contract manifest differs from its pinned digest")
         previous_version = json.loads(embedded["content"])["model_version"]
     template = copy.deepcopy(previous)
     for name in ("id", "model_version", "manifest_sha256", "artifact_dir", "warmup_file"):
@@ -166,12 +168,16 @@ def next_definition(models, old, candidate, model_uri, endpoint, release_prefix)
         "manifest_sha256": manifest_sha,
         "template_sha256": identity,
     }
+    if identified:
+        proposed["serving_signature"] = DISCOVERY_SERVING_SIGNATURE
     return key, new, proposed
 
 
 def candidate_documents(list_raw, models_raw, candidate, model_uri, environment, endpoint):
     listing, models, old_key, old = active_definition(list_raw, models_raw, environment)
-    key, new, proposed = next_definition(models, old, candidate, model_uri, endpoint, "discovery")
+    key, new, proposed = next_definition(
+        models, old, candidate, model_uri, endpoint, "discovery", endpoint_identity=True
+    )
     if old_key == key or (
         old["model_call"]["type"] == ENDPOINT_CALLER and old["release"]["endpoint"] == endpoint
     ):

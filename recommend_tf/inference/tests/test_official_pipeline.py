@@ -194,6 +194,36 @@ class OfficialPipelineTest(unittest.TestCase):
             )
             self.assertEqual(result.stdout.strip(), official.PROTOCOL)
 
+    def test_split_export_retry_reuses_the_original_signature_mode(self):
+        options = {**binding(), "fyp_split_appconfig": {}}
+
+        def fetch(_s3, _uri, target, _limit, _evidence):
+            target.mkdir()
+            (target / "experiment-config.json").write_text(
+                '{"dataset_config":{"split":{"validation_to":"2026-01-01"}}}'
+            )
+            (target / "experiment-status.json").write_text('{"status":"completed"}')
+
+        for fields, expected in (
+            ({"stage": "trained"}, True),
+            ({"stage": "exported"}, False),
+            ({"stage": "exported", "export_has_identity_signature": True}, True),
+        ):
+            active = {"run_uri": "s3://synthetic/run", "cutoff": "2026-01-01", **fields}
+            state = SimpleNamespace(value={"active": active})
+            with (
+                self.subTest(fields=fields),
+                tempfile.TemporaryDirectory() as tmp,
+                patch.object(daily_pipeline, "fetch_run", side_effect=fetch),
+                patch.object(daily_pipeline.subprocess, "run", side_effect=TimeoutError) as export,
+                self.assertRaises(TimeoutError),
+            ):
+                daily_pipeline.advance_release(
+                    Mock(), Mock(), Mock(), state, options, work=Path(tmp), config={}
+                )
+            args = export.call_args.args[0]
+            self.assertEqual("--include-discovery-serving-version" in args, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

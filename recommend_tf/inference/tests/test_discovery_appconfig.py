@@ -1,6 +1,7 @@
 """Daily FYP publication and the existing Discovery AppConfig consumer contract."""
 
 import copy
+import io
 import json
 import tempfile
 import unittest
@@ -106,8 +107,13 @@ class DiscoveryPublicationTest(unittest.TestCase):
         self.driver = DiscoveryPublication(MemoryS3(), publisher, self.options)
         self.base = copy.deepcopy(self.api.live)
 
-    def candidate(self, digit):
+    def candidate(self, digit, *, identified=False):
         model = daily_artifact(self.root / digit, digit)
+        if identified:
+            manifest = model / "manifest.json"
+            document = json.loads(manifest.read_bytes())
+            document["verification"] = {"serving_version_signature": DISCOVERY_SERVING_SIGNATURE}
+            manifest.write_text(json.dumps(document))
         state = SimpleNamespace(
             value={
                 "active": {
@@ -216,6 +222,102 @@ class DiscoveryPublicationTest(unittest.TestCase):
         self.assertEqual(driver.publish(state), "cutover_rolled_back")
         self.assertEqual(api.starts, 3)
 
+    def test_split_moves_from_pinned_base_to_fixed_endpoint_across_daily_releases(self):
+        name = "inner_watch_lr003"
+        api, driver = self.split(name)
+        base = driver.binding["deployment"]["endpoint_name"]
+        driver.rollback_loaded = Mock(return_value=True)
+
+        intermediate, state = self.candidate("b", identified=True)
+        driver.prepare(state, intermediate, self.root)
+        temporary = driver.deployment_for_state(state.value["active"])["endpoint_name"]
+        self.assertEqual(temporary, driver.deployment("b" * 64)["endpoint_name"])
+        state.value["active"]["stage"] = driver.endpoint_ready_stage
+        self.assertEqual(driver.publish(state), "deployed")
+        _, _, _, routed = driver.active_definition(api.live["list"], api.live["models"], "dte")
+        self.assertEqual(routed["release"]["model_version"], "b" * 64)
+
+        fixed, state = self.candidate("c", identified=True)
+        driver.prepare(state, fixed, self.root)
+        self.assertEqual(driver.deployment_for_state(state.value["active"])["endpoint_name"], base)
+        _, _, prior_key, _ = driver.active_definition(api.live["list"], api.live["models"], "dte")
+        state.value["active"]["stage"] = driver.endpoint_ready_stage
+        self.assertEqual(driver.publish(state), "deployed")
+        _, definitions, active_key, routed = driver.active_definition(
+            api.live["list"], api.live["models"], "dte"
+        )
+        self.assertEqual(routed["model_call"]["type"], ENDPOINT_CALLER)
+        self.assertNotIn("model_version", routed["release"])
+        self.assertEqual(definitions["models"][prior_key]["release"]["endpoint"], temporary)
+        after = copy.deepcopy(api.live)
+
+        candidate, state = self.candidate("d", identified=True)
+        state.uri = "s3://synthetic/control/split.json"
+        state.value["online"] = {
+            "endpoint_config": "previous",
+            "endpoint_name": base,
+            "model_version": "c" * 64,
+        }
+        driver.prepare(state, candidate, self.root)
+        journal = state.value["active"][driver.journal_key]
+        self.assertEqual(journal["candidate_release"], active_key)
+        self.assertEqual(journal["candidate_version"], "d" * 64)
+        sm, runtime = Mock(), Mock()
+        sm.describe_endpoint.return_value = {
+            "EndpointStatus": "InService",
+            "EndpointConfigName": "previous",
+        }
+        sm.describe_model.return_value = None
+        sm.describe_endpoint_config.return_value = None
+
+        def response(**call):
+            outputs = dict.fromkeys(driver.binding["outputs"], [0.5])
+            if json.loads(call["Body"])["signature_name"] == DISCOVERY_SERVING_SIGNATURE:
+                self.assertNotIn("CustomAttributes", call)
+                outputs["__doku_model_version"] = ["d" * 64]
+            else:
+                self.assertIn("CustomAttributes", call)
+            return {"Body": io.BytesIO(json.dumps({"outputs": outputs}).encode())}
+
+        runtime.invoke_endpoint.side_effect = response
+        args = (driver.s3, sm, runtime, state, driver.binding)
+        kwargs = {"work": self.root, "config": {}, "model_publication": driver}
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
+        self.assertEqual(sm.update_endpoint.call_args.kwargs["EndpointName"], base)
+        sm.create_endpoint.assert_not_called()
+        sm.describe_endpoint.return_value["EndpointConfigName"] = state.value["active"][
+            "endpoint_config"
+        ]
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
+        self.assertEqual(runtime.invoke_endpoint.call_count, 2)
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "deployed")
+        self.assertEqual(api.live, after)
+        self.assertEqual(api.starts, 4)
+
+        candidate, rejected = self.candidate("e", identified=True)
+        rejected.uri = state.uri
+        previous_config = state.value["active"]["endpoint_config"]
+        rejected.value["online"] = {
+            "endpoint_config": previous_config,
+            "endpoint_name": base,
+            "model_version": "d" * 64,
+        }
+        driver.prepare(rejected, candidate, self.root)
+        self.assertEqual(rejected.value["active"][driver.journal_key]["previous_version"], "d" * 64)
+        self.assertTrue(driver.release(state))
+        args = (driver.s3, sm, runtime, rejected, driver.binding)
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
+        sm.describe_endpoint.return_value["EndpointConfigName"] = rejected.value["active"][
+            "endpoint_config"
+        ]
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
+        self.assertEqual(rejected.value["active"]["stage"], "rollback_pending")
+        self.assertEqual(sm.update_endpoint.call_args.kwargs["EndpointName"], base)
+        self.assertEqual(sm.update_endpoint.call_args.kwargs["EndpointConfigName"], previous_config)
+        sm.describe_endpoint.return_value["EndpointConfigName"] = previous_config
+        self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "rolled_back")
+        self.assertEqual(api.live, after)
+
     def test_shared_publication_lock_is_exclusive_and_resumes_its_owner(self):
         _, driver = self.split("inner_watch_lr003")
         _, first = self.candidate("b")
@@ -289,7 +391,7 @@ class DiscoveryPublicationTest(unittest.TestCase):
         )
         self.assertEqual(yaml.safe_load(api.live["models"])["inference_dump"], {"enabled": False})
 
-        model, state = self.candidate("c")
+        model, state = self.candidate("c", identified=True)
         both.prepare(state, model, self.root)
         both.fyp.rollback_loaded = Mock(side_effect=[False, True])
         sm, runtime = Mock(), Mock()
@@ -306,12 +408,26 @@ class DiscoveryPublicationTest(unittest.TestCase):
         self.assertEqual(api.starts, 9)
         next_routes = json.loads(api.live["fyp-list"])["models"]
         next_models = json.loads(api.live["fyp-models"])["models"]
-        self.assertEqual(
-            next_models[next_routes[0]["model_key"]]["release"]["model_version"], "c" * 64
-        )
+        active_model = next_models[next_routes[0]["model_key"]]
+        self.assertEqual(active_model["model_call"]["type"], ENDPOINT_CALLER)
+        self.assertNotIn("model_version", active_model["release"])
         self.assertEqual(
             next_models[next_routes[1]["model_key"]]["release"]["model_version"], "a" * 64
         )
+        live = copy.deepcopy(api.live)
+        model, state = self.candidate("d", identified=True)
+        state.value["online"] = {
+            "endpoint_config": "previous",
+            "endpoint_name": self.endpoint,
+            "model_version": "c" * 64,
+        }
+        both.prepare(state, model, self.root)
+        self.assertTrue(both.before_endpoint(state))
+        self.assertEqual(api.live, live)
+        state.value["active"]["stage"] = both.endpoint_ready_stage
+        self.assertEqual(both.publish(state), "deployed")
+        self.assertEqual(api.live, live)
+        self.assertEqual(api.starts, 9)
 
     def test_three_daily_models_publish_definitions_then_routes_to_existing_endpoint(self):
         for digit in ("b", "c", "d"):
@@ -365,11 +481,7 @@ class DiscoveryPublicationTest(unittest.TestCase):
 
     def test_identified_discovery_activates_once_on_the_fixed_endpoint(self):
         for digit in ("b", "c"):
-            model, state = self.candidate(digit)
-            manifest = model / "manifest.json"
-            document = json.loads(manifest.read_bytes())
-            document["verification"] = {"serving_version_signature": DISCOVERY_SERVING_SIGNATURE}
-            manifest.write_text(json.dumps(document))
+            model, state = self.candidate(digit, identified=True)
             self.driver.prepare(state, model, self.root)
             state.value["active"]["stage"] = self.driver.endpoint_ready_stage
             self.assertEqual(self.driver.publish(state), "deployed")
@@ -434,8 +546,6 @@ class DiscoveryPublicationTest(unittest.TestCase):
             "EndpointStatus": "InService",
             "EndpointConfigName": state.value["active"]["endpoint_config"],
         }
-        import io
-
         runtime.invoke_endpoint.return_value = {
             "Body": io.BytesIO(
                 json.dumps({"outputs": dict.fromkeys(self.options["outputs"], [0.5])}).encode()

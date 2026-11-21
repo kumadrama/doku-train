@@ -19,3 +19,11 @@ Source: 2026-11-19 用户授权修改 `content-rec-svc`，接通 FYP 与 AI Engi
 - 在原有训练任务中启用 FYP 模型发布。FYP 与 Discovery 使用同一份通过端点探测的模型制品，各自发布独立配置。
 - FYP 保留独立端点的旧版用于回退。变更共享端点前，需要确认运行副本已经切到可用的回退模型。
 - Discovery 实验保持 10%，保留各业务现有的特征、样本和实验配置。
+
+## FYP 固定 Endpoint
+
+Source: 2026-11-21 用户要求 FYP 模型沿用 Discovery 的无版本调用方式。
+
+- 适用 `tf_rerank_ln_lr002_3feat`、`tf_rerank_ln_lr002_3feat_us_or_unknown`、`inner_watch_lr003` 和 `inner_watch_w02_lr003`。
+- 每个模型通过既有业务别名选路，打分只依赖固定 Endpoint，实际模型版本来自推理响应，继续用于日志、结果和样本归因。
+- 首次切换须确认候选可用，后续兼容日更直接更新固定 Endpoint。沿用独立回退端点或已验证的上一份 EndpointConfig。

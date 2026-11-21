@@ -18,7 +18,7 @@
 
 生产 worker 可增加 `fyp_appconfig`。在首次启用时，发布器保留现有独立端点作为 FYP 回退，并将已验证的新制品定义加入 FYP 模型配置。旧调用端仍可按原 release ID 请求。升级后的调用端可使用模型别名，在推理完成后校验服务、模型和特征合同，并记录实际版本。
 
-后续日更开始时冻结两套 AppConfig 文档。若 FYP 当前路由使用即将更新的官方端点，先通过 AppConfig 切换 FYP 别名到独立回退端点。发布器等待当前 ECS 任务都记录该路由的激活事件，再更新官方端点。合成探测成功后依次发布 Discovery 和 FYP。状态保存各自的 AppConfig 版本和部署编号，重跑时从已记录的阶段恢复。
+日更开始时冻结两套 AppConfig 文档。若旧式 FYP 路由按版本调用即将更新的官方端点，先通过 AppConfig 切换 FYP 别名到独立回退端点。发布器等待当前 ECS 任务都记录该路由的激活事件，再更新官方端点。合成探测成功后依次发布 Discovery 和 FYP。状态保存各自的 AppConfig 版本和部署编号，重跑时从已记录的阶段恢复。
 
 FYP 的 `training_dump`、特征链和请求预算来自 FYP 配置。新模型必须维持已有特征合同与推理签名。回退在 FYP 模型列表内切换别名，旧版端点持续可用。
 
@@ -28,9 +28,13 @@ FYP 的 `training_dump`、特征链和请求预算来自 FYP 配置。新模型�
 
 先升级 Discovery 引擎。下一次共有主模型完成端点更新和现有探测后，发布器依据制品中的签名标记一次性切换 Discovery 的独立配置，保留 bootstrap 别名。后续日更在同一 Endpoint 原地更新模型，验证特征合同兼容后复用已生效的 Discovery 配置。FYP 继续按其原有版本路由和回退流程发布。
 
-## FYP 三路实验模型日更
+## FYP 固定 Endpoint 日更
 
-`inner_watch_lr003`、`inner_watch_w02_lr003` 和 `tf_rerank_ln_lr002_3feat_us_or_unknown` 使用独立的 FYP 发布绑定，其余 FYP 发布流程沿用现有入口。每个版本使用带摘要的 SageMaker Endpoint，只允许创建新端点或恢复同一份已记录的部署。发布器验证完整模型合同和精确版本推理探测后，将新定义加入 `models-config-prod`，确认回读后才切换该模型在 `fyp-model-list-prod` 的别名。候选版本与上一版本的定义都保留供混合读和回滚。
+FYP 与 Discovery 共用 `sagemaker-tfs-identified/v1`。首次发布带有 `serving_with_model_version` 的制品时，新的 FYP release 省略 `model_version`。引擎从 response 读取实际版本，同一个请求的多个批次必须使用同一版本。日更仍校验原 `serving_default` 打分协议，并对固定 Endpoint 增加新签名和实际模型版本探测。
+
+主模型沿用 `doku-<env>-tf-rerank-official`。首次启用保留独立回退流程。正式切换后，特征和张量合同兼容的日更复用 AppConfig，同时用发布记录的 EndpointConfig 核对原地更新前的线上状态。探测失败时沿用现有 EndpointConfig 回滚。
+
+`inner_watch_lr003`、`inner_watch_w02_lr003` 和 `tf_rerank_ln_lr002_3feat_us_or_unknown` 各自使用绑定中的原始 Endpoint 名作为固定地址。如果旧式路由正在使用该地址，先通过既有的按版本发布路径完成一轮独立端点切换。业务从独立端点打分时，下一轮才在固定地址验证新制品并切换别名。发布记录冻结选定的目标 Endpoint；候选和上一版本定义在切换期间可用于混合读和回滚。
 
 主模型和三路实验模型在创建 AppConfig 发布计划前共用按 ETag 更新的 S3 锁。锁记录发布任务的操作 ID 和 journal 路径，ECS 重启后由同一任务接续；外部配置变更由 AppConfig 发布器的版本和部署编号检查保护。三路待所有 AI Engine 副本报告加载新别名后，才将发布记录标为完成。如果五分钟后还有副本未加载，使用已保存的 AppConfig 文档切回旧别名，等待副本加载旧版本，再记录回滚。模型定义仍可用于排查，训练产物可从现有 journal 追溯。
 
