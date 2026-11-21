@@ -324,6 +324,11 @@ def advance_release(
                 str(options),
                 *(["--broadcast-feat", broadcast_feat] if broadcast_feat else []),
                 *(["--include-serving-version"] if fixed_idea else []),
+                *(
+                    ["--include-discovery-serving-version"]
+                    if "discovery_appconfig" in binding
+                    else []
+                ),
             ],
             check=True,
             timeout=binding.get("export_timeout_seconds"),

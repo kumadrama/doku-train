@@ -66,7 +66,7 @@ def export(
     forbidden,
     namespace,
     *,
-    include_serving_version=False,
+    serving_version_signature=None,
 ):
     tf.disable_eager_execution()
     options = tf.ConfigProto(
@@ -107,16 +107,20 @@ def export(
             session.run([tf.global_variables_initializer(), tf.tables_initializer()])
             saver.restore(session, str(checkpoint / "model"))
             builder = tf.saved_model.builder.SavedModelBuilder(str(output))
-            serving_outputs = dict(outputs)
-            if include_serving_version:
-                serving_outputs[MODEL_VERSION_OUTPUT] = tf.constant([namespace], dtype=tf.string)
-            signature = tf.saved_model.signature_def_utils.predict_signature_def(
-                signature_inputs, serving_outputs
-            )
+            predict_signature = tf.saved_model.signature_def_utils.predict_signature_def
+            signatures = {"serving_default": predict_signature(signature_inputs, outputs)}
+            if serving_version_signature:
+                serving_outputs = {
+                    **outputs,
+                    MODEL_VERSION_OUTPUT: tf.constant([namespace], dtype=tf.string),
+                }
+                signatures[serving_version_signature] = predict_signature(
+                    signature_inputs, serving_outputs
+                )
             builder.add_meta_graph_and_variables(
                 session,
                 [tf.saved_model.tag_constants.SERVING],
-                signature_def_map={"serving_default": signature},
+                signature_def_map=signatures,
                 main_op=tf.tables_initializer(),
             )
             builder.save()
@@ -162,7 +166,7 @@ def export(
         meta = tf.saved_model.loader.load(
             session, [tf.saved_model.tag_constants.SERVING], str(output)
         )
-        signature = meta.signature_def["serving_default"]
+        signature = meta.signature_def[serving_version_signature or "serving_default"]
         graph = tf.get_default_graph()
         for values, expected in zip(batches, references):
             actual = session.run(
@@ -176,7 +180,7 @@ def export(
                 if not np.isfinite(actual[name]).all():
                     raise ValueError("nonfinite exported predictions")
                 np.testing.assert_allclose(actual[name], expected[name], rtol=1e-6, atol=1e-7)
-            if include_serving_version and actual[MODEL_VERSION_OUTPUT].tolist() != [
+            if serving_version_signature and actual[MODEL_VERSION_OUTPUT].tolist() != [
                 namespace.encode()
             ]:
                 raise ValueError("exported serving model version differs")

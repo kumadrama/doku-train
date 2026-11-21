@@ -22,6 +22,12 @@
 
 FYP 的 `training_dump`、特征链和请求预算来自 FYP 配置。新模型必须维持已有特征合同与推理签名。回退在 FYP 模型列表内切换别名，旧版端点持续可用。
 
+## Discovery 固定 Endpoint
+
+主模型导出保留 FYP 原有的 `serving_default` 输入和分数输出，并增加 Discovery 专用的 `serving_with_model_version` 签名。两个签名引用同一组分数张量，Discovery 的签名额外返回实际执行模型的摘要。
+
+先升级 Discovery 引擎。下一次共有主模型完成端点更新和现有探测后，发布器依据制品中的签名标记一次性切换 Discovery 的独立配置，保留 bootstrap 别名。后续日更在同一 Endpoint 原地更新模型，验证特征合同兼容后复用已生效的 Discovery 配置。FYP 继续按其原有版本路由和回退流程发布。
+
 ## FYP 三路实验模型日更
 
 `inner_watch_lr003`、`inner_watch_w02_lr003` 和 `tf_rerank_ln_lr002_3feat_us_or_unknown` 使用独立的 FYP 发布绑定，其余 FYP 发布流程沿用现有入口。每个版本使用带摘要的 SageMaker Endpoint，只允许创建新端点或恢复同一份已记录的部署。发布器验证完整模型合同和精确版本推理探测后，将新定义加入 `models-config-prod`，确认回读后才切换该模型在 `fyp-model-list-prod` 的别名。候选版本与上一版本的定义都保留供混合读和回滚。

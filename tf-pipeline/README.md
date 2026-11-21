@@ -13,4 +13,4 @@ Task 发布的 task-target.yml 依赖 doku-tools 的受信 ecs_task_targets bind
 
 Discovery 日更联动沿用该任务族。部署前应用现有 worker 的 Discovery profile 专用发布权限，将 IaC 的 `discovery_online_release_binding` 输出通过 `scripts/prepare_tf_daily_deployment.py --online-release-outputs` 合并到现有 binding，再按原发布流程上传冻结文档、更新任务四个输入坐标并激活新 worker。训练配置、推理镜像、endpoint 和原任务族保持原值；只追加 `discovery_appconfig` 资源标识。不能只部署新代码却遗漏 binding。
 
-新 hook 在原端点合成探测通过后依次发布 `discovery_models_config` 和 `discovery_model_list`。Discovery AI 复用现有 AppConfig 加载器，不读日更 journal。当前线上未启用此 hook；详见 [Spec 040](../specs/040-discovery-fyp-daily-publication/design.md)。
+Discovery 发布在原端点合成探测通过后执行。带 `discovery_appconfig` 的共享日更任务导出 Discovery 专用的 `serving_with_model_version`，同时保留 FYP 的 `serving_default`。先发布支持该签名的 Discovery 引擎。下一次日更再通过 `discovery_models_config` 和 `discovery_model_list` 启用固定 Endpoint 调用。之后特征和张量合同兼容时沿用这两份配置。详见 [Spec 040](../specs/040-discovery-fyp-daily-publication/design.md)。
