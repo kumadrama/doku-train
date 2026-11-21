@@ -110,6 +110,13 @@ class ModelPublication:
         proposed = self.candidate_documents(
             listing, models, artifact, active["model_uri"], self.binding["environment"], endpoint
         )
+        if proposed.get("reuse_route"):
+            online = state.value.get("online") or {}
+            if online.get("endpoint_name") != endpoint or not online.get("model_version"):
+                raise ValueError("fixed Endpoint route does not match the last successful release")
+            # The embedded manifest anchors the feature contract after setup.
+            # The release journal records the weights the Endpoint served most recently.
+            proposed["previous_version"] = online["model_version"]
         docs = {
             "before_list": listing,
             "before_models": models,

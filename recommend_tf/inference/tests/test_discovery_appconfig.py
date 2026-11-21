@@ -253,7 +253,11 @@ class DiscoveryPublicationTest(unittest.TestCase):
 
         candidate, state = self.candidate("d", identified=True)
         state.uri = "s3://synthetic/control/split.json"
-        state.value["online"] = {"endpoint_config": "previous", "endpoint_name": base}
+        state.value["online"] = {
+            "endpoint_config": "previous",
+            "endpoint_name": base,
+            "model_version": "c" * 64,
+        }
         driver.prepare(state, candidate, self.root)
         journal = state.value["active"][driver.journal_key]
         self.assertEqual(journal["candidate_release"], active_key)
@@ -293,8 +297,13 @@ class DiscoveryPublicationTest(unittest.TestCase):
         candidate, rejected = self.candidate("e", identified=True)
         rejected.uri = state.uri
         previous_config = state.value["active"]["endpoint_config"]
-        rejected.value["online"] = {"endpoint_config": previous_config, "endpoint_name": base}
+        rejected.value["online"] = {
+            "endpoint_config": previous_config,
+            "endpoint_name": base,
+            "model_version": "d" * 64,
+        }
         driver.prepare(rejected, candidate, self.root)
+        self.assertEqual(rejected.value["active"][driver.journal_key]["previous_version"], "d" * 64)
         self.assertTrue(driver.release(state))
         args = (driver.s3, sm, runtime, rejected, driver.binding)
         self.assertEqual(daily_pipeline.advance_release(*args, **kwargs), "pending")
@@ -407,6 +416,11 @@ class DiscoveryPublicationTest(unittest.TestCase):
         )
         live = copy.deepcopy(api.live)
         model, state = self.candidate("d", identified=True)
+        state.value["online"] = {
+            "endpoint_config": "previous",
+            "endpoint_name": self.endpoint,
+            "model_version": "c" * 64,
+        }
         both.prepare(state, model, self.root)
         self.assertTrue(both.before_endpoint(state))
         self.assertEqual(api.live, live)
