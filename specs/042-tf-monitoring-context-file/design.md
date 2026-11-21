@@ -23,3 +23,5 @@ Source: 已确认需求；`daily_pipeline.prepare_job`、`cloud_train.main`、`R
 本次限定模型的镜像、接线与验收顺序见[生产恢复计划](deployment-plan.md)。
 
 共享运行时代码进入 Idea 源码包，按仓库打包工具同步本地部署清单的 ARTIFACT_KEY/ARTIFACT_SHA；这只固定当前源码，不代表部署 Idea，未来发布也须使用配套训练镜像。
+
+2026-11-21 配套镜像升级、指标补报和树分发恢复见 [执行记录](rollout-20261121.md)。

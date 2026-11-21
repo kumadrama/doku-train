@@ -82,3 +82,5 @@ Source: 用户明确要求“合并 并部署 恢复本次日更”；AWS 回读
 当前验收边界：已合并、部署并恢复原日更任务。训练、导出和新模型发布尚未完成，线上 Endpoint 仍 InService，保持 cutoff 2026-11-18 成功版本。未重新生成样本、未创建 retry-id、未重训已有成功任务，也未人工清除/ACK 告警。前一轮同模型训练耗时 16790 秒，不作为本轮耗时 SLA。
 
 可执行证据和回执保留在本地 `runs/tf-context-repair-20261120/`：`deployment-verified.json`、`repair-plan.json`、`repair-applied.json`、`resume-event.json`、`training-accepted.json`、`status.py`、`status.json`、`plan.json`、`apply.log` 和 `post-plan.log`。可重跑 `status.py` 查看真实终态，不把启动成功声明为发布完成。
+
+2026-11-21 配套镜像升级、指标补报和树分发恢复见 [执行记录](rollout-20261121.md)。
