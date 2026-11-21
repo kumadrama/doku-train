@@ -21,6 +21,7 @@ from recommend_tf.platforms.sagemaker import daily_pipeline, fyp_appconfig
 from recommend_tf.platforms.sagemaker.discovery_appconfig import (
     ALIAS,
     BOOTSTRAP_ALIAS,
+    ENDPOINT_CALLER,
     LIST_SCHEMA,
     MODEL,
     MODELS_PROFILE,
@@ -28,6 +29,7 @@ from recommend_tf.platforms.sagemaker.discovery_appconfig import (
     DiscoveryPublication,
 )
 from recommend_tf.platforms.sagemaker.idea_appconfig import MODELS_SCHEMA, Publisher, sha256
+from recommend_tf.train.comm.export_tasks import DISCOVERY_SERVING_SIGNATURE
 
 
 def daily_artifact(root, digit):
@@ -359,6 +361,34 @@ class DiscoveryPublicationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.driver.prepare(state, model, self.root)
         self.assertNotIn("online", state.value["active"])
+        self.assertEqual(self.api.starts, 2)
+
+    def test_identified_discovery_activates_once_on_the_fixed_endpoint(self):
+        for digit in ("b", "c"):
+            model, state = self.candidate(digit)
+            manifest = model / "manifest.json"
+            document = json.loads(manifest.read_bytes())
+            document["verification"] = {"serving_version_signature": DISCOVERY_SERVING_SIGNATURE}
+            manifest.write_text(json.dumps(document))
+            self.driver.prepare(state, model, self.root)
+            state.value["active"]["stage"] = self.driver.endpoint_ready_stage
+            self.assertEqual(self.driver.publish(state), "deployed")
+            if digit == "b":
+                route = json.loads(self.api.live["list"])["models"][0]
+                definition = json.loads(self.api.live["models"])["models"][route["model_key"]]
+                self.assertEqual(definition["model_call"]["type"], ENDPOINT_CALLER)
+                self.assertNotIn("model_version", definition["release"])
+                self.assertEqual(definition["release"]["endpoint"], self.endpoint)
+                self.assertEqual(
+                    json.loads(self.api.live["list"])["models"][1]["model_name"], BOOTSTRAP_ALIAS
+                )
+                enabled_documents = copy.deepcopy(self.api.live)
+            else:
+                self.assertEqual(self.api.live, enabled_documents)
+
+        legacy, state = self.candidate("d")
+        with self.assertRaisesRegex(ValueError, "requires the model identity signature"):
+            self.driver.prepare(state, legacy, self.root)
         self.assertEqual(self.api.starts, 2)
 
     def test_rolled_back_definitions_and_lost_response_keep_replay_safe(self):

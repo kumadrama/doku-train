@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .comm.artifact_integrity import checksum, files, reserve_output, verify_run
 from .comm.datasvr.prepared import digest, organize, tensor_batch
-from .comm.export_tasks import export_outputs
+from .comm.export_tasks import DISCOVERY_SERVING_SIGNATURE, export_outputs
 from .models.rerank.export_adapter import export
 from .models.rerank.model_params import parameters
 
@@ -75,7 +75,17 @@ def execute(
     evidence=None,
     broadcast_feat=None,
     include_serving_version=False,
+    include_discovery_serving_version=False,
 ):
+    if include_serving_version and include_discovery_serving_version:
+        raise ValueError("expected exactly one serving metadata signature")
+    serving_version_signature = (
+        DISCOVERY_SERVING_SIGNATURE
+        if include_discovery_serving_version
+        else "serving_default"
+        if include_serving_version
+        else None
+    )
     root, output = Path(run_dir).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError(output)
@@ -196,6 +206,11 @@ def execute(
             "outputs": outputs,
             **({"broadcast_feat": broadcast_feat} if broadcast_feat else {}),
             **({"include_serving_version": True} if include_serving_version else {}),
+            **(
+                {"include_discovery_serving_version": True}
+                if include_discovery_serving_version
+                else {}
+            ),
             "exporter_source_digest": exporter_source,
         }
     )
@@ -215,7 +230,7 @@ def execute(
             outputs,
             set(labels) - set(config["dataset_config"]["features"]),
             version,
-            include_serving_version=include_serving_version,
+            serving_version_signature=serving_version_signature,
         )
         signature.update(
             version="doku-tf-signature/v1",
@@ -277,6 +292,11 @@ def execute(
                 "batches": len(batches),
                 "rtol": 1e-6,
                 "atol": 1e-7,
+                **(
+                    {"serving_version_signature": serving_version_signature}
+                    if serving_version_signature
+                    else {}
+                ),
             },
         }
         (package / "manifest.json").write_text(json.dumps(manifest, sort_keys=True))
@@ -295,7 +315,9 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--outputs", help="Output units and legacy task selection (JSON file)")
     parser.add_argument("--broadcast-feat")
-    parser.add_argument("--include-serving-version", action="store_true")
+    identity = parser.add_mutually_exclusive_group()
+    identity.add_argument("--include-serving-version", action="store_true")
+    identity.add_argument("--include-discovery-serving-version", action="store_true")
     parser.add_argument(
         "--evidence", help="Audited checksum inventory for historical unsealed runs"
     )
@@ -308,6 +330,7 @@ def main():
                 outputs=json.loads(Path(args.outputs).read_text()) if args.outputs else None,
                 broadcast_feat=args.broadcast_feat,
                 include_serving_version=args.include_serving_version,
+                include_discovery_serving_version=args.include_discovery_serving_version,
                 evidence=json.loads(Path(args.evidence).read_text()) if args.evidence else None,
             )
         )

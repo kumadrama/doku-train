@@ -195,6 +195,20 @@ def test_export_only_selected_task_preserves_training_heads(tmp_path):
         meta = tf.saved_model.loader.load(session, ["serve"], str(tagged_path / "saved_model"))
         version = meta.signature_def["serving_default"].outputs["__doku_model_version"]
         assert session.run(version.name).tolist() == [tagged["version"].encode()]
+    discovery_path = tmp_path / "discovery-package"
+    export(tmp_path / "run", discovery_path, include_discovery_serving_version=True)
+    discovery = load(discovery_path)
+    assert discovery["version"] not in {artifact["version"], tagged["version"]}
+    assert discovery["signature"]["outputs"] == artifact["signature"]["outputs"]
+    with tf.Graph().as_default(), tf.Session() as session:
+        meta = tf.saved_model.loader.load(session, ["serve"], str(discovery_path / "saved_model"))
+        default = meta.signature_def["serving_default"]
+        identified = meta.signature_def["serving_with_model_version"]
+        assert set(default.outputs) == {"completion"}
+        assert default.inputs == identified.inputs
+        assert default.outputs["completion"] == identified.outputs["completion"]
+        version = identified.outputs["__doku_model_version"]
+        assert session.run(version.name).tolist() == [discovery["version"].encode()]
     assert format_response({"outputs": [0.25]}, "v1", 1, ["completion"])["predictions"] == [
         {"completion": 0.25}
     ]
