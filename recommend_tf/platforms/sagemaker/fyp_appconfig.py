@@ -3,10 +3,19 @@
 import json
 import re
 import time
+from pathlib import Path
 
 from recommend_tf.inference import official
+from recommend_tf.train.comm.export_tasks import DISCOVERY_SERVING_SIGNATURE
 
-from .discovery_appconfig import MODEL, DiscoveryPublication, decode, next_definition
+from .discovery_appconfig import (
+    ENDPOINT_CALLER,
+    MODEL,
+    DiscoveryPublication,
+    decode,
+    next_definition,
+    serving_identity_signature,
+)
 from .idea_appconfig import MODELS_SCHEMA, DeploymentRolledBack, encode
 from .model_publication import ModelPublication
 
@@ -46,7 +55,7 @@ def route_definition(route, models, environment, model_name=MODEL):
         or release["model"] != model_name
         or release["scenes"] != ["for_you"]
         or release.get("require_dump") is not True
-        or definition.get("model_call", {}).get("type") != "sagemaker-tfs/v1"
+        or definition.get("model_call", {}).get("type") not in {"sagemaker-tfs/v1", ENDPOINT_CALLER}
         or not release["endpoint"].startswith(f"doku-{environment}-")
     ):
         raise ValueError("incompatible FYP daily route")
@@ -79,9 +88,12 @@ def candidate_documents(list_raw, models_raw, candidate, model_uri, environment,
     if signatures[0] != signatures[1]:
         raise ValueError("FYP rollback has a different scoring signature")
 
-    key, new, report = next_definition(models, old, candidate, model_uri, endpoint, "fyp")
-    if key in models["models"] and models["models"][key] != new:
-        raise ValueError("immutable FYP release already has different content")
+    key, new, report = next_definition(
+        models, old, candidate, model_uri, endpoint, "fyp", endpoint_identity=True
+    )
+    if old["model_call"]["type"] == ENDPOINT_CALLER and old["release"]["endpoint"] == endpoint:
+        report.update(candidate_release=old_key, reuse_route=True)
+        return {**report, "model_list": list_raw, "models_config": models_raw}
     if key == old_key:
         return {**report, "model_list": list_raw, "models_config": models_raw}
 
@@ -149,6 +161,14 @@ class FypPublication(ModelPublication):
     def before_endpoint(self, state):
         journal = state.value["active"][self.journal_key]
         if "fallback_release" not in journal:
+            if journal.get("serving_signature"):
+                docs = self.read_documents(journal)
+                if (
+                    self.publisher.read(self.resources["model_list_profile"]) != docs["before_list"]
+                    or self.publisher.read(self.resources["models_config_profile"])
+                    != docs["before_models"]
+                ):
+                    raise ValueError("FYP routes changed before endpoint deployment")
             return True
         docs = self.read_documents(journal)
         models = self.resources["models_config_profile"]
@@ -207,7 +227,7 @@ class FypPublication(ModelPublication):
 
 
 class SplitFypPublication(FypPublication):
-    """Publish one FYP experiment alias against its own immutable endpoint."""
+    """Migrate one FYP experiment to its dedicated fixed endpoint."""
 
     binding_key = "fyp_split_appconfig"
     journal_key = "fyp_split_online"
@@ -232,6 +252,35 @@ class SplitFypPublication(FypPublication):
             raise ValueError("exact version and valid split FYP endpoint required")
         return {**base, "endpoint_name": endpoint}
 
+    def candidate_deployment(self, version, old, artifact):
+        base = self.binding["deployment"]
+        if old["model_call"]["type"] == ENDPOINT_CALLER:
+            if old["release"]["endpoint"] != base["endpoint_name"]:
+                raise ValueError("fixed FYP route differs from its configured Endpoint")
+            return base
+        if (
+            old["release"]["endpoint"] != base["endpoint_name"]
+            and serving_identity_signature(Path(artifact) / "manifest.json")
+            == DISCOVERY_SERVING_SIGNATURE
+        ):
+            return base
+        # A pinned release on the base needs one normal immutable cutover first.
+        # The next candidate can then be probed on the base before changing the route.
+        return self.deployment(version)
+
+    def deployment_for_state(self, active):
+        base = self.binding["deployment"]
+        pinned = active[self.journal_key]["endpoint"]
+        if pinned == base["endpoint_name"]:
+            return base
+        versioned = self.deployment(active["model_version"])
+        if pinned != versioned["endpoint_name"]:
+            raise ValueError("frozen split FYP Endpoint differs from its binding")
+        return versioned
+
+    def creates_versioned_endpoint(self, deployment):
+        return deployment["endpoint_name"] != self.binding["deployment"]["endpoint_name"]
+
     def active_definition(self, list_raw, models_raw, environment):
         listing = decode(list_raw, LIST_SCHEMA, environment)
         models = decode(models_raw, MODELS_SCHEMA, environment)
@@ -248,12 +297,21 @@ class SplitFypPublication(FypPublication):
     def candidate_documents(
         self, list_raw, models_raw, candidate, model_uri, environment, endpoint
     ):
-        listing, models, _, old = self.active_definition(list_raw, models_raw, environment)
-        key, definition, report = next_definition(
-            models, old, candidate, model_uri, endpoint, "fyp-daily"
-        )
-        retained = {route["model_key"] for route in listing["models"]}
+        listing, models, old_key, old = self.active_definition(list_raw, models_raw, environment)
         fixed_endpoint = self.binding["deployment"]["endpoint_name"]
+        key, definition, report = next_definition(
+            models,
+            old,
+            candidate,
+            model_uri,
+            endpoint,
+            "fyp-daily",
+            endpoint_identity=endpoint == fixed_endpoint,
+        )
+        if old["model_call"]["type"] == ENDPOINT_CALLER:
+            report.update(candidate_release=old_key, reuse_route=True)
+            return {**report, "model_list": list_raw, "models_config": models_raw}
+        retained = {route["model_key"] for route in listing["models"]}
         for name, previous in list(models["models"].items()):
             release = previous["release"]
             if (
@@ -267,7 +325,7 @@ class SplitFypPublication(FypPublication):
                     )
                     or (
                         release["endpoint"] == old["release"]["endpoint"] == fixed_endpoint
-                        and release["model_version"] != old["release"]["model_version"]
+                        and release.get("model_version") != old["release"].get("model_version")
                     )
                 )
             ):
@@ -281,6 +339,8 @@ class SplitFypPublication(FypPublication):
     def publish(self, state):
         active = state.value["active"]
         journal = active[self.journal_key]
+        if journal.get("reuse_route"):
+            return super().publish(state)
         docs = self.read_documents(journal)
         deployments = journal.get("publications", {})
         route = deployments.get("route", {})

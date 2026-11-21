@@ -311,6 +311,9 @@ def advance_release(
         output = work / "package"
         options = work / "outputs.json"
         options.write_text(json.dumps(expected))
+        split_signature = "fyp_split_appconfig" in binding and active.get(
+            "export_has_identity_signature", active["stage"] == "trained"
+        )
         subprocess.run(
             [
                 sys.executable,
@@ -326,7 +329,7 @@ def advance_release(
                 *(["--include-serving-version"] if fixed_idea else []),
                 *(
                     ["--include-discovery-serving-version"]
-                    if "discovery_appconfig" in binding
+                    if "discovery_appconfig" in binding or split_signature
                     else []
                 ),
             ],
@@ -350,6 +353,8 @@ def advance_release(
             model_version=manifest["model_version"],
             export_manifest_sha256=export_digest,
         )
+        if split_signature:
+            active["export_has_identity_signature"] = True
         state.save()
         active["model_uri"] = publish_package(
             s3,
@@ -380,26 +385,46 @@ def advance_release(
             return "pending"
         deployment = binding["deployment"]
         if model_publication:
-            deployment = model_publication.deployment(active["model_version"])
+            deployment = model_publication.deployment_for_state(active)
+        fyp_release = active.get("fyp_online") or active.get("fyp_split_online") or {}
+
+        def probe(client, endpoint, version):
+            fixture = {**binding["probe"], "tasks": list(publication_outputs(config, binding))}
+            protocol = official.protocol(binding["deployment"])
+            verify_probe(
+                client,
+                endpoint,
+                version,
+                fixture,
+                inference_protocol=protocol,
+                use_endpoint_default="idea_appconfig" in binding,
+                require_serving_version=fixed_idea,
+            )
+            if signature := fyp_release.get("serving_signature"):
+                verify_probe(
+                    client,
+                    endpoint,
+                    version,
+                    fixture,
+                    inference_protocol=protocol,
+                    use_endpoint_default=True,
+                    require_serving_version=True,
+                    serving_signature=signature,
+                )
+
         result = deploy_step(
             sm,
             runtime,
             state,
             deployment,
-            create_only=model_publication.create_only if model_publication else False,
+            create_only=bool(
+                model_publication and model_publication.creates_versioned_endpoint(deployment)
+            ),
             completion_stage=model_publication.endpoint_ready_stage
             if model_publication and not fixed_idea
             else "deployed",
-            require_existing=fixed_idea,
-            probe=lambda client, endpoint, version: verify_probe(
-                client,
-                endpoint,
-                version,
-                {**binding["probe"], "tasks": list(publication_outputs(config, binding))},
-                inference_protocol=official.protocol(binding["deployment"]),
-                use_endpoint_default="idea_appconfig" in binding,
-                require_serving_version=fixed_idea,
-            ),
+            require_existing=fixed_idea or fyp_release.get("reuse_route", False),
+            probe=probe,
         )
         return (
             "pending"
@@ -407,7 +432,12 @@ def advance_release(
             else result
         )
     if active["stage"] == "rollback_pending":
-        return rollback_step(sm, state, binding["deployment"])
+        deployment = (
+            model_publication.deployment_for_state(active)
+            if model_publication
+            else binding["deployment"]
+        )
+        return rollback_step(sm, state, deployment)
     return active["stage"]
 
 

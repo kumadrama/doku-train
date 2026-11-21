@@ -59,6 +59,15 @@ class ModelPublication:
     def before_endpoint(self, state):
         return True
 
+    def candidate_deployment(self, version, old, artifact):
+        return self.deployment(version)
+
+    def deployment_for_state(self, active):
+        return self.deployment(active["model_version"])
+
+    def creates_versioned_endpoint(self, deployment):
+        return self.create_only
+
     def __init__(self, s3, publisher, binding):
         self.s3, self.publisher, self.binding = s3, publisher, binding
         self.resources = binding[self.binding_key]
@@ -94,8 +103,9 @@ class ModelPublication:
         listing = self.publisher.read(self.resources["model_list_profile"])
         models = self.publisher.read(self.resources["models_config_profile"])
         _, _, _, old = self.active_definition(listing, models, self.binding["environment"])
-        endpoint = self.deployment(active["model_version"])["endpoint_name"]
-        if self.create_only and old["release"]["endpoint"] == endpoint:
+        deployment = self.candidate_deployment(active["model_version"], old, artifact)
+        endpoint = deployment["endpoint_name"]
+        if self.creates_versioned_endpoint(deployment) and old["release"]["endpoint"] == endpoint:
             raise ValueError("candidate endpoint must be independent of the active model")
         proposed = self.candidate_documents(
             listing, models, artifact, active["model_uri"], self.binding["environment"], endpoint

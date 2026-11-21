@@ -312,7 +312,7 @@ def deploy_step(
                 or current["EndpointStatus"] != "InService"
                 or current["EndpointConfigName"] != expected
             ):
-                raise ValueError("fixed Idea Endpoint differs from the last successful deployment")
+                raise ValueError("fixed Endpoint differs from the last successful deployment")
         elif create_only:
             if current and current["EndpointConfigName"] != name:
                 raise ValueError("version endpoint exists with a different immutable configuration")
@@ -386,7 +386,7 @@ def deploy_step(
         if status not in {None, "InService"}:
             raise ValueError("ambiguous deployment state requires reconciliation")
         if require_existing and current is None:
-            raise ValueError("fixed Idea Endpoint disappeared during deployment")
+            raise ValueError("fixed Endpoint disappeared during deployment")
         if (current["EndpointConfigName"] if current else None) != active["previous_config"]:
             raise ValueError("Endpoint changed outside this release; refusing to overwrite")
         if active.get("attempted"):
@@ -436,20 +436,26 @@ def verify_probe(
     inference_protocol=official.LEGACY_PROTOCOL,
     use_endpoint_default=False,
     require_serving_version=False,
+    serving_signature=None,
 ):
     serving_protocol = official.protocol({"inference_protocol": inference_protocol})
     options = {}
+    request = probe["request"]
     if serving_protocol == official.PROTOCOL:
-        if probe["request"].get("signature_name") != "serving_default" or not probe["request"].get(
-            "inputs"
-        ):
+        if request.get("signature_name") != "serving_default" or not request.get("inputs"):
             raise ValueError("official probe requires prepared tensors")
         if not use_endpoint_default:
             options["CustomAttributes"] = official.custom_attributes(version)
+    if serving_signature:
+        if serving_protocol != official.PROTOCOL or not (
+            use_endpoint_default and require_serving_version
+        ):
+            raise ValueError("identity signature probe requires default Endpoint routing")
+        request = {**request, "signature_name": serving_signature}
     response = runtime.invoke_endpoint(
         EndpointName=endpoint,
         ContentType=probe["content_type"],
-        Body=json.dumps(probe["request"]).encode(),
+        Body=json.dumps(request).encode(),
         **options,
     )
     with response["Body"] as stream:

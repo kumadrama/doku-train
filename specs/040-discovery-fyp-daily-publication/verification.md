@@ -46,3 +46,9 @@ DTE `fyp-daily` 使用 18 条独立可播候选。AI Engine 同时加载 `84eb07
 - 32 个推理和发布测试以及 7 个绑定和运行策略测试通过。测试覆盖三个别名、独立 Endpoint、AppConfig 发布顺序、配置读取等待、发布锁恢复以及副本加载超时后的回滚。Terraform validate 和四个 mock plan 测试通过。
 - 使用生产正在服务的三份模型制品与 AppConfig 做只读合同回放。首轮使用实际模型版本，随后三轮仅在本地换版本元数据，验证连续发布的配置容量。四轮模型定义大小分别为 1,336,006、1,682,576、1,682,576、1,682,576 字节，均在 2 MiB 内。
 - 上线后仍须通过真实 Endpoint 探测、所有副本的 `model_generation_ready` 事件和线上打分版本验收。测试结果覆盖配置和发布行为，生产实流量验收在 worker 激活后执行。
+
+## FYP 固定 Endpoint
+
+`python -m unittest discover -s recommend_tf/inference/tests` 覆盖共享主模型首次启用前的回退、实验模型先切走旧式固定地址再迁回、两套签名的推理探测、版本不符时恢复 EndpointConfig，以及固定调用模式连续日更复用原 AppConfig。
+
+投产验收读取实际 Endpoint、AppConfig caller 和 ECS 目标，观察四个别名的业务打分结果、响应中的实际版本和样本身份。当前验证范围为代码及合成回归。
