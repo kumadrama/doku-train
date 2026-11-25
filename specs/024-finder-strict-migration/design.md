@@ -71,6 +71,9 @@ item_numeric拆成scalar组（quality、heat）和embed组（3个桶），在dnn
 
 保留共享128/64 DNN、5对FM、7个独立32维任务塔和当前激活/dropout；未用的LHUC、FiLM、额外tower、HSTU等显式不支持。图表达式补充所需的Doku算子映射，保留Finder AST图运算而非Python逐样本解释。
 
+2026-11-20 补充：上述 LHUC 排除由 [Spec 041](../041-tf-lhuc/design.md) 取代；用户确认
+直接复用 Finder LHUC，本地可通过模型配置开启，默认关闭。其余排除范围保持不变。
+
 兴趣weighted_mean是明确扩展：配置声明历史权重字段；图内按有效位置求sum(w*embedding)/sum(w)，空历史或零总权重返回零向量。三路attention保留Finder dot/softmax主体；全空历史显式零输出以维持基础输入合同，不把此边界处理隐称原样源码。mean路径按实际元素数归约。
 
 ## 5. 固定lookup后端

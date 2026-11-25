@@ -99,6 +99,17 @@ Source: [Spec 024 设计](../../specs/024-finder-strict-migration/design.md)，�
 目标状态及完整边界以 Spec024 为准。原生 Linux amd64 完整合成链路已通过 SageMaker 验收；真实数据性能尚待验收，
 本地合成测试不代表云端部署或当前 e1 实验数值等价。
 
+### Spec 041：TF LHUC（2026-11-25）
+
+Source: [Spec 041 设计](../../specs/041-tf-lhuc/design.md)，用户确认直接复用 Finder LHUC。
+
+`recommend_tf/train/models/rerank` 通过 `lhuc_inputs`、`lhuc_share_embed`、
+`target_layer_use_lhuc` 接通已有 Finder 门控函数。条件向量来自现有编码/池化后的输入组；
+共享 DNN 和可选任务塔在 Dense 前应用 `2 * sigmoid(Dense(condition))` 缩放。
+默认关闭；门控支路梯度控制沿用 Finder，训练和导出共用 model_fn。目标结构已本地接通，
+模型14以独立FYP候选别名部署，日更沿用FYP任务家族；不更改默认路由或AB分桶。
+当前部署验收与日更状态见 Spec 041 验证记录。
+
 ### Spec 024 训练前批量准备（当前本地实现，2026-10-29）
 
 Source: [Spec 024 设计](../../specs/024-finder-strict-migration/design.md)。

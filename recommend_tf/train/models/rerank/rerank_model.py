@@ -267,18 +267,27 @@ def attention_layer(params, mode, inputs, lengths, sparse_lengths, features):
 
 def rerank_core_model(params, mode, inputs, lengths, sparse_lengths):
     x = tf.concat([inputs[name] for name in params.dnn_inputs], axis=1)
+    lhuc_inputs = None
+    if params.lhuc_inputs:
+        lhuc_inputs = tf.concat([inputs[name] for name in params.lhuc_inputs], axis=1)
+        if params.lhuc_share_embed:
+            lhuc_inputs = tf.stop_gradient(lhuc_inputs)
     with tf.variable_scope("output_layers" + params.output_layer_prefix, reuse=tf.AUTO_REUSE):
-        x = dnn_layer(params.output_layer, x, mode, "output_layer")
+        x = dnn_layer(params.output_layer, x, mode, "output_layer", lhuc_inputs)
     xs = [x]
     for pair in params.fm_layers:
         fm = fm_layer(params, [inputs[name] for name in pair])
         xs.append(tf.reduce_sum(fm, axis=1, keepdims=True))
     x_new = tf.concat(xs, axis=1)
+    if not params.target_layer_use_lhuc:
+        lhuc_inputs = None
     model_outputs = {}
     with tf.variable_scope("target_layers" + params.target_layer_prefix, reuse=tf.AUTO_REUSE):
         for task, head in params.tasks.items():
             with tf.variable_scope(params.target_scope_names.get(task, task), reuse=tf.AUTO_REUSE):
-                model_outputs[task] = target_layer(head, x_new, mode, f"{task}_output_layer")
+                model_outputs[task] = target_layer(
+                    head, x_new, mode, f"{task}_output_layer", lhuc_inputs
+                )
                 debug_utils.add_debug_tensor(f"{task}_logits", model_outputs[task])
     return model_outputs, x_new
 

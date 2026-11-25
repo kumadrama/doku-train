@@ -23,6 +23,7 @@ SERVICE = "fyp_episode_rank"
 ROLLBACK = MODEL + "__rollback"
 LIST_SCHEMA = "ai-engine/fyp-model-list/v1"
 SPLIT_MODELS = {
+    "inner_watch_lhuc_m512_e16_t64",
     "inner_watch_lr003",
     "inner_watch_w02_lr003",
     "tf_rerank_ln_lr002_3feat_us_or_unknown",

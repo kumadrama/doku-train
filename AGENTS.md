@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 041：TF LHUC](specs/041-tf-lhuc/requirements.md)、[设计](specs/041-tf-lhuc/design.md)、[任务](specs/041-tf-lhuc/tasks.md)、[验证](specs/041-tf-lhuc/verification.md) — Finder LHUC 与 FYP 模型14独立候选日更；不变更 AB 流量。
+
 - [Spec 042：TF 监控上下文文件传递](specs/042-tf-monitoring-context-file/requirements.md)、[设计](specs/042-tf-monitoring-context-file/design.md)、[任务](specs/042-tf-monitoring-context-file/tasks.md)、[验证](specs/042-tf-monitoring-context-file/verification.md) — 修复 SageMaker 环境变量长度超限，支持原冻结请求显式恢复。
 
 - [Spec 040：Discovery 复用 FYP 日更与加载](specs/040-discovery-fyp-daily-publication/requirements.md)、[设计](specs/040-discovery-fyp-daily-publication/design.md)、[任务](specs/040-discovery-fyp-daily-publication/tasks.md)、[验证](specs/040-discovery-fyp-daily-publication/verification.md)。沿用现有 FYP 日更任务和 AI AppConfig 加载器；生产接线与实际验收见验证文档。

@@ -110,5 +110,13 @@
     "line": 685,
     "sha256": "d2473c7349f4716fb06df13987ee7a75681db650e7df55a182b654ad47534dcd",
     "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080"
+  },
+  {
+    "source": "finder-models/recommend/train/models/rerank/rerank_model.py",
+    "function": "rerank_core_model",
+    "line": 1225,
+    "sha256": "c1ae7fc5d732a181a3d515dfef863e9bd4579f407bd3dba04c5db1e0a1e85cb5",
+    "source_revision": "0abdcc692a84319833d871e30c0bfd7ee6a22080",
+    "adaptation": "Spec 041: migrate LHUC input concatenation, stop_gradient and target_layer_use_lhuc wiring; reuse previously migrated dnn_layer/target_layer unchanged; unrelated Finder towers remain excluded"
   }
 ]

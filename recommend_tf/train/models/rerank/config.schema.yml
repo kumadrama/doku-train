@@ -12,6 +12,13 @@ properties:
         combiner: {enum: [concat], default: concat}
         history_pooling: {enum: [mean, weighted_mean, attention]}
   optimizer: {enum: [adam, adamw], default: adam}
+  lhuc_inputs:
+    type: array
+    items: {type: string, minLength: 1}
+    uniqueItems: true
+    default: []
+  lhuc_share_embed: {type: boolean, default: true}
+  target_layer_use_lhuc: {type: boolean, default: false}
   sparse_optimizer: {enum: ['', adam, adamw], default: ''}
   dense_use_weight_decay: {type: boolean, default: false}
   sparse_use_weight_decay: {type: boolean, default: false}
