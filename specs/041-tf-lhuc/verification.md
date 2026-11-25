@@ -693,7 +693,7 @@ git diff --check
 证据位于该目录：alignment-and-status.json、tensorboard-verification.json、
 sync-20261125.log、verify-20261125.json及README.md。
 
-## 2026-11-25：模型14独立FYP发布验收（进行中）
+## 2026-11-25：模型14独立FYP发布验收
 
 Source: 用户授权模型14上线并启动FYP日更，暂不开AB。
 
@@ -732,3 +732,15 @@ Source: 用户授权模型14上线并启动FYP日更，暂不开AB。
   通过事件入口提交首个日更请求（event ID 7ea736d4-7136-3a43-7b3d-d9e0549afaf9）。
 - `final_verify.py`核验Endpoint InService、Lambda Active、正确任务修订及两条触发器；
   AB profile 3ers4y8数据面原文与操作前完全一致。
+
+- 首个日更训练 `doku-daily-lhuc14-d01b2971f99f7d6034dca9211f78c71baecfc98e`
+  实际状态为InProgress / Training；executor为FYP家族revision35，
+  任务 `2d4be2fdf8e74adfb111b656f396afa3`。训练2026-10-25至11-23、验证11-24，
+  resolved config仅dataset_config与模板不同，模型及其余训练超参数一致。
+- 基础设施变更PR：kumadrama/doku-iac#1113；训练实现与证据PR：kumadrama/doku-train#79。
+  root bindings生成器因无关根栈模块未安装停止；局部生成的无关差异未提交，
+  本次资源只属于独立tf_endpoint stack，不新增root binding字段。
+
+验收结果：模型14初始checkpoint已发布、两实例完整推理通过、FYP日更已启用且首训已启动。
+日更训练尚在运行，未声明其已经完成。AB未变；调用方新别名binding补丁已准备，
+尚未部署，因此后续开AB之前仍需发布该绑定并验收业务选模链路。
