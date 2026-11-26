@@ -58,3 +58,7 @@ GitHub connector 可创建功能分支和 PR；它不能代替 DKD 的构建、�
 5. 重新抓取线上快照，等待旧任务完成；按管理 CLI 先 FYP LHUC 与 Idea 各一例 plan/apply，移除精确旧入口后等待全部投递窗口排空。排空中同一 pin 查询/恢复，不提前激活 managed ownership。
 6. 验证 pilot 登记状态、配置摘要、原 EndpointConfig/权重及调用方 AppConfig 未变后，逐个接管剩余 FYP。验证下一次 managed 日更的固定 Endpoint 更新及监控身份。
 7. 记录实际 deployment/job/registry receipts 和业务探针结果后，才能标记“已部署并接管”。
+
+## Worker release declaration validation
+
+DKD requires three-segment PSM names. Worker release units use `doku-modelworker-smoke`, `doku-modelworker-fyp` and `doku-modelworker-idea`; ECS family and log-group identities remain unchanged. The old four-segment declaration was rejected locally before any deployment job was created.
