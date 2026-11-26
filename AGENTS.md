@@ -68,7 +68,7 @@ doku-train/
 
 ### 当前文档索引
 
-- [Spec 042：配置驱动的模型管理](specs/042-model-management/requirements.md)、[设计](specs/042-model-management/design.md)、[任务](specs/042-model-management/tasks.md)、[验证](specs/042-model-management/verification.md)、[生产接管记录](specs/042-model-management/production-rollout.md) — 已授权部署接管；平台与监控部署验收通过，Idea pilot 等待旧投递排空，FYP pilot 等待旧任务族空闲；不改变调用方。
+- [Spec 042：配置驱动的模型管理](specs/042-model-management/requirements.md)、[设计](specs/042-model-management/design.md)、[任务](specs/042-model-management/tasks.md)、[验证](specs/042-model-management/verification.md)、[生产接管记录](specs/042-model-management/production-rollout.md) — 已授权部署接管；平台与监控部署验收通过，Idea/FYP LHUC pilot 等待旧投递排空，官方 base 日更已按用户要求停止；不改变调用方。
 
 - [Spec 041：TF LHUC](specs/041-tf-lhuc/requirements.md)、[设计](specs/041-tf-lhuc/design.md)、[任务](specs/041-tf-lhuc/tasks.md)、[验证](specs/041-tf-lhuc/verification.md) — Finder LHUC 与 FYP 模型14独立候选日更；不变更 AB 流量。
 

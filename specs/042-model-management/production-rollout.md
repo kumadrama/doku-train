@@ -4,7 +4,7 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 
 ## 当前状态
 
-**生产共享管理平台、FYP/Idea worker、监控接线和两组控制器轮询均已部署；DTE 端到端验收通过。Idea pilot 已暂停旧入口并等待重试排空，尚未完成管理权切换；FYP pilot 等待旧任务族空闲。** 线上模型 Endpoint、权重和调用方配置未因接管改变。Idea 最早可在北京时间 2026-11-27 21:06:06 后继续原接管计划；轮询不会自动完成这个接管步骤。
+**生产共享管理平台、FYP/Idea worker、监控接线和两组控制器轮询均已部署；DTE 端到端验收通过。Idea 和 FYP LHUC 两个 pilot 均已暂停旧入口并等待重试排空，尚未完成管理权切换。** 线上模型 Endpoint、权重和调用方配置未因接管改变。Idea 最早可在北京时间 2026-11-27 21:06:06、FYP LHUC 在 21:33:05 后继续各自原接管计划；轮询不会自动完成这个接管步骤。官方 base 日更已按用户明确要求停止，不再纳入后续日更接管。
 
 身份核验：`doku-prod-developer`，AWS account `703844615824`，region `us-east-2`。
 本地审计快照目录：`/private/tmp/model-management-rollout-20261126/`，包含规则/target、Task Definition、冻结配置、binding、发布 journal。快照不作为可变线上配置的长期权威。
@@ -121,5 +121,16 @@ Source: 用户确认监控修复重试并继续接管；DKD 部署回执、Lambd
 ### 待完成事项与继续条件
 
 1. Idea 不得跳过上述完整 24 小时窗口。到期后使用 `idea-adopt-plan.json` 的同一 pin 继续 `manage.py ... apply --plan ...`，pending 时继续同一计划，直至 managed；每次回执使用新本地文件名。controller tick 不会代替这一步。
-2. FYP 等待旧任务族全部停止、旧状态空闲且没有未消费 cutoff；再核验原 plan 的冻结证据仍有效。若状态变化，未执行的旧计划需重新生成并审查；不能强停训练或提前切换。
-3. FYP 与 Idea 两个 pilot 均 managed 且实际服务/监控验收通过后，才接管剩余四个 FYP 模型。批量接管和下一次 managed 日更验收尚未执行，不声明全部接管完成。
+2. FYP LHUC 已满足旧任务族退出条件并开始排空，使用 `fyp-lhuc-adopt-plan.json` 的同一 pin 在北京时间 2026-11-27 21:33:05 后继续。不得重建计划或缩短窗口绕过 CAS 和旧投递等待。
+3. FYP 与 Idea 两个 pilot 均 managed 且实际服务/监控验收通过后，才接管剩余三个启用中的 FYP 模型；官方 base 已按用户要求停止日更，应排除。批量接管和下一次 managed 日更验收尚未执行，不声明全部接管完成。
+
+
+## 官方 base 日更停止与 FYP LHUC 开始排空
+
+Source: 用户明确要求 kill `tf_rerank_ln_lr002_3feat` 日更流程，并说明线上已没有流量；随后要求核验其他模型影响。此指令授权停止该任务，取代本次操作中不能强停该特定旧任务的限制；不授权停止其他模型。
+
+- 核验 SageMaker `ModelName` 标签及 ECS TD `doku-prod-tf-rerank-daily:34` 后，关闭官方 base 独立 rule，并从两个共享 upstream/recovery rules 中仅移除指向 `doku-prod-tf-ready` 的 target；保留共享 rules。
+- `doku-daily-142861bcc0e54a702bf0ca0ca434d04eb1f48251` 已 Stopped；executor `87507e99639442a1854604bafa94ac0b` 在北京时间 2026-11-26 21:32:31.789 已 STOPPED，pipeline exit 137。保存停止回执，不把被终止训练标记为成功，不篡改旧冻结请求或发布 journal。
+- 随后核验 FYP LHUC 原 plan 的 state digest 仍完全一致、state.active 为空、旧任务族无运行任务。按此前接管授权继续同一 plan，回执为 legacy_paused，drain_after=1795786384.5876858（北京时间 2026-11-27 21:33:04.588）。其旧独立入口暂停，仅移除 LHUC 对应共享 target。
+- 21:34 回读六个存量 Endpoint 均 InService、EndpointConfig 与接管前快照一致。`inner_watch_lr003`、`inner_watch_w02_lr003`、`tf_rerank_ln_lr002_3feat_us_or_unknown` 的独立日更规则及两类共享 target 保持启用；Idea 仍处于原排空阶段。
+- 证据：`official-base-stop-before.json`、`official-base-stop-receipt.json`、`fyp-lhuc-adopt-apply-1.json`、`post-stop-model-isolation-verification.json`。官方 base 的服务资源保留；不得因后续接管或旧 IaC 重放重新开启其日更。
