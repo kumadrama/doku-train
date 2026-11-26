@@ -4,7 +4,7 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 
 ## 当前状态
 
-**未部署、未接管。** 本次没有修改线上 Endpoint、权重、业务 AppConfig、日更规则或任务。原日更继续运行。
+**生产监控代码与 DTE 管理基础设施已部署；生产模型管理平台尚未部署，现有模型尚未接管。** 没有修改线上模型 Endpoint、权重、业务 AppConfig 或旧日更入口。原日更继续运行。
 
 身份核验：`doku-prod-developer`，AWS account `703844615824`，region `us-east-2`。
 本地审计快照目录：`/private/tmp/model-management-rollout-20261126/`，包含规则/target、Task Definition、冻结配置、binding、发布 journal。快照不作为可变线上配置的长期权威。
@@ -66,3 +66,14 @@ DKD requires three-segment PSM names. Worker release units use `doku-modelworker
 ## Worker image publication boundary
 
 DKD apply requires the release unit's own ECR repository even when plan accepts a shared repository URI. The DTE worker apply was rejected before task definition registration. Each fixed task group now has a small release wrapper that derives from the same immutable shared runtime image and publishes via its standard main CodeBuild flow. This is platform setup per task group, not per-model packaging; new model recipes still require no source/image changes.
+
+## 2026-11-26 DTE 实际验收进展
+
+- 网络根因已定位：系统代理为 127.0.0.1:17891，命令行未继承。显式 HTTPS_PROXY/HTTP_PROXY 及 SSH ProxyCommand 后，GitHub API、Git fetch 和 DKD 恢复；未修改系统代理配置。
+- 生产监控 Lambda 已通过 DKD job `dj_37a534c5-77d3-481b-97e6-ee54094354df` 更新，回读 CodeSha256 符合预期、LastUpdateStatus=Successful。
+- DTE 41 项资源通过 job `dj_9b1b9f9e-a0e2-4708-9556-4b2c4913dcab` 创建，调度关闭。
+- 模型登记实测发现 AppConfig ListDeployments 需要应用 ARN，已补齐精确权限；三项 mock 测试通过，job `dj_96a3a1ba-3ab3-4c3f-8d9b-d2e17ac4cd38` 成功应用单策略更新。
+- `managed_smoke` 登记 plan `d07c6c994fe9c926e9e08e1e7667ad57434b98402154e94c742bdc55fadec895` 经正常 10 分钟烘焙后 complete，revision=1，daily_enabled=false。七天纯合成输入已在独立 DTE 前缀上传并通过实际 S3 freeze。
+- DTE worker apply job `dj_a149aaa0-27dc-459e-ad62-33913d73dbc9` 在注册 TD 前被镜像仓库校验拒绝；未启动训练。修复 PR #82 已合入，独立 worker 开发构建及完整 CI 通过，DTE 正式构建已成功，镜像 `doku-train/model-worker-smoke:20261126.1-89322d3`，摘要 `sha256:94e42f95f790d7c43ee5f8ff4d7a0c0ec4f0d00cc6fe677c2ce11c03d22387a0`。失败 apply 未重试。
+- DTE 已应用客户端绑定通过生成器写入 doku-iac 的 `envs/dte/bindings/model-management/smoke.json`，PR #1152 已合入。
+- 仍需：worker 正式发布、DTE 单轮训练/导出/版本探针及冻结/恢复验证；之后生产平台装配、FYP/Idea pilot 接管及完整旧重试排空。当前不声明已完成上线或接管。
