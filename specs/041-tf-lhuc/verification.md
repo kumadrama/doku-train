@@ -766,3 +766,13 @@ Source: 用户授权只改下一次训练轮数，保留线上模型及已有AB�
 ` .venv/bin/python runs/lhuc14-e15-20261126/verify.py `通过（verification.json记录）；
 Terraform plan/apply日志、冻结配置、迁移前后catalog、AB快照仅保留本地
 `runs/lhuc14-e15-20261126/`，不提交运行产物。
+
+## 2026-11-26：补齐 LHUC 训练与推理合同回归
+
+Source: 用户要求提交并合并主工作区尚未提交的两处 LHUC 补充测试。
+
+- `test_migration.py` 为七任务 prepared-data 训练/恢复用例增加 LHUC 组合，覆盖独立条件 embedding、任务塔门控、正则项及 checkpoint 恢复后的验证 loss 一致性。
+- `test_inference_contract.py` 为原始请求→训练 tensor→SavedModel 推理合同增加 LHUC 组合；移除主干的 context 输入后，仍验证仅由 LHUC 使用的 `ctx_platform` 出现在导出签名，覆盖 OOV 与不同历史长度。保留主线既有 serving-version 签名测试。
+- 验证：`PYTHONPATH=. TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1 python -m pytest recommend_tf/train/tests/test_migration.py recommend_tf/train/tests/test_inference_contract.py -q -p no:cacheprovider --disable-warnings`，在锁定 TF 环境执行，35 passed（45.89s）。
+- 两个改动文件的 `ruff check`、`ruff format --check` 和 `git diff --check` 通过；`python -m unittest discover -s recommend_tf/inference/tests -p test_idea_worker_manifest.py -v`，2 passed，确认测试改动不改变 Idea worker 制品摘要。
+- 本次仅测试及验证记录；无训练实现、运行配方或部署配置变更。

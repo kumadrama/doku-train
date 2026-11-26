@@ -22,8 +22,16 @@ TASKS = {
 }
 
 
-def exported_fixture(tmp_path):
+def exported_fixture(tmp_path, lhuc=False):
     config, _ = fixture(tmp_path)
+    if lhuc:
+        config["model"].update(
+            lhuc_inputs=["context", "user_profile"],
+            lhuc_share_embed=True,
+            target_layer_use_lhuc=True,
+        )
+        # Context remains reachable solely through LHUC in the exported graph.
+        config["model"]["dnn_inputs"].remove("context")
     execute(config, tmp_path / "run")
     export(tmp_path / "run", tmp_path / "package", outputs=TASKS)
     artifact = load(tmp_path / "package")
@@ -44,8 +52,14 @@ def exported_fixture(tmp_path):
     return config, artifact, {"schema_version": "doku-tf-request/v1", "instances": rows}
 
 
-def test_raw_request_matches_training_tensors_and_savedmodel(tmp_path):
-    config, artifact, request = exported_fixture(tmp_path)
+@pytest.mark.parametrize("lhuc", [False, True])
+def test_raw_request_matches_training_tensors_and_savedmodel(tmp_path, lhuc):
+    config, artifact, request = exported_fixture(tmp_path, lhuc)
+    if lhuc:
+        assert any(
+            spec["source_field"] == "ctx_platform"
+            for spec in artifact["signature"]["inputs"].values()
+        )
     payload, size = prepare(request, artifact, max_batch=10, max_history=100)
     params = parameters(config["model"])
     # Independent training path provides the oracle; inference imports no train code.
