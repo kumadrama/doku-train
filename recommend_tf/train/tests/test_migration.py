@@ -120,9 +120,16 @@ def test_history_rules_and_padding():
     assert data["h"]["ids"].tolist() == [[2, 1], [0, 0]]
 
 
-@pytest.mark.parametrize("norm", ["", "ln", "ln_l2"])
+@pytest.mark.parametrize("norm", ["", "ln", "ln_l2", "lhuc"])
 def test_prepared_integrity_shuffle_and_seven_task_train(tmp_path, norm):
     model = config()
+    if norm == "lhuc":
+        model.update(
+            lhuc_inputs=["scalar", "history"],
+            lhuc_share_embed=False,
+            target_layer_use_lhuc=True,
+        )
+        norm = "ln_l2"
     for layer in [model["output_layer"], *model["tasks"].values()]:
         layer["norms"] = [norm] * len(layer["dims"])
     if norm == "ln_l2":
