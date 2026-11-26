@@ -4,7 +4,7 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 
 ## 当前状态
 
-**生产共享管理平台、FYP/Idea worker 与监控代码已部署；DTE 端到端验收通过。生产监控接线更新失败，现有模型尚未接管。** 没有修改线上模型 Endpoint、权重、业务 AppConfig 或旧日更入口。原日更继续运行。
+**生产共享管理平台、FYP/Idea worker、监控接线和两组控制器轮询均已部署；DTE 端到端验收通过。Idea pilot 已暂停旧入口并等待重试排空，尚未完成管理权切换；FYP pilot 等待旧任务族空闲。** 线上模型 Endpoint、权重和调用方配置未因接管改变。Idea 最早可在北京时间 2026-11-27 21:06:06 后继续原接管计划；轮询不会自动完成这个接管步骤。
 
 身份核验：`doku-prod-developer`，AWS account `703844615824`，region `us-east-2`。
 本地审计快照目录：`/private/tmp/model-management-rollout-20261126/`，包含规则/target、Task Definition、冻结配置、binding、发布 journal。快照不作为可变线上配置的长期权威。
@@ -104,3 +104,22 @@ DKD apply requires the release unit's own ECR repository even when plan accepts 
 - 监控接线 apply `dj_95bc9908-f901-4e39-9d0b-7a8e9bb59af7` 失败：完整绑定使 Lambda 环境变量达到 4199 字节，超过 4096 上限。回读函数仍 Active / LastUpdateStatus=Successful，保留此前 2262 字节旧环境。新增 IAM 策略可能已写入，后续必须重新 plan，不能假定完全回滚。
 - 已停止该 apply 的重试。修复目标为内容摘要固定的 S3 资源绑定及小型 URI/SHA256 环境变量，保留全部源与 AppConfig 运行开关。先发布兼容 inline 的代码，再切换接线。修复测试和新计划准备后，由用户决定是否重试。
 - 原线上 Endpoint、权重、业务路由、旧日更入口均未切换。Idea 显式 RetryPolicy 的计划已通过但尚未 apply。
+
+## 2026-11-26 监控修复重试验收与 pilot 接管
+
+Source: 用户确认监控修复重试并继续接管；DKD 部署回执、Lambda/Events/ECS/SageMaker/S3 实际回读，审计目录同上。
+
+- 监控 PR #440 完成兼容代码发布，DKD `dj_00a3801e-c439-41d2-b0a0-c1876336b0fa` 成功。线上 CodeSha256 为 `U2AKWuz5SUonielkazl0wJ3J9sL8YXDqK2VBtn4HP5k=`，Active / Successful。
+- IaC PR #1158 的主线计划 `dj_ea1921e2-a1db-433d-9426-4c3dd23287ac` 为 1 add、1 change、0 destroy；重试 apply `dj_df22e60f-b9ed-4ce2-b6a0-c16e2eafc8f3` 成功。完整 binding 位于按内容摘要固定的 S3 对象；环境变量仅 293 字节，回读原文 SHA256 校验通过。原业务运行开关和全部资源字段均保留。
+- 使用 `boto3 Lambda.invoke(FunctionName="doku-prod-model-monitoring", InvocationType="RequestResponse", Payload=b"{}")` 执行实际协调，StatusCode=200、无 FunctionError、Grafana 同步 status=success、dashboard version=151。证据为 `monitoring-pointer-readback.json` 和 `monitoring-pointer-reconciliation.json`。
+- 已运行 `scripts/gen-runtime-release-binding.py` 从 applied outputs 重生成发布 binding，与已提交绑定内容完全一致，无新增绑定差异。监控修复本地验证为 769 项 Python 测试（1 项 expected failure）、35 个 promtool 变体、指定 Go 1.26.6 检查及 3 项 Terraform mock 测试通过；对应 PR CI 全部通过。
+- Idea 旧 daily/published 两个 target 的默认重试策略已显式固定为 86400 秒、185 次。计划 `dj_92387c39-ad05-44c3-8de1-f47228207463` 为 0 add、2 change、0 destroy；apply `dj_4420c26d-49b2-4850-98af-e500574e31a4` 成功，实际回读一致。
+- IaC PR #1160 完整 CI 通过。共享轮询计划 `dj_ff426d85-35ed-4ec9-b609-0a749edb9611` 为 0 add、2 change、0 destroy；apply `dj_5f1e4918-06cb-4aed-9c46-9b522639fdd7` 成功。FYP/Idea reconcile rules 均 ENABLED / rate(5 minutes)。模型登记仍为空，未完成接管的模型不会被新调度准入。
+- FYP LHUC pilot 计划 `005a547e9e19af50ee2c1742856a61aef9c2cb6841bfff85a28b9303c68d17e6` 已生成并核验：max_epochs=15、原 Endpoint、daily_enabled=true、first_cutoff=2026-11-26。尚未 apply，因为同旧任务族的官方 base `doku-daily-142861bcc0e54a702bf0ca0ca434d04eb1f48251` 仍 Training（核验时 epoch 25/30），executor `87507e99639442a1854604bafa94ac0b` 仍 RUNNING。未停止该任务，也未关闭 FYP 旧入口。
+- Idea pilot 计划 `0f118815f8f941046874881cb4be1c15ae2b0f32dcdba0b70a98f92bac167d91` 保留 max_epochs=20、原 Endpoint、daily_enabled=true、first_cutoff=2026-11-26。首次 apply 回执为 legacy_paused，drain_after=1795784765.878168，即北京时间 2026-11-27 21:06:05.878。daily rule 已 DISABLED；published rule 只移除 `idea-mapped` target。原 Endpoint InService、EndpointConfig 与冻结证据一致。核验证据为 `pilot-handover-verification.json`。
+
+### 待完成事项与继续条件
+
+1. Idea 不得跳过上述完整 24 小时窗口。到期后使用 `idea-adopt-plan.json` 的同一 pin 继续 `manage.py ... apply --plan ...`，pending 时继续同一计划，直至 managed；每次回执使用新本地文件名。controller tick 不会代替这一步。
+2. FYP 等待旧任务族全部停止、旧状态空闲且没有未消费 cutoff；再核验原 plan 的冻结证据仍有效。若状态变化，未执行的旧计划需重新生成并审查；不能强停训练或提前切换。
+3. FYP 与 Idea 两个 pilot 均 managed 且实际服务/监控验收通过后，才接管剩余四个 FYP 模型。批量接管和下一次 managed 日更验收尚未执行，不声明全部接管完成。
