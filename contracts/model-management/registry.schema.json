@@ -1,0 +1,122 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "environment",
+    "group",
+    "revision",
+    "models"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-registry/v1"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "group": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "models": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "group",
+          "config",
+          "config_revision",
+          "service",
+          "daily_enabled",
+          "admission",
+          "first_cutoff"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          },
+          "config_revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "service": {
+            "type": "object",
+            "required": [
+              "outputs",
+              "probe"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "outputs": {
+                "type": "object",
+                "additionalProperties": {
+                  "enum": [
+                    "probability",
+                    "seconds"
+                  ]
+                }
+              },
+              "probe": {
+                "type": "object"
+              },
+              "broadcast_feat": {
+                "type": "string"
+              },
+              "identity_signature": {
+                "enum": [
+                  "serving_default",
+                  "serving_with_model_version"
+                ]
+              }
+            }
+          },
+          "daily_enabled": {
+            "type": "boolean"
+          },
+          "admission": {
+            "enum": [
+              "managed",
+              "legacy"
+            ]
+          },
+          "first_cutoff": {
+            "type": "string",
+            "format": "date"
+          },
+          "adoption": {
+            "type": "object",
+            "required": [
+              "binding",
+              "legacy_rule",
+              "evidence_uri"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "binding": {
+                "type": "object"
+              },
+              "legacy_rule": {
+                "type": "string"
+              },
+              "evidence_uri": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

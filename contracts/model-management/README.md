@@ -1,0 +1,14 @@
+# Model management v1
+
+本目录是跨仓JSON合同权威；management runtime进一步执行语义校验。调用方只能通过API发送业务配置，不能传入任意执行角色、网络或任务定义。group为平台受信部署binding，registry为AppConfig运行配置，request为不可变执行快照。
+
+API字段与语义参见Spec042和`recommend_tf/platforms/model_management/api.py`。管理端必须先status读取registry摘要、plan展示差异，再apply相同plan。apply返回pending时重试同一plan，不能重新创建意图。
+
+存量adoption是显式资源所有权交接，不能通过register伪造已有Endpoint。已接管模型仍使用原调用地址。
+
+
+请求同时包含runtime组快照pin和可选bootstrap_evidence pin。runtime升级不能重新解释旧请求；源run首发固定原始COMMITTED清单，worker验证每个文件摘要。配置摘要使用完整JSON对象的UTF-8 canonical序列化（sort_keys，紧凑分隔符，ensure_ascii=true，拒绝NaN），随后SHA-256。
+
+监控recipe_sha256使用相同序列化：深拷贝config，移除顶层model_name/prepared_identity/export_tasks，移除dataset_config.dataset/execution及split下train_/validation_/test_开头字段；空split移除。其余所有字段保留。collector独立实现该版本化规范，不import训练仓。
+
+源码/发布配套：`scripts/package_model_management.py`需要只包含已锁定boto3/botocore及其依赖的vendor目录，SDK版本与`recommend_tf/uv.lock`一致。输出确定性ZIP及source inventory，不上传、不部署。worker继续使用既有CPU容器构建；程序升级是平台发布，业务配方不进入构建。

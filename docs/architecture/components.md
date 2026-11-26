@@ -161,3 +161,15 @@ Source: specs/035-tf-training-time-optimization/design.md；2026-11-05 Q11本地
 目标状态：冻结tf-lr002输入后，以代码优化和单机CPU资源对照验证完整训练耗时降低至少50%。已按用户后续授权完成12个独立两epoch资源/代码实验；随后组合及b4096完整40epoch验证通过，有界预取和批量编码为推荐显式配置，默认仍关闭，完整流程50%目标未宣称达成。
 
 TF input_pipeline提供显式可选的columns编码、按不可变prepared分片身份索引的有界编码缓存、FIFO单线程预取；默认rows/缓存0/预取0。三项仅优化输入，不改模型、随机序列、batch边界或跨日切分；缓存仅每Run复用，不跨Run或checkpoint共享。Source: Spec 035设计及用户后续实施授权。
+
+
+## 配置驱动的模型管理（Spec 042）
+
+当前状态：旧逐模型发布/日更入口仍是生产路径。目标实现已在独立分支新增
+`recommend_tf/platforms/model_management/`：可信组binding限定权限资源，AppConfig登记模型配方，
+请求冻结数据/配置/运行时后驱动既有CPU pipeline；固定Endpoint发布不写调用方路由。
+CLI/skill归doku-rec-deploy，共享资源与IAM归doku-iac，配置版本指标接收归doku-monitoring。
+跨仓通过`contracts/model-management/`的JSON协议协作。
+
+首次部署及存量接管尚待独立生产授权与验收。详见[Spec042设计](../../specs/042-model-management/design.md)。
+Source: 2026-11-26用户确认需求和代码实施；Spec042。

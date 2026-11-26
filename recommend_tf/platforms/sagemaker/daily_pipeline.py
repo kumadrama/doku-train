@@ -11,12 +11,12 @@ from pathlib import Path
 
 from recommend_tf.inference import official
 from recommend_tf.train.comm.artifact_integrity import checksum
-from recommend_tf.train.comm.datasvr.daily_contracts import digest
 from recommend_tf.train.comm.datasvr.daily_dataset import freeze
 from recommend_tf.train.comm.early_stop import validate_early_stop
-from recommend_tf.train.comm.export_tasks import export_outputs, publication_outputs
+from recommend_tf.train.comm.export_tasks import publication_outputs
 
 from .monitoring_context import attach_context, validate_environment
+from .operation_identity import operation_identity
 from .publish_model import (
     ReleaseState,
     contains,
@@ -30,6 +30,7 @@ from .publish_model import (
     rollback_step,
     verify_probe,
 )
+from .runtime_binding import validate_binding
 
 
 def fetch_run(s3, prefix, target, limit, evidence=None):
@@ -155,6 +156,8 @@ def prepare_job(s3, config, ready, binding, operation, work):
         context["training_job_name"] = request["TrainingJobName"]
         context["deployment"] = {"endpoint_name": binding["deployment"]["endpoint_name"]}
         context["monitoring"] = {"metric_mapping": mapping}
+        if "managed_model" in binding:
+            context["managed_model"] = binding["managed_model"]
         attach_context(
             s3, request, context, prefix=prefix + "/daily", work=work, kms_key=binding["kms_key"]
         )
@@ -210,7 +213,9 @@ def step(
         evidence=bootstrap_evidence,
         policy=policy,
         model_publication=model_publication,
-        selection_options=validate_early_stop(config) if binding.get("verify_selection") else None,
+        selection_options=validate_early_stop(config)
+        if binding.get("verify_selection") and not bootstrap_run
+        else None,
     )
 
 
@@ -256,7 +261,9 @@ def advance_release(
         if "TrainingEndTime" in observed:
             active["training_completed_at_ms"] = int(observed["TrainingEndTime"].timestamp() * 1000)
         state.save()
+    managed = binding.get("managed_model")
     fixed_idea = binding.get("idea_appconfig", {}).get("fixed_endpoint") is True
+    managed_default = managed and managed["identity_signature"] == "serving_default"
     if fixed_idea and model_publication is None:
         raise ValueError("fixed Idea deployment requires the compatibility guard")
     if active["stage"] in {"trained", "exported"}:
@@ -325,11 +332,17 @@ def advance_release(
                 str(output),
                 "--outputs",
                 str(options),
-                *(["--broadcast-feat", broadcast_feat] if broadcast_feat else []),
-                *(["--include-serving-version"] if fixed_idea else []),
+                *(
+                    ["--broadcast-feat", broadcast_feat or managed.get("broadcast_feat")]
+                    if broadcast_feat or (managed and managed.get("broadcast_feat"))
+                    else []
+                ),
+                *(["--include-serving-version"] if fixed_idea or managed_default else []),
                 *(
                     ["--include-discovery-serving-version"]
-                    if "discovery_appconfig" in binding or split_signature
+                    if "discovery_appconfig" in binding
+                    or split_signature
+                    or (managed and not managed_default)
                     else []
                 ),
             ],
@@ -397,10 +410,14 @@ def advance_release(
                 version,
                 fixture,
                 inference_protocol=protocol,
-                use_endpoint_default="idea_appconfig" in binding,
-                require_serving_version=fixed_idea,
+                use_endpoint_default="idea_appconfig" in binding or bool(managed_default),
+                require_serving_version=fixed_idea or bool(managed_default),
             )
-            if signature := fyp_release.get("serving_signature"):
+            if signature := (
+                managed["identity_signature"]
+                if managed and not managed_default
+                else fyp_release.get("serving_signature")
+            ):
                 verify_probe(
                     client,
                     endpoint,
@@ -423,7 +440,9 @@ def advance_release(
             completion_stage=model_publication.endpoint_ready_stage
             if model_publication and not fixed_idea
             else "deployed",
-            require_existing=fixed_idea or fyp_release.get("reuse_route", False),
+            require_existing=fixed_idea
+            or fyp_release.get("reuse_route", False)
+            or bool(managed and not active.get("managed_first_deployment", False)),
             probe=probe,
         )
         return (
@@ -493,94 +512,6 @@ def acquire_executor(state, ecs, cluster, task_arn, *, logs=None, stop_events=No
             ),
             flush=True,
         )
-
-
-def validate_binding(binding, config=None):
-    for name in (
-        "environment",
-        "region",
-        "ecs_cluster",
-        "state_uri",
-        "work_prefix",
-        "model_prefix",
-        "kms_key",
-    ):
-        if not isinstance(binding.get(name), str) or not binding[name]:
-            raise ValueError("explicit platform binding required: " + name)
-    if "executor_stop_events" in binding:
-        evidence = binding["executor_stop_events"]
-        if (
-            "idea_appconfig" not in binding
-            or not isinstance(evidence, dict)
-            or any(
-                not isinstance(evidence.get(name), str) or not evidence[name]
-                for name in ("log_group", "cluster_arn", "task_group")
-            )
-        ):
-            raise ValueError("explicit Idea executor stop event binding required")
-    for name in (
-        "poll_seconds",
-        "max_wait_seconds",
-        "download_limit_bytes",
-        "export_timeout_seconds",
-    ):
-        if type(binding.get(name)) is not int or binding[name] <= 0:
-            raise ValueError("positive execution budget required: " + name)
-    deployment = binding["deployment"]
-    if official.protocol(deployment) == official.PROTOCOL:
-        # Reject legacy/hook environment settings before any training is submitted.
-        # The placeholder digest is used only for validation, never deployment.
-        official.environment(deployment, "0" * 64)
-        probe_request = binding["probe"]["request"]
-        if probe_request.get("signature_name") != "serving_default" or not probe_request.get(
-            "inputs"
-        ):
-            raise ValueError("official probe requires prepared tensors")
-    if (
-        type(deployment["instance_count"]) is not int
-        or deployment["instance_count"] < 1
-        or deployment["instance_type"].startswith(("ml.p", "ml.g", "ml.inf", "ml.trn"))
-    ):
-        raise ValueError("explicit positive CPU inference capacity required")
-    if config is not None and "export_tasks" in config:
-        export_outputs(config, binding.get("outputs", {}))
-    elif set(binding["probe"]["tasks"]) != set(binding["outputs"]):
-        raise ValueError("probe must verify all configured primary tasks")
-    if binding["probe"].get("fixture_kind") != "synthetic":
-        raise ValueError("deployment probe must be explicitly synthetic")
-
-
-def operation_identity(
-    config, ready, binding, *, bootstrap_run=None, evidence=None, rollback_version=None, retry_id=""
-):
-    # Execution budgets may be increased when resuming the same immutable operation.
-    stable_binding = {
-        k: v
-        for k, v in binding.items()
-        if k
-        not in {
-            "monitoring",
-            "runtime_policy",
-            "executor_stop_events",
-            "legacy_ready_config_sha256",
-            "deferred_uri",
-            "poll_seconds",
-            "max_wait_seconds",
-            "download_limit_bytes",
-            "export_timeout_seconds",
-        }
-    }
-    return digest(
-        {
-            "config": config,
-            "ready": ready,
-            "binding": stable_binding,
-            "bootstrap_run": bootstrap_run,
-            "bootstrap_evidence": evidence,
-            "rollback_version": rollback_version,
-            "retry_id": retry_id,
-        }
-    )
 
 
 def preflight_ready(state, config, ready, operation, *, skip=False, binding=None, s3=None):
@@ -692,6 +623,12 @@ def execute(args):
                     DiscoveryPublication if "discovery_appconfig" in binding else IdeaPublication
                 )
             model_publication = publication.from_session(session, s3, binding)
+        if "managed_model" in binding:
+            if model_publication is not None:
+                raise ValueError("managed services cannot publish consumer routes")
+            from recommend_tf.platforms.model_management.publication import ManagedPublication
+
+            model_publication = ManagedPublication(s3, binding)
         state = ReleaseState(s3, binding["state_uri"], binding["kms_key"])
         if ready is None and binding.get("data_source", {}).get("freeze") != "idea_mapped":
             raise ValueError("this source requires a pinned ready envelope")
@@ -726,8 +663,10 @@ def execute(args):
                     ),
                     flush=True,
                 )
-            if catalog and catalog.get("recipe_sha256", recipe_sha256(config)) != recipe_sha256(
-                config
+            if (
+                not binding.get("managed_model")
+                and catalog
+                and catalog.get("recipe_sha256", recipe_sha256(config)) != recipe_sha256(config)
             ):
                 raise ValueError(
                     "model_name already identifies a different recipe; use a new model_name"

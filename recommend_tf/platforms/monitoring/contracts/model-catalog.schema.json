@@ -39,6 +39,50 @@
     "task_family": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]{1,255}$"
+    },
+    "managed_model": {
+      "type": "object",
+      "required": [
+        "group",
+        "config_revision",
+        "registry_sha256"
+      ],
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "config_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "registry_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "legacy_task_family": {
+          "type": "string"
+        }
+      }
+    },
+    "legacy_recipes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "recipe_sha256",
+          "last_data_cutoff"
+        ],
+        "properties": {
+          "recipe_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "last_data_cutoff": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
     }
   }
 }

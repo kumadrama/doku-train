@@ -1,0 +1,170 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "environment",
+    "region",
+    "name",
+    "registry",
+    "storage_prefix",
+    "kms_key",
+    "endpoint_prefix",
+    "binding_template",
+    "worker",
+    "data_source"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-group/v1"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "storage_prefix": {
+      "type": "string"
+    },
+    "kms_key": {
+      "type": "string"
+    },
+    "endpoint_prefix": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "object",
+      "required": [
+        "application_id",
+        "environment_id",
+        "profile_id",
+        "deployment_strategy_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "application_id": {
+          "type": "string"
+        },
+        "environment_id": {
+          "type": "string"
+        },
+        "profile_id": {
+          "type": "string"
+        },
+        "deployment_strategy_id": {
+          "type": "string"
+        }
+      }
+    },
+    "binding_template": {
+      "type": "object"
+    },
+    "worker": {
+      "type": "object",
+      "required": [
+        "cluster",
+        "task_definition",
+        "container",
+        "network_configuration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cluster": {
+          "type": "string"
+        },
+        "task_definition": {
+          "type": "string"
+        },
+        "container": {
+          "type": "string"
+        },
+        "network_configuration": {
+          "type": "object"
+        }
+      }
+    },
+    "data_source": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ready_manifest",
+            "idea_mapped"
+          ]
+        }
+      }
+    },
+    "read_prefixes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "adoption_prefixes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "legacy_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_manager": {
+      "type": "string"
+    },
+    "legacy_ingress": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "rule",
+            "target_id",
+            "retry_window_seconds"
+          ],
+          "properties": {
+            "rule": {
+              "type": "string"
+            },
+            "target_id": {
+              "type": "string"
+            },
+            "retry_window_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "adoption_services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "execution_role_arn"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "execution_role_arn": {
+            "type": "string",
+            "pattern": "^arn:aws:iam::[0-9]{12}:role/[a-zA-Z0-9+=,.@_/-]+$"
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
