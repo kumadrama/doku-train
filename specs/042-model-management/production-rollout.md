@@ -27,7 +27,7 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 - Idea 两个旧 target 没有显式 RetryPolicy。IaC 声明 AWS 现有默认值：86400 秒、185 次；不缩短排空时间。Source: [AWS EventBridge retry policy](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-retry-policy.html)。
 - FYP 五个 worker target 已显式配置 86400 秒、3 次。共享 upstream/recovery rule 只能移除相应模型 target，保留其他生产者及消费者。
 
-## 发布阻塞
+## 发布阻塞（首次尝试）
 
 本机 GitHub 网络不可用，已观察：
 
@@ -38,6 +38,16 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 - 规范 `dkd deploy plan iac envs/prod --env prod --remote-path envs/prod/model_monitoring --repo kumadrama/doku-iac` 在解析 main 时失败：`resolve kumadrama/doku-iac branch main ... EOF`。没有 job id，未执行 apply。
 
 GitHub connector 可创建功能分支和 PR；它不能代替 DKD 的构建、计划与部署控制面依赖。不使用临时脚本更新 Lambda 程序或本地 Terraform apply 绕过发布链路。
+
+## 网络重试与部署准备进展
+
+用户要求重试后，GitHub SSH/API 一度恢复。已合并管理 CLI PR #3、监控 PR #438 和制品校验修正 PR #439。训练 PR #80、IaC PR #1143 尚未合并；不能将源码合并或开发镜像构建视为生产部署。
+
+- 开发运行时 CodeBuild `doku-train_tf-pipeline:b2a9b6bc-7957-4c14-8a02-606dd412cbeb` 成功，离线导入与锁定 SDK 检查通过；尚未构建 main 正式镜像。
+- 监控基线 DKD plan `dj_249f8185-ace7-452f-bdec-a53a5adf4f73` 成功，无资源变更。
+- Lambda plan `dj_6aef5d87-b79b-4fbd-8c4c-52b5fb6df637` 因 S3 缺少服务端 ChecksumSHA256 失败，未执行 apply。原始 ZIP 字节校验通过后，补传具备服务端校验的新版本并更新发布引用。
+- FYP/Idea 与隔离 DTE 装配 `terraform validate` 通过；模块 `terraform test` 2 passed；应用输出 binding 合并单测 1 passed。平台调度保持关闭，尚未创建云资源。
+- 重试 Lambda plan 时 GitHub HTTPS API 再次持续 EOF，未创建部署任务。SSH ls-remote 与 push 可用，但不能替代 DKD 的 API 依赖。当前等待 API 网络恢复，未执行任何 production apply、Endpoint 更新或旧日更入口切换。
 
 ## 恢复后执行顺序
 
