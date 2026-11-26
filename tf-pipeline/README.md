@@ -14,3 +14,5 @@ Task 发布的 task-target.yml 依赖 doku-tools 的受信 ecs_task_targets bind
 Discovery 日更联动沿用该任务族。部署前应用现有 worker 的 Discovery profile 专用发布权限，将 IaC 的 `discovery_online_release_binding` 输出通过 `scripts/prepare_tf_daily_deployment.py --online-release-outputs` 合并到现有 binding，再按原发布流程上传冻结文档、更新任务四个输入坐标并激活新 worker。训练配置、推理镜像、endpoint 和原任务族保持原值；只追加 `discovery_appconfig` 资源标识。不能只部署新代码却遗漏 binding。
 
 共享日更任务导出 `serving_with_model_version` 和 `serving_default`。启用固定 Endpoint 前先发布支持该签名的在线引擎。日更通过原有精确版本探测和固定 Endpoint 身份探测后，在各业务 profile 内首次启用固定地址。之后合同兼容的日更复用配置。实验模型通过各自的日更绑定执行同一合同。详见 [Spec 040](../specs/040-discovery-fyp-daily-publication/design.md)。
+
+Spec 042 平台发布：本单元现在从 main 源码构建共享 CPU runtime，基础镜像固定在 `managed_runtime_base_image`，依赖仍由 uv.lock/hash-locked requirements 校验。新管理 worker 在独立 `model-worker-fyp` / `model-worker-idea` 发布单元登记 TD，不激活旧 task-target。SageMaker 使用同一镜像摘要并显式指定 `ContainerEntrypoint=["python","-m","recommend_tf.train.cloud_train"]`；训练配置由冻结输入通道提供。既有 release 的 config/binding/镜像坐标仅保留为历史发布记录。

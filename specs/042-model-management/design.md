@@ -104,3 +104,5 @@ Source: 用户确认的Spec042需求；实施落点为本仓model_management、d
 Source: 用户授权“部署并接管线上”；生产只读 EventBridge/ECS/SageMaker 快照。
 
 现有 FYP 的五个 Endpoint 使用不同推理角色，其中旧 official Endpoint 不在新 FYP 名称前缀内。平台用 `adoption_services` 精确登记既有 Endpoint→推理角色；仅接管已核验旧发布记录时使用，禁止任意角色或前缀通配。新增模型仍使用组的统一资源模板。接管不更换原 Endpoint、推理角色、权重或调用方配置。Idea 两个旧入口未显式配置 RetryPolicy，部署前将 AWS 默认最大投递窗口 86400 秒显式化，保持完整排空时间。
+
+共享 CPU runtime 通过现有 tf-pipeline CodeBuild/main 发布通道构建，完整替换源码并重新校验锁定依赖；FYP/Idea 各用新的 worker family，引用同一固定镜像摘要和原任务组角色。新请求才使用新 TD；旧日更触发器保持原 TD，接管期间不能改动已运行任务。SageMaker 显式使用 cloud_train entrypoint，运行配方从冻结输入读取，不写入镜像。
