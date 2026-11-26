@@ -82,6 +82,9 @@ def parameters(config, vocabs=None):
         "embed_dim",
         "embed_initializer_args",
         "dnn_inputs",
+        "lhuc_inputs",
+        "lhuc_share_embed",
+        "target_layer_use_lhuc",
         "fm_layers",
         "output_layer",
         "tasks",
@@ -126,11 +129,26 @@ def parameters(config, vocabs=None):
         sparse_learning_rate=0.001,
         sparse_optimizer_args={},
         fm_layers=[],
+        lhuc_inputs=[],
+        lhuc_share_embed=True,
+        target_layer_use_lhuc=False,
         feature_transformations=[],
         embed_initializer_args={"minval": -0.01, "maxval": 0.01},
     )
     defaults.update(cfg)
     cfg = defaults
+    lhuc_inputs = cfg["lhuc_inputs"]
+    if not isinstance(lhuc_inputs, list) or any(
+        not isinstance(name, str) or not name for name in lhuc_inputs
+    ):
+        raise ValueError("lhuc_inputs must be a list of nonempty input group names")
+    if len(set(lhuc_inputs)) != len(lhuc_inputs):
+        raise ValueError("lhuc_inputs must contain unique input group names")
+    if set(lhuc_inputs) - cfg["input_features"].keys():
+        raise ValueError("lhuc_inputs must reference existing input_features groups")
+    for key in ("lhuc_share_embed", "target_layer_use_lhuc"):
+        if not isinstance(cfg[key], bool):
+            raise ValueError(key + " must be boolean")
     validate_schedules(cfg)
     for trans in cfg["feature_transformations"]:
         trans.setdefault("apply_to_features", [])

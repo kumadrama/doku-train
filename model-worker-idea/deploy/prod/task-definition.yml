@@ -1,0 +1,41 @@
+{
+  "family": "doku-prod-model-worker-idea",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "cpu": "4096",
+  "memory": "8192",
+  "ephemeralStorage": {
+    "sizeInGiB": 40
+  },
+  "executionRoleArn": "{{EXECUTION_ROLE}}",
+  "taskRoleArn": "doku-prod-idea-mapped-daily-worker",
+  "containerDefinitions": [
+    {
+      "name": "pipeline",
+      "image": "{{IMAGE}}",
+      "essential": true,
+      "environment": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/doku-prod-model-worker-idea",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "pipeline"
+        }
+      },
+      "entryPoint": [],
+      "command": [
+        "python",
+        "-m",
+        "recommend_tf.platforms.model_management.worker",
+        "--help"
+      ]
+    }
+  ]
+}

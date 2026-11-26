@@ -10,8 +10,20 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 
-from .daily_pipeline import execute, validate_binding
 from .publish_model import location
+
+
+def execute(args):
+    from .daily_pipeline import execute as invoke
+
+    return invoke(args)
+
+
+def validate_binding(binding, config=None):
+    from .runtime_binding import validate_binding as validate
+
+    return validate(binding, config)
+
 
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 

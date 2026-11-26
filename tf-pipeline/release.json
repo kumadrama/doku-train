@@ -14,5 +14,6 @@
   "config_sha256": "d50b97581fa1b8fff08069c5b914d09e658d271d9d9b3c5d657ff5adc5b7f88b",
   "binding_uri": "s3://prod-data-lake-20260901071345278900000001/ml/tf-inference/environment=prod/config/446fb789b99e34a093a90090fb6da368968f6ca9e71a6f5e940fc3b4a0a263c1/binding.json",
   "binding_sha256": "446fb789b99e34a093a90090fb6da368968f6ca9e71a6f5e940fc3b4a0a263c1",
-  "pipeline_source_revision": "990840f10a289fe2465c8148df144847ed2b47c2"
+  "pipeline_source_revision": "990840f10a289fe2465c8148df144847ed2b47c2",
+  "managed_runtime_base_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/doku-reco-train@sha256:92d36dd6b847c498c04eec4e8f2deb5aec8e99f580046b4711f7b7fb82ffbab3"
 }

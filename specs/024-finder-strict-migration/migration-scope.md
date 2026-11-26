@@ -69,6 +69,8 @@ Source: rerank_model.py:369、571、1018；comm/nn_utils.py:532；comm/graph_hel
 [INFERRED] 当前配置未要求以下分支；映射时显式关闭相关开关，不让Finder默认值额外启用。
 
 - LHUC/FiLM、额外ID/user/item/general-cross/multimodal tower、ESSM。
+  其中 LHUC 排除已由 [Spec 041](../041-tf-lhuc/design.md) 取代：2026-11-20 用户确认直接复用
+  Finder 基础 rerank LHUC；其他变体和基础设施不在扩展范围内。
 - 参数化/低秩/多目标/softplus attention、cross-history/cross-target、longhist2/HSTU、短曝光Transformer。
 - LLM cache、GPU、Horovod/MPI、多机、WePS/PSStor、私有数据/评估服务及平台进程管理。
 - 当前未使用的loss/activation/norm等不增加支持承诺；所选路径必要helper必须一起迁移。
