@@ -264,3 +264,17 @@ serving_with_model_version 签名。先在私有FYP网络探测版本、行数�
 因此首次登记新合同，嵌入模型14导出的原始feature-config/signature/state/manifest
 与真实摘要；复用经编译验证的tf-tensors/v1处理器和FYP检索链，不篡改合同来通过
 同合同日更检查。后续日更以新别名自己的合同为基准。
+
+## 2026-11-26：同模型日更15轮切换
+
+Source: 同日用户授权减少下一次训练轮数并保持线上服务及实验。
+
+配置唯一语义差异为 `max_epochs: 30 -> 15`。生成新的不可变S3配置及摘要；
+原ready Lambda ZIP仅替换`ready_release.json`，pipeline TD仅替换配置URI和摘要。
+保持全部代码、镜像digest、binding和在线发布流程。
+
+采用Spec036已有同名配方迁移：确认日更空闲、上一轮监控已收齐后，短暂停止该模型
+新训练准入，以ETag CAS更新catalog的recipe摘要，并保留previous_recipe及其截止日。
+只更新该模型ready Lambda和worker target，核验无未来旧配置待执行请求后恢复触发。
+迁移前后比较Endpoint配置、线上版本、AB/模型定义/列表及pipeline状态；不执行Endpoint更新。
+下次成功日更仍按原流程选择checkpoint并自动发布，未来权重会正常更新。

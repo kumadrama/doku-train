@@ -744,3 +744,25 @@ Source: 用户授权模型14上线并启动FYP日更，暂不开AB。
 验收结果：模型14初始checkpoint已发布、两实例完整推理通过、FYP日更已启用且首训已启动。
 日更训练尚在运行，未声明其已经完成。AB未变；调用方新别名binding补丁已准备，
 尚未部署，因此后续开AB之前仍需发布该绑定并验收业务选模链路。
+
+## 2026-11-26：后续日更15轮已生效
+
+Source: 用户授权只改下一次训练轮数，保留线上模型及已有AB。
+
+- 配置结构比较仅`max_epochs: 30 -> 15`；binding和训练/发布镜像保持原值。
+- 新FYP TD revision40，ready ZIP仅ready_release.json变化。Terraform保存计划及apply
+  均为0 add / 2 update / 0 destroy，仅模型自己的Lambda和worker target。
+- 切换前后流水线active=null、high_water=2026-11-24，无未来已冻结旧配方请求。
+  恢复后独立daily rule为ENABLED；未手动启动训练。
+- catalog通过ETag CAS迁移，保留旧recipe截至2026-11-24；latest_training、online、
+  release与历史不变。实际部署collector代码验证旧事件重放、新recipe接收、越界旧recipe
+  拒绝三条路径通过（测试不写云端）。
+- Endpoint仍InService且配置、ProductionVariants均与切换前一致：
+  `tf-3d3f1d8547b583a9a08e3660bea808a0ff3c7b1d84220e12`。
+- AppConfig AB、模型定义、模型列表三份数据面内容逐字节保持不变。
+
+验证命令（doku-train主工作区）及结果：
+` .venv/bin/python runs/lhuc14-e15-20261126/validate_transition.py `通过；
+` .venv/bin/python runs/lhuc14-e15-20261126/verify.py `通过（verification.json记录）；
+Terraform plan/apply日志、冻结配置、迁移前后catalog、AB快照仅保留本地
+`runs/lhuc14-e15-20261126/`，不提交运行产物。

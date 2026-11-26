@@ -146,3 +146,11 @@ Source: 用户要求按 doku-rec-deploy skill 上线
 - 导出 completion、fast_swipe、immersive_click、watch_seconds、inner_watch_seconds。
 - 日更30天训练、1天验证，30 epoch，原 validation loss 选模策略。
 - 不改默认模型或实验分桶；调用方新别名绑定作为后续开实验前的接线交付。
+
+## 2026-11-26：后续日更训练改为15轮
+
+Source: 用户确认模型已上线且已有实验，要求不影响当前线上，把下次训练改为 `max_epochs: 15`。
+
+仅调整 `inner_watch_lhuc_m512_e16_t64` 后续日更的最大训练轮数，取代上述上线时30轮配置。
+保留当前Endpoint、模型版本、AB实验、已完成训练及其不可变配置；不手动启动训练。
+30天训练＋1天验证窗口、网络、loss、特征、导出任务和validation loss选模规则保持原值。

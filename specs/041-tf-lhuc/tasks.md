@@ -29,3 +29,10 @@ Source: 已确认需求及直接复用 Finder 的实现决策，见 [设计](des
 - [x] AppConfig定义与列表发布，所有实例加载、新旧别名RPC验证。
 - [x] 日更触发器启用、首个日更训练启动、监控身份核验。
 - [x] 发布证据与调用方绑定补丁交付；确认AB配置未变。
+
+## 2026-11-26：日更15轮
+
+- [x] 冻结当前配置、catalog、pipeline、Endpoint和AB快照。
+- [x] 仅调整max_epochs，核验原监控代码支持新旧recipe兼容。
+- [x] 审查两项更新计划，空闲时CAS迁移catalog，更新ready和worker后恢复触发。
+- [x] 核验线上不变并记录发布证据。
