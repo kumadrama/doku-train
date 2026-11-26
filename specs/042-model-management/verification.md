@@ -42,3 +42,11 @@ IaC：`terraform -chdir=modules/model_management_group validate`、`terraform ..
 - FYP/Idea各一例接管及下一次真实日更观察，再批量接管。
 
 本地测试验证代码行为，不能证明AWS配额、实际网络、角色授权或现有生产状态；这些属于上述后续部署验收。
+
+## 2026-11-26 生产预检补充
+
+用户授权部署与接管；线上资源事实及未部署原因见 [生产记录](production-rollout.md)。
+新增接管校验：精确 legacy Endpoint/role 保留、拒绝未登记角色/通配 Endpoint，以及 Idea 旧 monitoring 身份兼容。
+`python -m pytest recommend_tf/train/tests/test_model_management.py -q --disable-warnings`：24 passed。
+`ruff check`（contracts/adoption/tests）：通过。IaC group mock tests：2 passed；无 AWS 资源变更。
+生产 DKD plan 在解析 GitHub main 时 EOF，未创建云端 job；不将本地 mock 作为生产验收。

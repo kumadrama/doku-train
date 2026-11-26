@@ -81,7 +81,7 @@ def plan(documents, group, registry, name, rule, *, events, ecs, sm):
     binding = legacy_pin(documents, group, snapshot["binding"])
     if (
         config["model_name"] != name
-        or binding["model_name"] != name
+        or binding.get("model_name", binding.get("monitoring", {}).get("model_name")) != name
         or binding["environment"] != group["environment"]
     ):
         raise ValueError("legacy model ownership mismatch")

@@ -443,7 +443,8 @@ def test_managed_export_uses_real_cpu_training_and_identity_signature(setup, tmp
     assert manifest["verification"]["serving_version_signature"] == "serving_with_model_version"
 
 
-def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup):
+@pytest.mark.parametrize("legacy_monitoring_identity", [False, True])
+def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitoring_identity):
     import hashlib
     import tarfile
 
@@ -455,6 +456,9 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup):
     model = registry["models"][name]
     old_binding = binding_for(group, name, model)
     old_binding.pop("managed_model")
+    if legacy_monitoring_identity:
+        old_binding.pop("model_name")
+        old_binding["monitoring"] = {"model_name": name}
     old_binding["download_limit_bytes"] = 100_000
     group["binding_template"]["download_limit_bytes"] = 100_000
     group["legacy_rules"] = ["old-daily"]
@@ -773,3 +777,36 @@ def test_failed_release_reconciliation_remains_explicitly_rebuildable(setup):
     assert result["status"] == "failed"
     assert result["release_stage"] == "training_failed"
     assert len(ecs.calls) == 1
+
+
+def test_adoption_preserves_exact_legacy_endpoint_and_role(setup):
+    _, group, registry, name, _ = setup
+    model = registry["models"][name]
+    legacy = binding_for(group, name, model)
+    legacy["deployment"]["endpoint_name"] = "doku-dte-legacy-official"
+    legacy["deployment"]["execution_role_arn"] = "arn:aws:iam::123456789012:role/old-inference"
+    group["adoption_prefixes"] = ["s3://bucket/state", "s3://bucket/work", "s3://bucket/models"]
+    group["legacy_rules"] = ["legacy-daily"]
+    model["adoption"] = {
+        "binding": legacy,
+        "legacy_rule": "legacy-daily",
+        "evidence_uri": "s3://bucket/manage/fyp/evidence.json",
+    }
+    with pytest.raises(ValueError, match="outside group"):
+        binding_for(group, name, model)
+    group["adoption_services"] = {
+        "doku-dte-legacy-official": {
+            "execution_role_arn": legacy["deployment"]["execution_role_arn"]
+        }
+    }
+    validate_group(group)
+    validate_registry(registry, group)
+    assert binding_for(group, name, model)["deployment"] == legacy["deployment"]
+    legacy["deployment"]["execution_role_arn"] = "arn:aws:iam::123456789012:role/not-enrolled"
+    with pytest.raises(ValueError, match="inference role"):
+        binding_for(group, name, model)
+    group["adoption_services"]["*"] = {
+        "execution_role_arn": "arn:aws:iam::123456789012:role/old-inference"
+    }
+    with pytest.raises(ValueError, match="explicit adopted Endpoint"):
+        validate_group(group)

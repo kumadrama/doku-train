@@ -98,3 +98,9 @@ CLI plan 是可审查的完整差异。已授权操作可直接 apply，无二�
 4. 审核PROD计划，授权后启用共享触发并逐个接管。验证旧/新入口互斥、原模型权重没变，随后观察下一次日更及指标。
 
 Source: 用户确认的Spec042需求；实施落点为本仓model_management、doku-rec-deploy管理skill、doku-iac/model_management_group和doku-monitoring/model_metrics_collector。以上生产步骤尚未执行。
+
+### 生产接管身份补充（2026-11-26）
+
+Source: 用户授权“部署并接管线上”；生产只读 EventBridge/ECS/SageMaker 快照。
+
+现有 FYP 的五个 Endpoint 使用不同推理角色，其中旧 official Endpoint 不在新 FYP 名称前缀内。平台用 `adoption_services` 精确登记既有 Endpoint→推理角色；仅接管已核验旧发布记录时使用，禁止任意角色或前缀通配。新增模型仍使用组的统一资源模板。接管不更换原 Endpoint、推理角色、权重或调用方配置。Idea 两个旧入口未显式配置 RetryPolicy，部署前将 AWS 默认最大投递窗口 86400 秒显式化，保持完整排空时间。

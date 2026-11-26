@@ -74,11 +74,20 @@ def validate_group(group):
             "legacy_rules",
             "resource_manager",
             "legacy_ingress",
+            "adoption_services",
         ),
     )
     if group["schema_version"] != GROUP:
         raise ValueError("unknown task group contract")
     identifier(group["name"])
+    for endpoint, service in group.get("adoption_services", {}).items():
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,62}", endpoint):
+            raise ValueError("explicit adopted Endpoint required")
+        exact(service, ("execution_role_arn",))
+        if not re.fullmatch(
+            r"arn:aws:iam::[0-9]{12}:role/[a-zA-Z0-9+=,.@_/-]+", service["execution_role_arn"]
+        ):
+            raise ValueError("explicit adopted inference role required")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,23}", group["environment"]):
         raise ValueError("explicit environment required")
     if not re.fullmatch(r"[a-z][a-z0-9-]{1,39}-", group["endpoint_prefix"]):
@@ -245,11 +254,11 @@ def binding_for(group, name, model):
                 under(old[key], group.get("adoption_prefixes", []))
                 binding[key] = old[key]
         endpoint = old["deployment"]["endpoint_name"]
-        if not endpoint.startswith(group["endpoint_prefix"]):
+        enrolled = group.get("adoption_services", {}).get(endpoint)
+        if not endpoint.startswith(group["endpoint_prefix"]) and not enrolled:
             raise ValueError("adopted endpoint outside group IAM boundary")
-        if old["deployment"].get("execution_role_arn") != binding["deployment"].get(
-            "execution_role_arn"
-        ):
+        expected_role = (enrolled or binding["deployment"]).get("execution_role_arn")
+        if old["deployment"].get("execution_role_arn") != expected_role:
             raise ValueError("adopted inference role differs from enrolled group")
         binding["deployment"] = copy.deepcopy(old["deployment"])
     if binding["deployment"]["endpoint_name"] != endpoint:
