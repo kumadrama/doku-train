@@ -4,7 +4,11 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 
 ## 当前状态
 
-**生产共享管理平台、FYP/Idea worker、监控接线和两组控制器轮询均已部署；DTE 端到端验收通过。Idea 和 FYP LHUC 两个 pilot 均已暂停旧入口并等待重试排空，尚未完成管理权切换。** 线上模型 Endpoint、权重和调用方配置未因接管改变。Idea 最早可在北京时间 2026-11-27 21:06:06、FYP LHUC 在 21:33:05 后继续各自原接管计划；轮询不会自动完成这个接管步骤。官方 base 日更已按用户明确要求停止，不再纳入后续日更接管。
+**共享管理平台已部署；用户最终选择存量模型保留旧链路，后续新增模型使用新链路。存量迁移已取消，不再等待排空。** FYP LHUC 和 Idea pilot 已取消接管，ownership 均为 `legacy`，原日更规则及上游入口已恢复；另外三个存量模型保持原日更启用。官方 base 日更仍按用户此前要求停用。六个 Endpoint 均为 InService，EndpointConfig 与操作前一致。
+
+Source: 2026-11-26 用户“或者能不能旧模型就不用新链路接管了 后续才是新链路”；北京时间 22:29 起 AWS 实际回读。下文接管步骤和排空时间为历史过程，不再是待执行计划。
+
+新平台 FYP/Idea registry 均为空（revision 0），共享轮询启用，但不准入这些旧模型。新模型使用管理 skill 登记、发布和修改后续日更配置；存量模型继续使用旧配置入口。如后续需要接管存量，需重新明确范围并检查当时状态。
 
 身份核验：`doku-prod-developer`，AWS account `703844615824`，region `us-east-2`。
 本地审计快照目录：`/private/tmp/model-management-rollout-20261126/`，包含规则/target、Task Definition、冻结配置、binding、发布 journal。快照不作为可变线上配置的长期权威。
@@ -134,3 +138,10 @@ Source: 用户明确要求 kill `tf_rerank_ln_lr002_3feat` 日更流程，并说
 - 随后核验 FYP LHUC 原 plan 的 state digest 仍完全一致、state.active 为空、旧任务族无运行任务。按此前接管授权继续同一 plan，回执为 legacy_paused，drain_after=1795786384.5876858（北京时间 2026-11-27 21:33:04.588）。其旧独立入口暂停，仅移除 LHUC 对应共享 target。
 - 21:34 回读六个存量 Endpoint 均 InService、EndpointConfig 与接管前快照一致。`inner_watch_lr003`、`inner_watch_w02_lr003`、`tf_rerank_ln_lr002_3feat_us_or_unknown` 的独立日更规则及两类共享 target 保持启用；Idea 仍处于原排空阶段。
 - 证据：`official-base-stop-before.json`、`official-base-stop-receipt.json`、`fyp-lhuc-adopt-apply-1.json`、`post-stop-model-isolation-verification.json`。官方 base 的服务资源保留；不得因后续接管或旧 IaC 重放重新开启其日更。
+
+## 存量保留旧链路的最终验收（2026-11-26）
+
+- 使用管理 CLI `abort-adoption --plan ...` 取消两个冻结 pilot 计划。LHUC 完整成功；Idea 控制器先写入 legacy，恢复 ECS target 时因缺少旧 events role 的 `iam:PassRole` 失败。操作身份按原冻结证据恢复 `idea-mapped` target，再启用原 daily rule；未修改 IAM 或 Endpoint。
+- boto3 实际核验 `DescribeRule`、`ListTargetsByRule`、`DescribeEndpoint`、S3 ownership、两组控制器 `status`：五个存量日更启用；三处恢复 target 与原证据完全相同；official base 规则禁用且两个共享 target 仍缺席；六个 Endpoint 配置未变；两组新 registry 为空。
+- 官方 base 训练仍为 Stopped。没有注销旧 Task Definition；提前接管草稿 PR #86 不部署。
+- 审计证据：`/private/tmp/model-management-rollout-20261126/keep-legacy-final-verification.json`、`fyp-abort-keep-legacy-1.json`、`idea-abort-restore-operator-receipt.json`。Idea 控制器缺少旧 role PassRole 的问题仍是未来重新使用接管撤销流程前需要修复的平台缺口；此次原入口已恢复并核验。

@@ -39,7 +39,7 @@ IaC：`terraform -chdir=modules/model_management_group validate`、`terraform ..
 
 - 共享控制器、worker和资源登记器发布；collector组级接线；DTE真实AWS训练/推理闭环。
 - 审查实际IAM、网络、旧target及重试窗口；PROD部署计划与授权。
-- FYP/Idea各一例接管及下一次真实日更观察，再批量接管。
+- 存量接管及其日更观察已按用户最新决定移出本次范围；两个 pilot 已取消接管并恢复旧入口，实际回读见 production-rollout.md。
 
 本地测试验证代码行为，不能证明AWS配额、实际网络、角色授权或现有生产状态；这些属于上述后续部署验收。
 
