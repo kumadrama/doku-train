@@ -62,3 +62,7 @@ GitHub connector 可创建功能分支和 PR；它不能代替 DKD 的构建、�
 ## Worker release declaration validation
 
 DKD requires three-segment PSM names. Worker release units use `doku-modelworker-smoke`, `doku-modelworker-fyp` and `doku-modelworker-idea`; ECS family and log-group identities remain unchanged. The old four-segment declaration was rejected locally before any deployment job was created.
+
+## Worker image publication boundary
+
+DKD apply requires the release unit's own ECR repository even when plan accepts a shared repository URI. The DTE worker apply was rejected before task definition registration. Each fixed task group now has a small release wrapper that derives from the same immutable shared runtime image and publishes via its standard main CodeBuild flow. This is platform setup per task group, not per-model packaging; new model recipes still require no source/image changes.

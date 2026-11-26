@@ -1,0 +1,4 @@
+{
+  "runtime_image": "703844615824.dkr.ecr.us-east-2.amazonaws.com/doku-train/tf-pipeline@sha256:fe87d5b0ba6b62b6aeb371ca26673821a318ff7ce72855f9eb9c4b8a793162d4",
+  "source_revision": "9f7003b29d52c15434ef7b2c6232cbfc1e1d1162"
+}
