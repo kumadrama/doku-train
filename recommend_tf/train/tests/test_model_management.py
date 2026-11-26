@@ -444,7 +444,10 @@ def test_managed_export_uses_real_cpu_training_and_identity_signature(setup, tmp
 
 
 @pytest.mark.parametrize("legacy_monitoring_identity", [False, True])
-def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitoring_identity):
+@pytest.mark.parametrize("early_fence", [False, True])
+def test_adoption_waits_for_retry_drain_and_keeps_endpoint(
+    setup, legacy_monitoring_identity, early_fence
+):
     import hashlib
     import tarfile
 
@@ -499,7 +502,7 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitor
                     {
                         "Id": "worker",
                         "EcsParameters": {"TaskDefinitionArn": group["worker"]["task_definition"]},
-                        "RetryPolicy": {"MaximumEventAgeInSeconds": 60},
+                        "RetryPolicy": {"MaximumEventAgeInSeconds": 86400 if early_fence else 60},
                     }
                 ]
             }
@@ -514,6 +517,12 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitor
             self.state = "ENABLED"
 
     class LegacyECS(ECS):
+        retired = False
+
+        def get_paginator(self, operation):
+            key = "taskDefinitionArns" if operation == "list_task_definitions" else "serviceArns"
+            return SimpleNamespace(paginate=lambda **kw: [{key: []}])
+
         def describe_task_definition(self, **kwargs):
             env = {
                 "DOKU_CONFIG_URI": config_pin["uri"],
@@ -523,6 +532,7 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitor
             }
             return {
                 "taskDefinition": {
+                    "status": "INACTIVE" if self.retired else "ACTIVE",
                     "taskDefinitionArn": group["worker"]["task_definition"],
                     "containerDefinitions": [
                         {
@@ -557,10 +567,26 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitor
     restarted = adoption.apply(
         docs, group, store, pin, events=events, ecs=ecs, sm=sm, now=lambda: 101
     )
-    assert restarted["drain_after"] == 161
+    assert restarted["drain_after"] == (86501 if early_fence else 161)
+    complete_at = 161
+    if early_fence:
+        with pytest.raises(ValueError, match="INACTIVE"):
+            adoption.fence(docs, group, pin, events=events, ecs=ecs, now=lambda: 102)
+        ecs.retired = True
+        result = adoption.fence(docs, group, pin, events=events, ecs=ecs, now=lambda: 102)
+        assert result["drain_after"] == 86501  # Original barrier is not rewritten.
+        assert result["revision_fence"]["ready_after"] == 702
+        with pytest.raises(ValueError, match="replacement release"):
+            adoption.abort(docs, group, pin, events=events)
+        result = adoption.apply(
+            docs, group, store, pin, events=events, ecs=ecs, sm=sm, now=lambda: 701
+        )
+        assert result["waiting"] == "legacy_revision_fence_propagating"
+        assert store.read()["models"] == {}
+        complete_at = 702
     for _ in range(5):
         result = adoption.apply(
-            docs, group, store, pin, events=events, ecs=ecs, sm=sm, now=lambda: 161
+            docs, group, store, pin, events=events, ecs=ecs, sm=sm, now=lambda: complete_at
         )
         if result["status"] == "managed":
             break
@@ -570,6 +596,86 @@ def test_adoption_waits_for_retry_drain_and_keeps_endpoint(setup, legacy_monitor
     assert events.state == "DISABLED"
     with pytest.raises(ValueError, match="activated"):
         adoption.abort(docs, group, pin, events=events)
+
+
+@pytest.mark.parametrize("actual_status", ["RUNNING", "STOPPING", "STOPPED"])
+def test_adoption_waits_for_actual_exit_after_stop_request(setup, actual_status):
+    from recommend_tf.platforms.model_management.adoption import idle
+
+    docs, group, _, _, _ = setup
+    state = {"active": None, "high_water": "2026-10-07"}
+    binding = {"state_uri": "s3://bucket/state/legacy.json"}
+    docs.put(binding["state_uri"], state)
+    evidence = {
+        "state_sha256": digest(state),
+        "snapshot": {
+            "task_definition": "arn:aws:ecs:us-east-2:123456789012:task-definition/legacy:1"
+        },
+    }
+
+    class StoppingECS:
+        def list_tasks(self, **kwargs):
+            if kwargs["desiredStatus"] == "RUNNING":
+                return {"taskArns": []}
+            if not kwargs.get("nextToken"):
+                return {"taskArns": [], "nextToken": "page2"}
+            return {"taskArns": ["stopping-task"]}
+
+        def describe_tasks(self, **kwargs):
+            assert kwargs["tasks"] == ["stopping-task"]
+            return {"tasks": [{"lastStatus": actual_status}], "failures": []}
+
+    if actual_status == "STOPPED":
+        idle(docs, group, evidence, binding, StoppingECS())
+    else:
+        with pytest.raises(ValueError, match="executor has not stopped"):
+            idle(docs, group, evidence, binding, StoppingECS())
+
+
+@pytest.mark.parametrize("case", ["other_model", "target_model", "unknown", "service"])
+def test_revision_fence_rejects_remaining_legacy_paths(setup, case):
+    from recommend_tf.platforms.model_management.adoption_fence import verify
+
+    docs, group, _, name, _ = setup
+    group["adoption_prefixes"] = ["s3://bucket"]
+    pin = docs.immutable("config", {"model_name": name if case == "target_model" else "other"})
+    original = group["worker"]["task_definition"]
+    active = original.rsplit(":", 1)[0] + ":2"
+    evidence = {"snapshot": {"task_definition": original}}
+
+    class Inventory:
+        def get_paginator(self, operation):
+            key = "taskDefinitionArns" if operation == "list_task_definitions" else "serviceArns"
+            values = (
+                [active] if key == "taskDefinitionArns" else (["svc"] if case == "service" else [])
+            )
+            return SimpleNamespace(paginate=lambda **kw: [{key: []}, {key: values}])
+
+        def describe_task_definition(self, taskDefinition):
+            env = (
+                []
+                if case == "unknown"
+                else [
+                    {"name": "DOKU_CONFIG_URI", "value": pin["uri"]},
+                    {"name": "DOKU_CONFIG_SHA256", "value": pin["sha256"]},
+                ]
+            )
+            return {
+                "taskDefinition": {
+                    "family": "daily",
+                    "status": "INACTIVE" if taskDefinition == original else "ACTIVE",
+                    "containerDefinitions": [{"name": "pipeline", "environment": env}],
+                }
+            }
+
+        def describe_services(self, **kwargs):
+            return {"services": [{"taskDefinition": original}], "failures": []}
+
+    if case == "other_model":
+        assert verify(docs, group, evidence, name, Inventory())["target"] == original
+    else:
+        with pytest.raises(ValueError):
+            verify(docs, group, evidence, name, Inventory())
 
 
 def test_platform_upgrade_preserves_queued_runtime(setup):

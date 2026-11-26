@@ -21,7 +21,8 @@
         "recover",
         "adopt_plan",
         "adopt_abort",
-        "dispatch"
+        "dispatch",
+        "adopt_fence"
       ]
     },
     "arguments": {
@@ -401,6 +402,46 @@
             "type": "object",
             "required": [],
             "properties": {},
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "adopt_fence"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "plan"
+            ],
+            "properties": {
+              "plan": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            },
             "additionalProperties": false
           }
         }

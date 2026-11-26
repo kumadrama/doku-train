@@ -4,7 +4,7 @@ Source: 2026-11-26 用户明确授权“部署并接管线上”；AWS STS、Eve
 
 ## 当前状态
 
-**生产共享管理平台、FYP/Idea worker 与监控代码已部署；DTE 端到端验收通过。生产监控接线更新失败，现有模型尚未接管。** 没有修改线上模型 Endpoint、权重、业务 AppConfig 或旧日更入口。原日更继续运行。
+**生产共享管理平台、FYP/Idea worker、监控接线和两组控制器轮询均已部署；DTE 端到端验收通过。Idea 和 FYP LHUC 两个 pilot 均已暂停旧入口并等待重试排空，尚未完成管理权切换。** 线上模型 Endpoint、权重和调用方配置未因接管改变。Idea 最早可在北京时间 2026-11-27 21:06:06、FYP LHUC 在 21:33:05 后继续各自原接管计划；轮询不会自动完成这个接管步骤。官方 base 日更已按用户明确要求停止，不再纳入后续日更接管。
 
 身份核验：`doku-prod-developer`，AWS account `703844615824`，region `us-east-2`。
 本地审计快照目录：`/private/tmp/model-management-rollout-20261126/`，包含规则/target、Task Definition、冻结配置、binding、发布 journal。快照不作为可变线上配置的长期权威。
@@ -104,3 +104,33 @@ DKD apply requires the release unit's own ECR repository even when plan accepts 
 - 监控接线 apply `dj_95bc9908-f901-4e39-9d0b-7a8e9bb59af7` 失败：完整绑定使 Lambda 环境变量达到 4199 字节，超过 4096 上限。回读函数仍 Active / LastUpdateStatus=Successful，保留此前 2262 字节旧环境。新增 IAM 策略可能已写入，后续必须重新 plan，不能假定完全回滚。
 - 已停止该 apply 的重试。修复目标为内容摘要固定的 S3 资源绑定及小型 URI/SHA256 环境变量，保留全部源与 AppConfig 运行开关。先发布兼容 inline 的代码，再切换接线。修复测试和新计划准备后，由用户决定是否重试。
 - 原线上 Endpoint、权重、业务路由、旧日更入口均未切换。Idea 显式 RetryPolicy 的计划已通过但尚未 apply。
+
+## 2026-11-26 监控修复重试验收与 pilot 接管
+
+Source: 用户确认监控修复重试并继续接管；DKD 部署回执、Lambda/Events/ECS/SageMaker/S3 实际回读，审计目录同上。
+
+- 监控 PR #440 完成兼容代码发布，DKD `dj_00a3801e-c439-41d2-b0a0-c1876336b0fa` 成功。线上 CodeSha256 为 `U2AKWuz5SUonielkazl0wJ3J9sL8YXDqK2VBtn4HP5k=`，Active / Successful。
+- IaC PR #1158 的主线计划 `dj_ea1921e2-a1db-433d-9426-4c3dd23287ac` 为 1 add、1 change、0 destroy；重试 apply `dj_df22e60f-b9ed-4ce2-b6a0-c16e2eafc8f3` 成功。完整 binding 位于按内容摘要固定的 S3 对象；环境变量仅 293 字节，回读原文 SHA256 校验通过。原业务运行开关和全部资源字段均保留。
+- 使用 `boto3 Lambda.invoke(FunctionName="doku-prod-model-monitoring", InvocationType="RequestResponse", Payload=b"{}")` 执行实际协调，StatusCode=200、无 FunctionError、Grafana 同步 status=success、dashboard version=151。证据为 `monitoring-pointer-readback.json` 和 `monitoring-pointer-reconciliation.json`。
+- 已运行 `scripts/gen-runtime-release-binding.py` 从 applied outputs 重生成发布 binding，与已提交绑定内容完全一致，无新增绑定差异。监控修复本地验证为 769 项 Python 测试（1 项 expected failure）、35 个 promtool 变体、指定 Go 1.26.6 检查及 3 项 Terraform mock 测试通过；对应 PR CI 全部通过。
+- Idea 旧 daily/published 两个 target 的默认重试策略已显式固定为 86400 秒、185 次。计划 `dj_92387c39-ad05-44c3-8de1-f47228207463` 为 0 add、2 change、0 destroy；apply `dj_4420c26d-49b2-4850-98af-e500574e31a4` 成功，实际回读一致。
+- IaC PR #1160 完整 CI 通过。共享轮询计划 `dj_ff426d85-35ed-4ec9-b609-0a749edb9611` 为 0 add、2 change、0 destroy；apply `dj_5f1e4918-06cb-4aed-9c46-9b522639fdd7` 成功。FYP/Idea reconcile rules 均 ENABLED / rate(5 minutes)。模型登记仍为空，未完成接管的模型不会被新调度准入。
+- FYP LHUC pilot 计划 `005a547e9e19af50ee2c1742856a61aef9c2cb6841bfff85a28b9303c68d17e6` 已生成并核验：max_epochs=15、原 Endpoint、daily_enabled=true、first_cutoff=2026-11-26。尚未 apply，因为同旧任务族的官方 base `doku-daily-142861bcc0e54a702bf0ca0ca434d04eb1f48251` 仍 Training（核验时 epoch 25/30），executor `87507e99639442a1854604bafa94ac0b` 仍 RUNNING。未停止该任务，也未关闭 FYP 旧入口。
+- Idea pilot 计划 `0f118815f8f941046874881cb4be1c15ae2b0f32dcdba0b70a98f92bac167d91` 保留 max_epochs=20、原 Endpoint、daily_enabled=true、first_cutoff=2026-11-26。首次 apply 回执为 legacy_paused，drain_after=1795784765.878168，即北京时间 2026-11-27 21:06:05.878。daily rule 已 DISABLED；published rule 只移除 `idea-mapped` target。原 Endpoint InService、EndpointConfig 与冻结证据一致。核验证据为 `pilot-handover-verification.json`。
+
+### 待完成事项与继续条件
+
+1. Idea 不得跳过上述完整 24 小时窗口。到期后使用 `idea-adopt-plan.json` 的同一 pin 继续 `manage.py ... apply --plan ...`，pending 时继续同一计划，直至 managed；每次回执使用新本地文件名。controller tick 不会代替这一步。
+2. FYP LHUC 已满足旧任务族退出条件并开始排空，使用 `fyp-lhuc-adopt-plan.json` 的同一 pin 在北京时间 2026-11-27 21:33:05 后继续。不得重建计划或缩短窗口绕过 CAS 和旧投递等待。
+3. FYP 与 Idea 两个 pilot 均 managed 且实际服务/监控验收通过后，才接管剩余三个启用中的 FYP 模型；官方 base 已按用户要求停止日更，应排除。批量接管和下一次 managed 日更验收尚未执行，不声明全部接管完成。
+
+
+## 官方 base 日更停止与 FYP LHUC 开始排空
+
+Source: 用户明确要求 kill `tf_rerank_ln_lr002_3feat` 日更流程，并说明线上已没有流量；随后要求核验其他模型影响。此指令授权停止该任务，取代本次操作中不能强停该特定旧任务的限制；不授权停止其他模型。
+
+- 核验 SageMaker `ModelName` 标签及 ECS TD `doku-prod-tf-rerank-daily:34` 后，关闭官方 base 独立 rule，并从两个共享 upstream/recovery rules 中仅移除指向 `doku-prod-tf-ready` 的 target；保留共享 rules。
+- `doku-daily-142861bcc0e54a702bf0ca0ca434d04eb1f48251` 已 Stopped；executor `87507e99639442a1854604bafa94ac0b` 在北京时间 2026-11-26 21:32:31.789 已 STOPPED，pipeline exit 137。保存停止回执，不把被终止训练标记为成功，不篡改旧冻结请求或发布 journal。
+- 随后核验 FYP LHUC 原 plan 的 state digest 仍完全一致、state.active 为空、旧任务族无运行任务。按此前接管授权继续同一 plan，回执为 legacy_paused，drain_after=1795786384.5876858（北京时间 2026-11-27 21:33:04.588）。其旧独立入口暂停，仅移除 LHUC 对应共享 target。
+- 21:34 回读六个存量 Endpoint 均 InService、EndpointConfig 与接管前快照一致。`inner_watch_lr003`、`inner_watch_w02_lr003`、`tf_rerank_ln_lr002_3feat_us_or_unknown` 的独立日更规则及两类共享 target 保持启用；Idea 仍处于原排空阶段。
+- 证据：`official-base-stop-before.json`、`official-base-stop-receipt.json`、`fyp-lhuc-adopt-apply-1.json`、`post-stop-model-isolation-verification.json`。官方 base 的服务资源保留；不得因后续接管或旧 IaC 重放重新开启其日更。
