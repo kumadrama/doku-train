@@ -187,13 +187,18 @@ def idle(documents, group, evidence, binding, ecs):
         "cluster": group["worker"]["cluster"],
         "family": evidence["snapshot"]["task_definition"].split("/")[-1].rsplit(":", 1)[0],
     }
-    arns = []
-    while True:
-        page = ecs.list_tasks(**args)
-        arns.extend(page["taskArns"])
-        if not page.get("nextToken"):
-            break
-        args["nextToken"] = page["nextToken"]
+    observed = set()
+    # StopTask changes desiredStatus before the executor actually exits.
+    # Default ListTasks only sees desired RUNNING and would miss that interval.
+    for desired in ("RUNNING", "STOPPED"):
+        query = dict(args, desiredStatus=desired)
+        while True:
+            page = ecs.list_tasks(**query)
+            observed.update(page["taskArns"])
+            if not page.get("nextToken"):
+                break
+            query["nextToken"] = page["nextToken"]
+    arns = sorted(observed)
     for start in range(0, len(arns), 100):
         result = ecs.describe_tasks(
             cluster=group["worker"]["cluster"], tasks=arns[start : start + 100]
@@ -242,7 +247,15 @@ def apply(documents, group, registry_store, pin, *, events, ecs, sm, now=time.ti
         windows += [v["drain_seconds"] for v in evidence.get("ingress", [])]
         owner.value.update(status="legacy_paused", drain_after=now() + max(windows))
         owner.save()
-    if now() < owner.value["drain_after"]:
+    if "revision_fence" in owner.value:
+        from .adoption_fence import verify
+
+        verified = verify(documents, group, evidence, name, ecs)
+        if verified != owner.value["revision_fence"]["inventory"]:
+            raise ValueError("legacy revision inventory changed after fencing")
+        if now() < owner.value["revision_fence"]["ready_after"]:
+            return {**owner.value, "waiting": "legacy_revision_fence_propagating"}
+    elif now() < owner.value["drain_after"]:
         return {**owner.value, "waiting": "legacy_delivery_retries_draining"}
     if events.describe_rule(Name=rule)["State"] != "DISABLED":
         raise ValueError("legacy admission remains enabled")
@@ -276,6 +289,8 @@ def abort(documents, group, pin, *, events):
         or owner.value["status"] == "managed"
     ):
         raise ValueError("activated handover cannot be aborted; drain managed requests first")
+    if "revision_fence" in owner.value:
+        raise ValueError("retired legacy revisions require an explicit replacement release")
     evidence = documents.pinned(intent["evidence"])
     if evidence["rule"] not in group.get("legacy_rules", []):
         raise ValueError("legacy rule not allowed")
@@ -289,4 +304,43 @@ def abort(documents, group, pin, *, events):
             raise RuntimeError("legacy ingress restoration failed")
     if intent["after"]["models"][name]["daily_enabled"]:
         events.enable_rule(Name=evidence["rule"])
+    return owner.value
+
+
+def fence(documents, group, pin, *, events, ecs, now=time.time):
+    """Record a server-observed retirement barrier; never edits the original drain."""
+    from .adoption_fence import PROPAGATION_SECONDS, verify
+
+    intent = documents.pinned(pin)
+    if intent["action"] != "adopt":
+        raise ValueError("adoption plan required")
+    name = intent["model_name"]
+    evidence = documents.pinned(intent["evidence"])
+    owner = Journal(documents, documents.uri("ownership/" + name + ".json"))
+    if (
+        not owner.value
+        or owner.value["operation"] != pin["sha256"]
+        or owner.value["status"] != "legacy_paused"
+    ):
+        raise ValueError("matching paused adoption required")
+    if evidence["rule"] not in group.get("legacy_rules", []):
+        raise ValueError("legacy rule not allowed")
+    if events.describe_rule(Name=evidence["rule"])["State"] != "DISABLED":
+        raise ValueError("legacy admission remains enabled")
+    for ingress in evidence.get("ingress", []):
+        targets = events.list_targets_by_rule(Rule=ingress["rule"])["Targets"]
+        if any(t["Id"] == ingress["target"]["Id"] for t in targets):
+            raise ValueError("legacy ingress remains enabled")
+    idle(documents, group, evidence, intent["after"]["models"][name]["adoption"]["binding"], ecs)
+    inventory = verify(documents, group, evidence, name, ecs)
+    if "revision_fence" not in owner.value:
+        observed_at = now()
+        owner.value["revision_fence"] = {
+            "inventory": inventory,
+            "observed_at": observed_at,
+            "ready_after": observed_at + PROPAGATION_SECONDS,
+        }
+        owner.save()
+    elif owner.value["revision_fence"]["inventory"] != inventory:
+        raise ValueError("legacy revision inventory changed after fencing")
     return owner.value

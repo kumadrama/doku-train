@@ -93,6 +93,10 @@ def handle(event, group, *, s3, control, data, ecs, events, sm, resource_client=
             ecs=ecs,
             sm=sm,
         )
+    if op == "adopt_fence":
+        exact(args, ("plan",))
+        under(args["plan"]["uri"], [documents.uri("plans")])
+        return adoption.fence(documents, group, args["plan"], events=events, ecs=ecs)
     if op == "adopt_abort":
         exact(args, ("plan",))
         under(args["plan"]["uri"], [documents.uri("plans")])
