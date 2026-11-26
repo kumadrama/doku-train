@@ -10,4 +10,4 @@
 - [x] T8 存量接管计划/执行/恢复、禁止双准入。
 - [x] T9 skill、README及架构/文档索引同步。
 - [x] T10 自动化验证、CPU smoke、代码审查与提交。
-- [ ] 生产：已获 2026-11-26 部署接管授权；预检完成，DKD 被 GitHub 网络 EOF 阻塞，尚未部署，见 production-rollout.md。
+- [ ] 生产：已获 2026-11-26 部署接管授权；生产监控代码、DTE 管理平台与 worker 已部署；DTE 训练/导出/上线/恢复/配置隔离验收通过；生产平台与两组 worker 已部署；生产监控接线受 Lambda 4 KB 上限阻塞，修复准备中，尚未接管，见 production-rollout.md。
