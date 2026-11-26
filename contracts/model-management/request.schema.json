@@ -1,0 +1,186 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "environment",
+    "group",
+    "model_name",
+    "config_revision",
+    "registry",
+    "pins",
+    "cutoff",
+    "bootstrap_run",
+    "rollback_version",
+    "retry_id",
+    "slot_uri",
+    "runtime",
+    "bootstrap_evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-request/v1"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "group": {
+      "type": "string"
+    },
+    "model_name": {
+      "type": "string"
+    },
+    "config_revision": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "object",
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "uri": {
+          "type": "string",
+          "pattern": "^s3://"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "required": [
+        "config",
+        "binding",
+        "ready"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "type": "object",
+          "required": [
+            "uri",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^s3://"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "binding": {
+          "type": "object",
+          "required": [
+            "uri",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^s3://"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "ready": {
+          "type": "object",
+          "required": [
+            "uri",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^s3://"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "cutoff": {
+      "type": "string",
+      "format": "date"
+    },
+    "bootstrap_run": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rollback_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "retry_id": {
+      "type": "string"
+    },
+    "slot_uri": {
+      "type": "string"
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "uri": {
+          "type": "string",
+          "pattern": "^s3://"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "bootstrap_evidence": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "uri",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^s3://"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

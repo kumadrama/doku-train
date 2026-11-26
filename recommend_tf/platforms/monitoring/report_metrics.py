@@ -132,6 +132,8 @@ def observation(
             "endpoint_name": binding["deployment"]["endpoint_name"],
         },
     }
+    if "managed_model" in binding:
+        event["managed_model"] = binding["managed_model"]
     if status.get("task_family"):
         event["task_family"] = status["task_family"]
     if status.get("training_job_name"):

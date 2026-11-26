@@ -1,0 +1,410 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "operation",
+    "arguments"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "doku-model-management/v1"
+    },
+    "operation": {
+      "enum": [
+        "status",
+        "plan",
+        "apply",
+        "submit",
+        "cancel",
+        "rebuild",
+        "recover",
+        "adopt_plan",
+        "adopt_abort",
+        "dispatch"
+      ]
+    },
+    "arguments": {
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "status"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [],
+            "properties": {
+              "model_name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "plan"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "action",
+              "model_name",
+              "payload",
+              "expected_registry_sha256"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "register",
+                  "configure",
+                  "restore_config",
+                  "daily"
+                ]
+              },
+              "model_name": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "object"
+              },
+              "expected_registry_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "apply"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "plan"
+            ],
+            "properties": {
+              "plan": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "adopt_plan"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "model_name",
+              "legacy_rule",
+              "expected_registry_sha256"
+            ],
+            "properties": {
+              "model_name": {
+                "type": "string"
+              },
+              "legacy_rule": {
+                "type": "string"
+              },
+              "expected_registry_sha256": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "adopt_abort"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "plan"
+            ],
+            "properties": {
+              "plan": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "model_name",
+              "cutoff"
+            ],
+            "properties": {
+              "model_name": {
+                "type": "string"
+              },
+              "cutoff": {
+                "type": "string",
+                "format": "date"
+              },
+              "bootstrap_run": {
+                "type": "string"
+              },
+              "rollback_version": {
+                "type": "string"
+              },
+              "operation_id": {
+                "type": "string"
+              },
+              "retry_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "cancel"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "slot_uri",
+              "expected_request"
+            ],
+            "properties": {
+              "slot_uri": {
+                "type": "string"
+              },
+              "expected_request": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "recover"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "slot_uri",
+              "expected_request"
+            ],
+            "properties": {
+              "slot_uri": {
+                "type": "string"
+              },
+              "expected_request": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "rebuild"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [
+              "slot_uri",
+              "expected_request",
+              "retry_id"
+            ],
+            "properties": {
+              "slot_uri": {
+                "type": "string"
+              },
+              "expected_request": {
+                "type": "object",
+                "required": [
+                  "uri",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^s3://"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              },
+              "retry_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "dispatch"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "required": [],
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ]
+}

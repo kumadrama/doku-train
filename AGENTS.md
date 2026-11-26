@@ -68,6 +68,8 @@ doku-train/
 
 ### 当前文档索引
 
+- [Spec 042：配置驱动的模型管理](specs/042-model-management/requirements.md)、[设计](specs/042-model-management/design.md)、[任务](specs/042-model-management/tasks.md)、[验证](specs/042-model-management/verification.md) — 已确认并授权代码实施；不改变调用方，生产接管另行授权。
+
 - [Spec 041：TF LHUC](specs/041-tf-lhuc/requirements.md)、[设计](specs/041-tf-lhuc/design.md)、[任务](specs/041-tf-lhuc/tasks.md)、[验证](specs/041-tf-lhuc/verification.md) — Finder LHUC 与 FYP 模型14独立候选日更；不变更 AB 流量。
 
 - [Spec 042：TF 监控上下文文件传递](specs/042-tf-monitoring-context-file/requirements.md)、[设计](specs/042-tf-monitoring-context-file/design.md)、[任务](specs/042-tf-monitoring-context-file/tasks.md)、[验证](specs/042-tf-monitoring-context-file/verification.md) — 修复 SageMaker 环境变量长度超限，支持原冻结请求显式恢复。
